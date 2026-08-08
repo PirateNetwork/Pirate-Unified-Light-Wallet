@@ -1003,6 +1003,1626 @@ where
     Ok(result)
 }
 
+pub(super) fn sparse_preload_addresses<S, const SHARD_HEIGHT: u8>(
+    store: &S,
+    pool_name: &str,
+) -> Result<Vec<Address>>
+where
+    S: shardtree::store::ShardStore<CheckpointId = BlockHeight>,
+    S::Error: std::fmt::Display,
+{
+    let mut addresses = std::collections::BTreeSet::new();
+    if let Some(frontier) = store.last_shard().map_err(|e| {
+        Error::Sync(format!(
+            "Failed to read {} frontier shard: {}",
+            pool_name, e
+        ))
+    })? {
+        addresses.insert(frontier.root_addr());
+    }
+
+    let checkpoint_count = store
+        .checkpoint_count()
+        .map_err(|e| Error::Sync(format!("Failed to count {} checkpoints: {}", pool_name, e)))?;
+    store
+        .for_each_checkpoint(checkpoint_count, |_, checkpoint| {
+            let mut retain_position = |position: Position| {
+                addresses.insert(Address::from_parts(
+                    SHARD_HEIGHT.into(),
+                    u64::from(position) >> SHARD_HEIGHT,
+                ));
+            };
+            if let shardtree::store::TreeState::AtPosition(position) = checkpoint.tree_state() {
+                retain_position(position);
+            }
+            for position in checkpoint.marks_removed() {
+                retain_position(*position);
+            }
+            Ok(())
+        })
+        .map_err(|e| {
+            Error::Sync(format!(
+                "Failed to inspect {} checkpoint working set: {}",
+                pool_name, e
+            ))
+        })?;
+
+    Ok(addresses.into_iter().collect())
+}
+
+enum BufferedShardAction<H, C> {
+    PutShard(LocatedPrunableTree<H>),
+    TruncateShards(u64),
+    PutCap(PrunableTree<H>),
+    AddCheckpoint(C, ShardCheckpoint),
+    UpdateCheckpoint(C, ShardCheckpoint),
+    RemoveCheckpoint(C),
+    AddRetainedCheckpoint(C),
+    RemoveRetainedCheckpoint(C),
+    TruncateCheckpointsRetaining(C),
+}
+
+type BufferedActions<H, C> = Rc<RefCell<Vec<BufferedShardAction<H, C>>>>;
+
+struct BufferedShardStore<S>
+where
+    S: ShardStore,
+{
+    backend: S,
+    pending: BufferedActions<S::H, S::CheckpointId>,
+}
+
+impl<S> BufferedShardStore<S>
+where
+    S: ShardStore,
+{
+    fn new(backend: S, pending: BufferedActions<S::H, S::CheckpointId>) -> Self {
+        Self { backend, pending }
+    }
+
+    fn push(&self, action: BufferedShardAction<S::H, S::CheckpointId>) {
+        self.pending.borrow_mut().push(action);
+    }
+}
+
+impl<S> ShardStore for BufferedShardStore<S>
+where
+    S: ShardStore,
+    S::H: Clone,
+    S::CheckpointId: Clone + Ord,
+{
+    type H = S::H;
+    type CheckpointId = S::CheckpointId;
+    type Error = S::Error;
+
+    fn get_shard(
+        &self,
+        shard_root: Address,
+    ) -> std::result::Result<Option<LocatedPrunableTree<Self::H>>, Self::Error> {
+        self.backend.get_shard(shard_root)
+    }
+
+    fn last_shard(&self) -> std::result::Result<Option<LocatedPrunableTree<Self::H>>, Self::Error> {
+        self.backend.last_shard()
+    }
+
+    fn put_shard(
+        &mut self,
+        subtree: LocatedPrunableTree<Self::H>,
+    ) -> std::result::Result<(), Self::Error> {
+        self.push(BufferedShardAction::PutShard(subtree));
+        Ok(())
+    }
+
+    fn get_shard_roots(&self) -> std::result::Result<Vec<Address>, Self::Error> {
+        self.backend.get_shard_roots()
+    }
+
+    fn truncate_shards(&mut self, shard_index: u64) -> std::result::Result<(), Self::Error> {
+        self.push(BufferedShardAction::TruncateShards(shard_index));
+        Ok(())
+    }
+
+    fn get_cap(&self) -> std::result::Result<PrunableTree<Self::H>, Self::Error> {
+        self.backend.get_cap()
+    }
+
+    fn put_cap(&mut self, cap: PrunableTree<Self::H>) -> std::result::Result<(), Self::Error> {
+        self.push(BufferedShardAction::PutCap(cap));
+        Ok(())
+    }
+
+    fn min_checkpoint_id(&self) -> std::result::Result<Option<Self::CheckpointId>, Self::Error> {
+        self.backend.min_checkpoint_id()
+    }
+
+    fn max_checkpoint_id(&self) -> std::result::Result<Option<Self::CheckpointId>, Self::Error> {
+        self.backend.max_checkpoint_id()
+    }
+
+    fn add_checkpoint(
+        &mut self,
+        checkpoint_id: Self::CheckpointId,
+        checkpoint: ShardCheckpoint,
+    ) -> std::result::Result<(), Self::Error> {
+        self.push(BufferedShardAction::AddCheckpoint(
+            checkpoint_id,
+            checkpoint,
+        ));
+        Ok(())
+    }
+
+    fn checkpoint_count(&self) -> std::result::Result<usize, Self::Error> {
+        self.backend.checkpoint_count()
+    }
+
+    fn get_checkpoint_at_depth(
+        &self,
+        checkpoint_depth: usize,
+    ) -> std::result::Result<Option<(Self::CheckpointId, ShardCheckpoint)>, Self::Error> {
+        self.backend.get_checkpoint_at_depth(checkpoint_depth)
+    }
+
+    fn get_checkpoint(
+        &self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> std::result::Result<Option<ShardCheckpoint>, Self::Error> {
+        self.backend.get_checkpoint(checkpoint_id)
+    }
+
+    fn with_checkpoints<F>(
+        &mut self,
+        limit: usize,
+        callback: F,
+    ) -> std::result::Result<(), Self::Error>
+    where
+        F: FnMut(&Self::CheckpointId, &ShardCheckpoint) -> std::result::Result<(), Self::Error>,
+    {
+        self.backend.with_checkpoints(limit, callback)
+    }
+
+    fn for_each_checkpoint<F>(
+        &self,
+        limit: usize,
+        callback: F,
+    ) -> std::result::Result<(), Self::Error>
+    where
+        F: FnMut(&Self::CheckpointId, &ShardCheckpoint) -> std::result::Result<(), Self::Error>,
+    {
+        self.backend.for_each_checkpoint(limit, callback)
+    }
+
+    fn update_checkpoint_with<F>(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+        update: F,
+    ) -> std::result::Result<bool, Self::Error>
+    where
+        F: Fn(&mut ShardCheckpoint) -> std::result::Result<(), Self::Error>,
+    {
+        let Some(mut checkpoint) = self.backend.get_checkpoint(checkpoint_id)? else {
+            return Ok(false);
+        };
+        update(&mut checkpoint)?;
+        self.push(BufferedShardAction::UpdateCheckpoint(
+            checkpoint_id.clone(),
+            checkpoint,
+        ));
+        Ok(true)
+    }
+
+    fn remove_checkpoint(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> std::result::Result<(), Self::Error> {
+        self.push(BufferedShardAction::RemoveCheckpoint(checkpoint_id.clone()));
+        Ok(())
+    }
+
+    fn add_retained_checkpoint(
+        &mut self,
+        checkpoint_id: Self::CheckpointId,
+    ) -> std::result::Result<(), Self::Error> {
+        self.push(BufferedShardAction::AddRetainedCheckpoint(checkpoint_id));
+        Ok(())
+    }
+
+    fn remove_retained_checkpoint(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> std::result::Result<(), Self::Error> {
+        self.push(BufferedShardAction::RemoveRetainedCheckpoint(
+            checkpoint_id.clone(),
+        ));
+        Ok(())
+    }
+
+    fn retained_checkpoints(
+        &self,
+    ) -> std::result::Result<BTreeSet<Self::CheckpointId>, Self::Error> {
+        self.backend.retained_checkpoints()
+    }
+
+    fn truncate_checkpoints_retaining(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> std::result::Result<(), Self::Error> {
+        self.push(BufferedShardAction::TruncateCheckpointsRetaining(
+            checkpoint_id.clone(),
+        ));
+        Ok(())
+    }
+}
+
+fn tree_heap_bytes<H>(tree: &PrunableTree<H>) -> u64 {
+    match &**tree {
+        Node::Parent { ann, left, right } => {
+            let annotation = if ann.is_some() {
+                (size_of::<H>() + 2 * size_of::<usize>()) as u64
+            } else {
+                0
+            };
+            annotation
+                .saturating_add((4 * size_of::<usize>()) as u64)
+                .saturating_add(size_of::<PrunableTree<H>>() as u64)
+                .saturating_add(tree_heap_bytes(left))
+                .saturating_add(size_of::<PrunableTree<H>>() as u64)
+                .saturating_add(tree_heap_bytes(right))
+        }
+        Node::Leaf { .. } | Node::Nil => 0,
+    }
+}
+
+fn located_tree_bytes<H>(tree: &LocatedPrunableTree<H>) -> u64 {
+    (size_of::<LocatedPrunableTree<H>>() as u64).saturating_add(tree_heap_bytes(tree.root()))
+}
+
+fn cap_tree_bytes<H>(tree: &PrunableTree<H>) -> u64 {
+    (size_of::<PrunableTree<H>>() as u64).saturating_add(tree_heap_bytes(tree))
+}
+
+fn checkpoint_bytes(checkpoint: &ShardCheckpoint) -> u64 {
+    (size_of::<ShardCheckpoint>() as u64)
+        .saturating_add(
+            (checkpoint.marks_removed().len() * (size_of::<Position>() + 4 * size_of::<usize>()))
+                as u64,
+        )
+        .saturating_add((4 * size_of::<usize>()) as u64)
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct CacheCounterSnapshot {
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+}
+
+struct InstrumentedSparseStore<S>
+where
+    S: ShardStore,
+    S::H: Clone,
+    S::CheckpointId: Clone + Ord,
+{
+    inner: SparseCachingShardStore<S>,
+    hits: Cell<u64>,
+    misses: Cell<u64>,
+    evictions: Cell<u64>,
+    dirty_shards: RefCell<BTreeSet<u64>>,
+    shard_bytes: RefCell<BTreeMap<u64, u64>>,
+    backend_root_indices: RefCell<BTreeSet<u64>>,
+    checkpoint_bytes: RefCell<BTreeMap<S::CheckpointId, u64>>,
+    retained_checkpoints: RefCell<BTreeSet<S::CheckpointId>>,
+    cap_bytes: Cell<u64>,
+    current_bytes: Cell<u64>,
+    peak_bytes: Cell<u64>,
+}
+
+impl<S> InstrumentedSparseStore<S>
+where
+    S: ShardStore,
+    S::H: Clone,
+    S::CheckpointId: Clone + Ord,
+{
+    fn new(
+        inner: SparseCachingShardStore<S>,
+        preloaded: &[Address],
+        backend_roots: &[Address],
+    ) -> std::result::Result<Self, shardtree::store::caching::SparseStoreError> {
+        let mut shard_bytes = BTreeMap::new();
+        for address in preloaded {
+            if let Some(shard) = inner.get_shard(*address)? {
+                shard_bytes.insert(
+                    address.index(),
+                    located_tree_bytes(&shard).saturating_add((4 * size_of::<usize>()) as u64),
+                );
+            }
+        }
+        let cap_bytes = cap_tree_bytes(&inner.get_cap()?);
+        let checkpoint_count = inner.checkpoint_count()?;
+        let mut checkpoints = Vec::with_capacity(checkpoint_count);
+        inner.for_each_checkpoint(checkpoint_count, |id, checkpoint| {
+            checkpoints.push((id.clone(), checkpoint_bytes(checkpoint)));
+            Ok(())
+        })?;
+        let checkpoint_bytes = checkpoints.into_iter().collect::<BTreeMap<_, _>>();
+        let retained_checkpoints = inner.retained_checkpoints()?;
+        let backend_root_indices = backend_roots
+            .iter()
+            .map(|address| address.index())
+            .collect::<BTreeSet<_>>();
+        let current_bytes = shard_bytes
+            .values()
+            .chain(checkpoint_bytes.values())
+            .copied()
+            .sum::<u64>()
+            .saturating_add(cap_bytes)
+            .saturating_add(
+                (retained_checkpoints.len()
+                    * (size_of::<S::CheckpointId>() + 4 * size_of::<usize>()))
+                    as u64,
+            )
+            .saturating_add(
+                (backend_root_indices.len()
+                    * (size_of::<u64>() + size_of::<Address>() + 4 * size_of::<usize>()))
+                    as u64,
+            );
+        Ok(Self {
+            inner,
+            hits: Cell::new(0),
+            misses: Cell::new(0),
+            evictions: Cell::new(0),
+            dirty_shards: RefCell::new(BTreeSet::new()),
+            shard_bytes: RefCell::new(shard_bytes),
+            backend_root_indices: RefCell::new(backend_root_indices),
+            checkpoint_bytes: RefCell::new(checkpoint_bytes),
+            retained_checkpoints: RefCell::new(retained_checkpoints),
+            cap_bytes: Cell::new(cap_bytes),
+            current_bytes: Cell::new(current_bytes),
+            peak_bytes: Cell::new(current_bytes),
+        })
+    }
+
+    fn adjust_bytes(&self, previous: u64, next: u64) {
+        let current = self
+            .current_bytes
+            .get()
+            .saturating_sub(previous)
+            .saturating_add(next);
+        self.current_bytes.set(current);
+        self.peak_bytes.set(self.peak_bytes.get().max(current));
+    }
+
+    fn snapshot(&self) -> CacheCounterSnapshot {
+        CacheCounterSnapshot {
+            hits: self.hits.get(),
+            misses: self.misses.get(),
+            evictions: self.evictions.get(),
+        }
+    }
+
+    fn take_dirty_shards(&self) -> BTreeSet<u64> {
+        std::mem::take(&mut *self.dirty_shards.borrow_mut())
+    }
+
+    fn flush_delta(&mut self) -> std::result::Result<(), S::Error> {
+        self.inner.flush_delta()
+    }
+
+    fn current_bytes(&self) -> u64 {
+        self.current_bytes.get()
+    }
+
+    fn peak_bytes(&self) -> u64 {
+        self.peak_bytes.get()
+    }
+
+    fn cached_shard_count(&self) -> u64 {
+        self.shard_bytes.borrow().len() as u64
+    }
+}
+
+impl<S> ShardStore for InstrumentedSparseStore<S>
+where
+    S: ShardStore,
+    S::H: Clone,
+    S::CheckpointId: Clone + Ord,
+{
+    type H = S::H;
+    type CheckpointId = S::CheckpointId;
+    type Error = shardtree::store::caching::SparseStoreError;
+
+    fn get_shard(
+        &self,
+        shard_root: Address,
+    ) -> std::result::Result<Option<LocatedPrunableTree<Self::H>>, Self::Error> {
+        match self.inner.get_shard(shard_root) {
+            Ok(Some(shard)) => {
+                self.hits.set(self.hits.get().saturating_add(1));
+                Ok(Some(shard))
+            }
+            Ok(None) => {
+                self.misses.set(self.misses.get().saturating_add(1));
+                Ok(None)
+            }
+            Err(error) => {
+                self.misses.set(self.misses.get().saturating_add(1));
+                Err(error)
+            }
+        }
+    }
+
+    fn last_shard(&self) -> std::result::Result<Option<LocatedPrunableTree<Self::H>>, Self::Error> {
+        match self.inner.last_shard() {
+            Ok(Some(shard)) => {
+                self.hits.set(self.hits.get().saturating_add(1));
+                Ok(Some(shard))
+            }
+            Ok(None) => {
+                self.misses.set(self.misses.get().saturating_add(1));
+                Ok(None)
+            }
+            Err(error) => {
+                self.misses.set(self.misses.get().saturating_add(1));
+                Err(error)
+            }
+        }
+    }
+
+    fn put_shard(
+        &mut self,
+        subtree: LocatedPrunableTree<Self::H>,
+    ) -> std::result::Result<(), Self::Error> {
+        let index = subtree.root_addr().index();
+        let bytes = located_tree_bytes(&subtree).saturating_add((4 * size_of::<usize>()) as u64);
+        self.inner.put_shard(subtree)?;
+        self.dirty_shards.borrow_mut().insert(index);
+        let previous = self
+            .shard_bytes
+            .borrow_mut()
+            .insert(index, bytes)
+            .unwrap_or(0);
+        self.adjust_bytes(previous, bytes);
+        Ok(())
+    }
+
+    fn get_shard_roots(&self) -> std::result::Result<Vec<Address>, Self::Error> {
+        self.inner.get_shard_roots()
+    }
+
+    fn truncate_shards(&mut self, shard_index: u64) -> std::result::Result<(), Self::Error> {
+        self.inner.truncate_shards(shard_index)?;
+        let removed = self.shard_bytes.borrow_mut().split_off(&shard_index);
+        let removed_bytes = removed.values().copied().sum::<u64>();
+        let removed_backend_roots = self
+            .backend_root_indices
+            .borrow_mut()
+            .split_off(&shard_index);
+        let removed_backend_root_bytes = (removed_backend_roots.len()
+            * (size_of::<u64>() + size_of::<Address>() + 4 * size_of::<usize>()))
+            as u64;
+        self.current_bytes.set(
+            self.current_bytes
+                .get()
+                .saturating_sub(removed_bytes)
+                .saturating_sub(removed_backend_root_bytes),
+        );
+        self.evictions
+            .set(self.evictions.get().saturating_add(removed.len() as u64));
+        self.dirty_shards
+            .borrow_mut()
+            .retain(|index| *index < shard_index);
+        Ok(())
+    }
+
+    fn get_cap(&self) -> std::result::Result<PrunableTree<Self::H>, Self::Error> {
+        self.inner.get_cap()
+    }
+
+    fn put_cap(&mut self, cap: PrunableTree<Self::H>) -> std::result::Result<(), Self::Error> {
+        let bytes = cap_tree_bytes(&cap);
+        self.inner.put_cap(cap)?;
+        let previous = self.cap_bytes.replace(bytes);
+        self.adjust_bytes(previous, bytes);
+        Ok(())
+    }
+
+    fn min_checkpoint_id(&self) -> std::result::Result<Option<Self::CheckpointId>, Self::Error> {
+        self.inner.min_checkpoint_id()
+    }
+
+    fn max_checkpoint_id(&self) -> std::result::Result<Option<Self::CheckpointId>, Self::Error> {
+        self.inner.max_checkpoint_id()
+    }
+
+    fn add_checkpoint(
+        &mut self,
+        checkpoint_id: Self::CheckpointId,
+        checkpoint: ShardCheckpoint,
+    ) -> std::result::Result<(), Self::Error> {
+        let bytes = checkpoint_bytes(&checkpoint);
+        self.inner
+            .add_checkpoint(checkpoint_id.clone(), checkpoint)?;
+        let previous = self
+            .checkpoint_bytes
+            .borrow_mut()
+            .insert(checkpoint_id, bytes)
+            .unwrap_or(0);
+        self.adjust_bytes(previous, bytes);
+        Ok(())
+    }
+
+    fn checkpoint_count(&self) -> std::result::Result<usize, Self::Error> {
+        self.inner.checkpoint_count()
+    }
+
+    fn get_checkpoint_at_depth(
+        &self,
+        checkpoint_depth: usize,
+    ) -> std::result::Result<Option<(Self::CheckpointId, ShardCheckpoint)>, Self::Error> {
+        self.inner.get_checkpoint_at_depth(checkpoint_depth)
+    }
+
+    fn get_checkpoint(
+        &self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> std::result::Result<Option<ShardCheckpoint>, Self::Error> {
+        self.inner.get_checkpoint(checkpoint_id)
+    }
+
+    fn with_checkpoints<F>(
+        &mut self,
+        limit: usize,
+        callback: F,
+    ) -> std::result::Result<(), Self::Error>
+    where
+        F: FnMut(&Self::CheckpointId, &ShardCheckpoint) -> std::result::Result<(), Self::Error>,
+    {
+        self.inner.with_checkpoints(limit, callback)
+    }
+
+    fn for_each_checkpoint<F>(
+        &self,
+        limit: usize,
+        callback: F,
+    ) -> std::result::Result<(), Self::Error>
+    where
+        F: FnMut(&Self::CheckpointId, &ShardCheckpoint) -> std::result::Result<(), Self::Error>,
+    {
+        self.inner.for_each_checkpoint(limit, callback)
+    }
+
+    fn update_checkpoint_with<F>(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+        update: F,
+    ) -> std::result::Result<bool, Self::Error>
+    where
+        F: Fn(&mut ShardCheckpoint) -> std::result::Result<(), Self::Error>,
+    {
+        let updated = self.inner.update_checkpoint_with(checkpoint_id, update)?;
+        if updated {
+            if let Some(checkpoint) = self.inner.get_checkpoint(checkpoint_id)? {
+                let bytes = checkpoint_bytes(&checkpoint);
+                let previous = self
+                    .checkpoint_bytes
+                    .borrow_mut()
+                    .insert(checkpoint_id.clone(), bytes)
+                    .unwrap_or(0);
+                self.adjust_bytes(previous, bytes);
+            }
+        }
+        Ok(updated)
+    }
+
+    fn remove_checkpoint(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> std::result::Result<(), Self::Error> {
+        self.inner.remove_checkpoint(checkpoint_id)?;
+        let removed = self
+            .checkpoint_bytes
+            .borrow_mut()
+            .remove(checkpoint_id)
+            .unwrap_or(0);
+        self.current_bytes
+            .set(self.current_bytes.get().saturating_sub(removed));
+        Ok(())
+    }
+
+    fn add_retained_checkpoint(
+        &mut self,
+        checkpoint_id: Self::CheckpointId,
+    ) -> std::result::Result<(), Self::Error> {
+        self.inner.add_retained_checkpoint(checkpoint_id.clone())?;
+        if self.retained_checkpoints.borrow_mut().insert(checkpoint_id) {
+            self.adjust_bytes(
+                0,
+                (size_of::<Self::CheckpointId>() + 4 * size_of::<usize>()) as u64,
+            );
+        }
+        Ok(())
+    }
+
+    fn remove_retained_checkpoint(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> std::result::Result<(), Self::Error> {
+        self.inner.remove_retained_checkpoint(checkpoint_id)?;
+        if self.retained_checkpoints.borrow_mut().remove(checkpoint_id) {
+            self.current_bytes.set(
+                self.current_bytes.get().saturating_sub(
+                    (size_of::<Self::CheckpointId>() + 4 * size_of::<usize>()) as u64,
+                ),
+            );
+        }
+        Ok(())
+    }
+
+    fn retained_checkpoints(
+        &self,
+    ) -> std::result::Result<BTreeSet<Self::CheckpointId>, Self::Error> {
+        self.inner.retained_checkpoints()
+    }
+
+    fn truncate_checkpoints_retaining(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> std::result::Result<(), Self::Error> {
+        self.inner.truncate_checkpoints_retaining(checkpoint_id)?;
+        let removed = self.checkpoint_bytes.borrow_mut().split_off(checkpoint_id);
+        let mut removed_bytes = removed.values().copied().sum::<u64>();
+        if let Some(checkpoint) = self.inner.get_checkpoint(checkpoint_id)? {
+            let bytes = checkpoint_bytes(&checkpoint);
+            self.checkpoint_bytes
+                .borrow_mut()
+                .insert(checkpoint_id.clone(), bytes);
+            removed_bytes = removed_bytes.saturating_sub(bytes);
+        }
+        self.current_bytes
+            .set(self.current_bytes.get().saturating_sub(removed_bytes));
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct ShardtreePoolPersistenceTelemetry {
+    pub(super) preload_discovery: Duration,
+    pub(super) shard_loading: Duration,
+    pub(super) cache_hits: u64,
+    pub(super) cache_misses: u64,
+    pub(super) cache_evictions: u64,
+    pub(super) commitment_count: u64,
+    pub(super) commitment_insert: Duration,
+    pub(super) parallel_construction: Duration,
+    pub(super) parallel_worker_active: Duration,
+    pub(super) prepared_tree_insert: Duration,
+    pub(super) prepared_tree_count: u64,
+    pub(super) checkpoint_count: u64,
+    pub(super) checkpoint_processing: Duration,
+    pub(super) dirty_shards: u64,
+    pub(super) dirty_encoded_bytes: u64,
+    pub(super) flush: Duration,
+    pub(super) cache_bytes: u64,
+    pub(super) peak_cache_bytes: u64,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct ShardtreePersistenceTelemetry {
+    pub(super) sapling: ShardtreePoolPersistenceTelemetry,
+    pub(super) ironwood: ShardtreePoolPersistenceTelemetry,
+    pub(super) transaction_lock_wait: Duration,
+    pub(super) sqlite_commit: Duration,
+    pub(super) cache_reused: bool,
+    pub(super) cache_evicted_after_commit: bool,
+}
+
+#[derive(Debug, Default)]
+struct DeltaWriteStats {
+    shard_indices: BTreeSet<u64>,
+}
+
+fn take_buffered_actions<H, C>(pending: &BufferedActions<H, C>) -> Vec<BufferedShardAction<H, C>> {
+    std::mem::take(&mut *pending.borrow_mut())
+}
+
+fn replay_buffered_actions<S>(
+    store: &mut S,
+    actions: Vec<BufferedShardAction<S::H, S::CheckpointId>>,
+) -> std::result::Result<DeltaWriteStats, S::Error>
+where
+    S: ShardStore,
+    S::H: Clone,
+    S::CheckpointId: Clone + Ord,
+{
+    let mut stats = DeltaWriteStats::default();
+    for action in actions {
+        match action {
+            BufferedShardAction::PutShard(shard) => {
+                stats.shard_indices.insert(shard.root_addr().index());
+                store.put_shard(shard)?;
+            }
+            BufferedShardAction::TruncateShards(index) => store.truncate_shards(index)?,
+            BufferedShardAction::PutCap(cap) => store.put_cap(cap)?,
+            BufferedShardAction::AddCheckpoint(id, checkpoint) => {
+                store.add_checkpoint(id, checkpoint)?;
+            }
+            BufferedShardAction::UpdateCheckpoint(id, checkpoint) => {
+                let replacement = checkpoint.clone();
+                let updated = store.update_checkpoint_with(&id, move |existing| {
+                    *existing = replacement.clone();
+                    Ok(())
+                })?;
+                if !updated {
+                    store.add_checkpoint(id, checkpoint)?;
+                }
+            }
+            BufferedShardAction::RemoveCheckpoint(id) => store.remove_checkpoint(&id)?,
+            BufferedShardAction::AddRetainedCheckpoint(id) => {
+                store.add_retained_checkpoint(id)?;
+            }
+            BufferedShardAction::RemoveRetainedCheckpoint(id) => {
+                store.remove_retained_checkpoint(&id)?;
+            }
+            BufferedShardAction::TruncateCheckpointsRetaining(id) => {
+                store.truncate_checkpoints_retaining(&id)?;
+            }
+        }
+    }
+    Ok(stats)
+}
+
+fn dirty_encoded_bytes(
+    tx: &rusqlite::Transaction<'_>,
+    table_prefix: &'static str,
+    shard_indices: &BTreeSet<u64>,
+) -> Result<u64> {
+    if shard_indices.is_empty() {
+        return Ok(0);
+    }
+    let sql = format!(
+        "SELECT COALESCE((SELECT length(shard_data) FROM {}_tree_shards WHERE shard_index = ?1), 0)",
+        table_prefix
+    );
+    let mut statement = tx.prepare_cached(&sql).map_err(|error| {
+        Error::Sync(format!(
+            "Failed to prepare {} dirty-shard telemetry query: {}",
+            table_prefix, error
+        ))
+    })?;
+    let mut total = 0u64;
+    for index in shard_indices {
+        let bytes: i64 = statement
+            .query_row([*index as i64], |row| row.get(0))
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "Failed to measure {} dirty shard {}: {}",
+                    table_prefix, index, error
+                ))
+            })?;
+        total = total.saturating_add(bytes.max(0) as u64);
+    }
+    Ok(total)
+}
+
+pub(super) fn persist_verified_pool_roots<H, const SHARD_HEIGHT: u8>(
+    tx: &rusqlite::Transaction<'_>,
+    table_prefix: &'static str,
+    roots: &[VerifiedSubtreeRoot<H>],
+) -> Result<()>
+where
+    H: HashSer + Hashable + Clone + Eq,
+{
+    for root in roots {
+        let end_height = u32::try_from(root.end_height).map_err(|_| {
+            Error::Sync(format!(
+                "Subtree completing height {} exceeds u32",
+                root.end_height
+            ))
+        })?;
+        let persisted = PersistedSubtreeRoot::new(BlockHeight::from(end_height), root.root.clone());
+        put_shard_roots::<H, { NOTE_COMMITMENT_TREE_DEPTH }, SHARD_HEIGHT>(
+            tx,
+            table_prefix,
+            root.index,
+            std::slice::from_ref(&persisted),
+        )
+        .map_err(|error| {
+            Error::Sync(format!(
+                "Failed to finalize verified {} subtree root {}: {}",
+                table_prefix, root.index, error
+            ))
+        })?;
+    }
+    Ok(())
+}
+
+type WorkerSaplingBackend<'a> = BufferedShardStore<
+    SqliteShardStore<&'a rusqlite::Connection, SaplingNode, SAPLING_SHARD_HEIGHT>,
+>;
+type WorkerIronwoodBackend<'a> = BufferedShardStore<
+    SqliteShardStore<&'a rusqlite::Connection, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>,
+>;
+type WorkerSaplingStore<'a> = InstrumentedSparseStore<WorkerSaplingBackend<'a>>;
+type WorkerIronwoodStore<'a> = InstrumentedSparseStore<WorkerIronwoodBackend<'a>>;
+
+fn committed_checkpoint_heights(conn: &rusqlite::Connection) -> Result<CommittedCheckpointHeights> {
+    let read_height = |table: &'static str| -> Result<Option<u32>> {
+        conn.query_row(
+            &format!("SELECT MAX(checkpoint_id) FROM {}", table),
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| {
+            Error::Sync(format!(
+                "Failed to read latest {} checkpoint: {}",
+                table, error
+            ))
+        })
+    };
+    Ok(CommittedCheckpointHeights {
+        sapling: read_height("sapling_tree_checkpoints")?,
+        ironwood: read_height("orchard_tree_checkpoints")?,
+    })
+}
+
+pub(super) struct PersistenceShardTrees<'a> {
+    sapling_tree:
+        ShardTree<WorkerSaplingStore<'a>, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT>,
+    ironwood_tree:
+        ShardTree<WorkerIronwoodStore<'a>, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT>,
+    sapling_pending: BufferedActions<SaplingNode, BlockHeight>,
+    ironwood_pending: BufferedActions<MerkleHashOrchard, BlockHeight>,
+    sapling_preload_discovery: Duration,
+    ironwood_preload_discovery: Duration,
+    sapling_shard_loading: Duration,
+    ironwood_shard_loading: Duration,
+    memory_limit_bytes: u64,
+    has_committed: bool,
+}
+
+impl<'a> PersistenceShardTrees<'a> {
+    pub(super) fn load(conn: &'a rusqlite::Connection, memory_limit_bytes: u64) -> Result<Self> {
+        let sapling_backend =
+            SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                conn,
+                SAPLING_TABLE_PREFIX,
+            )
+            .map_err(|error| {
+                Error::Sync(format!("Failed to open Sapling shard store: {}", error))
+            })?;
+        let sapling_discovery_start = Instant::now();
+        let sapling_preloads =
+            sparse_preload_addresses::<_, SAPLING_SHARD_HEIGHT>(&sapling_backend, "Sapling")?;
+        let sapling_backend_roots = sapling_backend.get_shard_roots().map_err(|error| {
+            Error::Sync(format!(
+                "Failed to inventory Sapling shard roots for cache telemetry: {}",
+                error
+            ))
+        })?;
+        let sapling_preload_discovery = sapling_discovery_start.elapsed();
+        let sapling_pending = Rc::new(RefCell::new(Vec::new()));
+        let sapling_buffered =
+            BufferedShardStore::new(sapling_backend, Rc::clone(&sapling_pending));
+        let sapling_load_start = Instant::now();
+        let sapling_sparse =
+            SparseCachingShardStore::with_preloaded(sapling_buffered, sapling_preloads.clone())
+                .map_err(|error| {
+                    Error::Sync(format!("Failed to preload Sapling shard store: {}", error))
+                })?;
+        let sapling_store =
+            InstrumentedSparseStore::new(sapling_sparse, &sapling_preloads, &sapling_backend_roots)
+                .map_err(|error| {
+                    Error::Sync(format!(
+                        "Failed to initialize Sapling cache metrics: {}",
+                        error
+                    ))
+                })?;
+        let sapling_shard_loading = sapling_load_start.elapsed();
+
+        let ironwood_backend =
+            SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
+                conn,
+                ORCHARD_TABLE_PREFIX,
+            )
+            .map_err(|error| {
+                Error::Sync(format!("Failed to open Ironwood shard store: {}", error))
+            })?;
+        let ironwood_discovery_start = Instant::now();
+        let ironwood_preloads =
+            sparse_preload_addresses::<_, ORCHARD_SHARD_HEIGHT>(&ironwood_backend, "Ironwood")?;
+        let ironwood_backend_roots = ironwood_backend.get_shard_roots().map_err(|error| {
+            Error::Sync(format!(
+                "Failed to inventory Ironwood shard roots for cache telemetry: {}",
+                error
+            ))
+        })?;
+        let ironwood_preload_discovery = ironwood_discovery_start.elapsed();
+        let ironwood_pending = Rc::new(RefCell::new(Vec::new()));
+        let ironwood_buffered =
+            BufferedShardStore::new(ironwood_backend, Rc::clone(&ironwood_pending));
+        let ironwood_load_start = Instant::now();
+        let ironwood_sparse =
+            SparseCachingShardStore::with_preloaded(ironwood_buffered, ironwood_preloads.clone())
+                .map_err(|error| {
+                Error::Sync(format!("Failed to preload Ironwood shard store: {}", error))
+            })?;
+        let ironwood_store = InstrumentedSparseStore::new(
+            ironwood_sparse,
+            &ironwood_preloads,
+            &ironwood_backend_roots,
+        )
+        .map_err(|error| {
+            Error::Sync(format!(
+                "Failed to initialize Ironwood cache metrics: {}",
+                error
+            ))
+        })?;
+        let ironwood_shard_loading = ironwood_load_start.elapsed();
+
+        Ok(Self {
+            sapling_tree: ShardTree::new(sapling_store, SHARDTREE_PRUNING_DEPTH),
+            ironwood_tree: ShardTree::new(ironwood_store, SHARDTREE_PRUNING_DEPTH),
+            sapling_pending,
+            ironwood_pending,
+            sapling_preload_discovery,
+            ironwood_preload_discovery,
+            sapling_shard_loading,
+            ironwood_shard_loading,
+            memory_limit_bytes,
+            has_committed: false,
+        })
+    }
+
+    fn begin_telemetry(
+        &mut self,
+    ) -> (
+        ShardtreePersistenceTelemetry,
+        CacheCounterSnapshot,
+        CacheCounterSnapshot,
+    ) {
+        let sapling_before = self.sapling_tree.store().snapshot();
+        let ironwood_before = self.ironwood_tree.store().snapshot();
+        let telemetry = ShardtreePersistenceTelemetry {
+            sapling: ShardtreePoolPersistenceTelemetry {
+                preload_discovery: std::mem::take(&mut self.sapling_preload_discovery),
+                shard_loading: std::mem::take(&mut self.sapling_shard_loading),
+                ..ShardtreePoolPersistenceTelemetry::default()
+            },
+            ironwood: ShardtreePoolPersistenceTelemetry {
+                preload_discovery: std::mem::take(&mut self.ironwood_preload_discovery),
+                shard_loading: std::mem::take(&mut self.ironwood_shard_loading),
+                ..ShardtreePoolPersistenceTelemetry::default()
+            },
+            cache_reused: self.has_committed,
+            ..ShardtreePersistenceTelemetry::default()
+        };
+        (telemetry, sapling_before, ironwood_before)
+    }
+
+    fn flush_to_transaction(
+        &mut self,
+        tx: &rusqlite::Transaction<'_>,
+        telemetry: &mut ShardtreePersistenceTelemetry,
+        verified_roots: &VerifiedSubtreeRoots,
+    ) -> Result<()> {
+        let sapling_flush_start = Instant::now();
+        self.sapling_tree
+            .store_mut()
+            .flush_delta()
+            .map_err(|error| Error::Sync(format!("Failed to flush Sapling cache: {}", error)))?;
+        let sapling_actions = take_buffered_actions(&self.sapling_pending);
+        let mut sapling_store =
+            SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                tx,
+                SAPLING_TABLE_PREFIX,
+            )
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "Failed to open transactional Sapling store: {}",
+                    error
+                ))
+            })?;
+        let sapling_delta =
+            replay_buffered_actions(&mut sapling_store, sapling_actions).map_err(|error| {
+                Error::Sync(format!("Failed to write Sapling cache delta: {}", error))
+            })?;
+        persist_verified_pool_roots::<SaplingNode, SAPLING_SHARD_HEIGHT>(
+            tx,
+            SAPLING_TABLE_PREFIX,
+            &verified_roots.sapling,
+        )?;
+        telemetry.sapling.dirty_shards = sapling_delta.shard_indices.len() as u64;
+        telemetry.sapling.dirty_encoded_bytes =
+            dirty_encoded_bytes(tx, SAPLING_TABLE_PREFIX, &sapling_delta.shard_indices)?;
+        telemetry.sapling.flush = sapling_flush_start.elapsed();
+        let _ = self.sapling_tree.store().take_dirty_shards();
+
+        let ironwood_flush_start = Instant::now();
+        self.ironwood_tree
+            .store_mut()
+            .flush_delta()
+            .map_err(|error| Error::Sync(format!("Failed to flush Ironwood cache: {}", error)))?;
+        let ironwood_actions = take_buffered_actions(&self.ironwood_pending);
+        let mut ironwood_store =
+            SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
+                tx,
+                ORCHARD_TABLE_PREFIX,
+            )
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "Failed to open transactional Ironwood store: {}",
+                    error
+                ))
+            })?;
+        let ironwood_delta = replay_buffered_actions(&mut ironwood_store, ironwood_actions)
+            .map_err(|error| {
+                Error::Sync(format!("Failed to write Ironwood cache delta: {}", error))
+            })?;
+        persist_verified_pool_roots::<MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>(
+            tx,
+            ORCHARD_TABLE_PREFIX,
+            &verified_roots.ironwood,
+        )?;
+        telemetry.ironwood.dirty_shards = ironwood_delta.shard_indices.len() as u64;
+        telemetry.ironwood.dirty_encoded_bytes =
+            dirty_encoded_bytes(tx, ORCHARD_TABLE_PREFIX, &ironwood_delta.shard_indices)?;
+        telemetry.ironwood.flush = ironwood_flush_start.elapsed();
+        let _ = self.ironwood_tree.store().take_dirty_shards();
+        Ok(())
+    }
+
+    fn finish_telemetry(
+        &self,
+        telemetry: &mut ShardtreePersistenceTelemetry,
+        sapling_before: CacheCounterSnapshot,
+        ironwood_before: CacheCounterSnapshot,
+    ) {
+        let sapling_after = self.sapling_tree.store().snapshot();
+        let ironwood_after = self.ironwood_tree.store().snapshot();
+        telemetry.sapling.cache_hits = sapling_after.hits.saturating_sub(sapling_before.hits);
+        telemetry.sapling.cache_misses = sapling_after.misses.saturating_sub(sapling_before.misses);
+        telemetry.sapling.cache_evictions = sapling_after
+            .evictions
+            .saturating_sub(sapling_before.evictions);
+        telemetry.sapling.cache_bytes = self.sapling_tree.store().current_bytes();
+        telemetry.sapling.peak_cache_bytes = self.sapling_tree.store().peak_bytes();
+        telemetry.ironwood.cache_hits = ironwood_after.hits.saturating_sub(ironwood_before.hits);
+        telemetry.ironwood.cache_misses =
+            ironwood_after.misses.saturating_sub(ironwood_before.misses);
+        telemetry.ironwood.cache_evictions = ironwood_after
+            .evictions
+            .saturating_sub(ironwood_before.evictions);
+        telemetry.ironwood.cache_bytes = self.ironwood_tree.store().current_bytes();
+        telemetry.ironwood.peak_cache_bytes = self.ironwood_tree.store().peak_bytes();
+    }
+
+    fn commit_transaction(
+        &mut self,
+        tx: rusqlite::Transaction<'_>,
+        telemetry: &mut ShardtreePersistenceTelemetry,
+        sapling_before: CacheCounterSnapshot,
+        ironwood_before: CacheCounterSnapshot,
+        verified_roots: &VerifiedSubtreeRoots,
+    ) -> Result<bool> {
+        self.flush_to_transaction(&tx, telemetry, verified_roots)?;
+        let commit_start = Instant::now();
+        tx.commit().map_err(|error| {
+            Error::Sync(format!(
+                "Failed to commit cached shardtree transaction: {}",
+                error
+            ))
+        })?;
+        telemetry.sqlite_commit = commit_start.elapsed();
+        self.has_committed = true;
+        self.finish_telemetry(telemetry, sapling_before, ironwood_before);
+        let cache_bytes = telemetry
+            .sapling
+            .cache_bytes
+            .saturating_add(telemetry.ironwood.cache_bytes);
+        let evict = cache_bytes > self.memory_limit_bytes;
+        if evict {
+            telemetry.cache_evicted_after_commit = true;
+            telemetry.sapling.cache_evictions = telemetry
+                .sapling
+                .cache_evictions
+                .saturating_add(self.sapling_tree.store().cached_shard_count());
+            telemetry.ironwood.cache_evictions = telemetry
+                .ironwood
+                .cache_evictions
+                .saturating_add(self.ironwood_tree.store().cached_shard_count());
+        }
+        Ok(evict)
+    }
+
+    #[cfg(test)]
+    pub(super) fn persist_batches(
+        &mut self,
+        db: &Database,
+        batches: &[ShardtreeBatch],
+        batch_end_height: Option<u64>,
+    ) -> Result<(ShardtreePersistResult, ShardtreePersistenceTelemetry, bool)> {
+        self.persist_batches_with_roots(
+            db,
+            batches,
+            batch_end_height,
+            &VerifiedSubtreeRoots::default(),
+        )
+    }
+
+    pub(super) fn persist_owned_batches_with_roots(
+        &mut self,
+        db: &Database,
+        batches: Vec<ShardtreeBatch>,
+        batch_end_height: Option<u64>,
+        verified_roots: &VerifiedSubtreeRoots,
+        construction_pool: &rayon::ThreadPool,
+    ) -> Result<(ShardtreePersistResult, ShardtreePersistenceTelemetry, bool)> {
+        let prepared_against = committed_checkpoint_heights(db.conn())?;
+        let prepared = prepare_parallel_shardtree_insertions(
+            construction_pool,
+            batches,
+            batch_end_height,
+            prepared_against,
+            verified_roots,
+        )?;
+        let (mut telemetry, sapling_before, ironwood_before) = self.begin_telemetry();
+        let lock_start = Instant::now();
+        let tx = db.unchecked_immediate_transaction().map_err(|error| {
+            Error::Sync(format!(
+                "Failed to start cached shardtree transaction: {}",
+                error
+            ))
+        })?;
+        telemetry.transaction_lock_wait = lock_start.elapsed();
+        let committed_in_transaction = committed_checkpoint_heights(&tx)?;
+        if committed_in_transaction != prepared_against {
+            return Err(Error::Sync(
+                "ShardTree checkpoints changed during parallel construction; retrying is required"
+                    .to_string(),
+            ));
+        }
+        let result = apply_prepared_shardtree_insertions_to_trees(
+            &mut self.sapling_tree,
+            &mut self.ironwood_tree,
+            prepared,
+        )?;
+        telemetry.sapling.commitment_count = result.sapling_work.commitment_count;
+        telemetry.sapling.commitment_insert = result.sapling_work.commitment_insert;
+        telemetry.sapling.parallel_construction = result.sapling_work.parallel_construction;
+        telemetry.sapling.parallel_worker_active = result.sapling_work.parallel_worker_active;
+        telemetry.sapling.prepared_tree_insert = result.sapling_work.prepared_tree_insert;
+        telemetry.sapling.prepared_tree_count = result.sapling_work.prepared_tree_count;
+        telemetry.sapling.checkpoint_count = result.sapling_work.checkpoint_count;
+        telemetry.sapling.checkpoint_processing = result.sapling_work.checkpoint_processing;
+        telemetry.ironwood.commitment_count = result.ironwood_work.commitment_count;
+        telemetry.ironwood.commitment_insert = result.ironwood_work.commitment_insert;
+        telemetry.ironwood.parallel_construction = result.ironwood_work.parallel_construction;
+        telemetry.ironwood.parallel_worker_active = result.ironwood_work.parallel_worker_active;
+        telemetry.ironwood.prepared_tree_insert = result.ironwood_work.prepared_tree_insert;
+        telemetry.ironwood.prepared_tree_count = result.ironwood_work.prepared_tree_count;
+        telemetry.ironwood.checkpoint_count = result.ironwood_work.checkpoint_count;
+        telemetry.ironwood.checkpoint_processing = result.ironwood_work.checkpoint_processing;
+        let evict = self.commit_transaction(
+            tx,
+            &mut telemetry,
+            sapling_before,
+            ironwood_before,
+            verified_roots,
+        )?;
+        Ok((result, telemetry, evict))
+    }
+
+    #[cfg(test)]
+    pub(super) fn persist_batches_with_roots(
+        &mut self,
+        db: &Database,
+        batches: &[ShardtreeBatch],
+        batch_end_height: Option<u64>,
+        verified_roots: &VerifiedSubtreeRoots,
+    ) -> Result<(ShardtreePersistResult, ShardtreePersistenceTelemetry, bool)> {
+        let (mut telemetry, sapling_before, ironwood_before) = self.begin_telemetry();
+        let lock_start = Instant::now();
+        let tx = db.unchecked_immediate_transaction().map_err(|error| {
+            Error::Sync(format!(
+                "Failed to start cached shardtree transaction: {}",
+                error
+            ))
+        })?;
+        telemetry.transaction_lock_wait = lock_start.elapsed();
+        let max_committed_heights = committed_checkpoint_heights(&tx)?;
+        let result = apply_shardtree_batches_to_trees(
+            &mut self.sapling_tree,
+            &mut self.ironwood_tree,
+            batches,
+            batch_end_height,
+            max_committed_heights,
+            verified_roots,
+        )?;
+        telemetry.sapling.commitment_count = result.sapling_work.commitment_count;
+        telemetry.sapling.commitment_insert = result.sapling_work.commitment_insert;
+        telemetry.sapling.checkpoint_count = result.sapling_work.checkpoint_count;
+        telemetry.sapling.checkpoint_processing = result.sapling_work.checkpoint_processing;
+        telemetry.ironwood.commitment_count = result.ironwood_work.commitment_count;
+        telemetry.ironwood.commitment_insert = result.ironwood_work.commitment_insert;
+        telemetry.ironwood.checkpoint_count = result.ironwood_work.checkpoint_count;
+        telemetry.ironwood.checkpoint_processing = result.ironwood_work.checkpoint_processing;
+        let evict = self.commit_transaction(
+            tx,
+            &mut telemetry,
+            sapling_before,
+            ironwood_before,
+            verified_roots,
+        )?;
+        Ok((result, telemetry, evict))
+    }
+
+    pub(super) fn checkpoint_tip(
+        &mut self,
+        db: &Database,
+        checkpoint_id: BlockHeight,
+    ) -> Result<(ShardtreePersistenceTelemetry, bool)> {
+        let (mut telemetry, sapling_before, ironwood_before) = self.begin_telemetry();
+        let lock_start = Instant::now();
+        let tx = db.unchecked_immediate_transaction().map_err(|error| {
+            Error::Sync(format!(
+                "Failed to start cached checkpoint transaction: {}",
+                error
+            ))
+        })?;
+        telemetry.transaction_lock_wait = lock_start.elapsed();
+        let sapling_start = Instant::now();
+        let _ = self
+            .sapling_tree
+            .checkpoint(checkpoint_id)
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "Failed to checkpoint cached Sapling tree: {}",
+                    error
+                ))
+            })?;
+        telemetry.sapling.checkpoint_processing = sapling_start.elapsed();
+        telemetry.sapling.checkpoint_count = 1;
+        let ironwood_start = Instant::now();
+        let _ = self
+            .ironwood_tree
+            .checkpoint(checkpoint_id)
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "Failed to checkpoint cached Ironwood tree: {}",
+                    error
+                ))
+            })?;
+        telemetry.ironwood.checkpoint_processing = ironwood_start.elapsed();
+        telemetry.ironwood.checkpoint_count = 1;
+        let evict = self.commit_transaction(
+            tx,
+            &mut telemetry,
+            sapling_before,
+            ironwood_before,
+            &VerifiedSubtreeRoots::default(),
+        )?;
+        Ok((telemetry, evict))
+    }
+
+    pub(super) fn retain_checkpoint(
+        &mut self,
+        db: &Database,
+        checkpoint_id: BlockHeight,
+    ) -> Result<(ShardtreePersistenceTelemetry, bool)> {
+        let (mut telemetry, sapling_before, ironwood_before) = self.begin_telemetry();
+        let lock_start = Instant::now();
+        let tx = db.unchecked_immediate_transaction().map_err(|error| {
+            Error::Sync(format!(
+                "Failed to start cached retained-checkpoint transaction: {}",
+                error
+            ))
+        })?;
+        telemetry.transaction_lock_wait = lock_start.elapsed();
+        let sapling_start = Instant::now();
+        self.sapling_tree
+            .ensure_retained(checkpoint_id)
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "Failed to retain cached Sapling checkpoint: {}",
+                    error
+                ))
+            })?;
+        telemetry.sapling.checkpoint_processing = sapling_start.elapsed();
+        telemetry.sapling.checkpoint_count = 1;
+        let ironwood_start = Instant::now();
+        self.ironwood_tree
+            .ensure_retained(checkpoint_id)
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "Failed to retain cached Ironwood checkpoint: {}",
+                    error
+                ))
+            })?;
+        telemetry.ironwood.checkpoint_processing = ironwood_start.elapsed();
+        telemetry.ironwood.checkpoint_count = 1;
+        let evict = self.commit_transaction(
+            tx,
+            &mut telemetry,
+            sapling_before,
+            ironwood_before,
+            &VerifiedSubtreeRoots::default(),
+        )?;
+        Ok((telemetry, evict))
+    }
+
+    pub(super) fn cached_shard_counts(&self) -> (u64, u64) {
+        (
+            self.sapling_tree.store().cached_shard_count(),
+            self.ironwood_tree.store().cached_shard_count(),
+        )
+    }
+}
+
+pub(super) fn log_shardtree_persistence_telemetry(
+    operation: &'static str,
+    telemetry: &ShardtreePersistenceTelemetry,
+) {
+    tracing::debug!(
+        operation,
+        sapling_preload_discovery_us = telemetry.sapling.preload_discovery.as_micros(),
+        sapling_shard_loading_us = telemetry.sapling.shard_loading.as_micros(),
+        sapling_cache_hits = telemetry.sapling.cache_hits,
+        sapling_cache_misses = telemetry.sapling.cache_misses,
+        sapling_cache_evictions = telemetry.sapling.cache_evictions,
+        sapling_commitments = telemetry.sapling.commitment_count,
+        sapling_hash_insert_us = telemetry.sapling.commitment_insert.as_micros(),
+        sapling_parallel_build_us = telemetry.sapling.parallel_construction.as_micros(),
+        sapling_parallel_worker_active_us = telemetry.sapling.parallel_worker_active.as_micros(),
+        sapling_prepared_insert_us = telemetry.sapling.prepared_tree_insert.as_micros(),
+        sapling_prepared_trees = telemetry.sapling.prepared_tree_count,
+        sapling_checkpoints = telemetry.sapling.checkpoint_count,
+        sapling_checkpoint_us = telemetry.sapling.checkpoint_processing.as_micros(),
+        sapling_dirty_shards = telemetry.sapling.dirty_shards,
+        sapling_dirty_bytes = telemetry.sapling.dirty_encoded_bytes,
+        sapling_flush_us = telemetry.sapling.flush.as_micros(),
+        sapling_cache_estimated_bytes = telemetry.sapling.cache_bytes,
+        sapling_peak_cache_estimated_bytes = telemetry.sapling.peak_cache_bytes,
+        ironwood_preload_discovery_us = telemetry.ironwood.preload_discovery.as_micros(),
+        ironwood_shard_loading_us = telemetry.ironwood.shard_loading.as_micros(),
+        ironwood_cache_hits = telemetry.ironwood.cache_hits,
+        ironwood_cache_misses = telemetry.ironwood.cache_misses,
+        ironwood_cache_evictions = telemetry.ironwood.cache_evictions,
+        ironwood_commitments = telemetry.ironwood.commitment_count,
+        ironwood_hash_insert_us = telemetry.ironwood.commitment_insert.as_micros(),
+        ironwood_parallel_build_us = telemetry.ironwood.parallel_construction.as_micros(),
+        ironwood_parallel_worker_active_us = telemetry.ironwood.parallel_worker_active.as_micros(),
+        ironwood_prepared_insert_us = telemetry.ironwood.prepared_tree_insert.as_micros(),
+        ironwood_prepared_trees = telemetry.ironwood.prepared_tree_count,
+        ironwood_checkpoints = telemetry.ironwood.checkpoint_count,
+        ironwood_checkpoint_us = telemetry.ironwood.checkpoint_processing.as_micros(),
+        ironwood_dirty_shards = telemetry.ironwood.dirty_shards,
+        ironwood_dirty_bytes = telemetry.ironwood.dirty_encoded_bytes,
+        ironwood_flush_us = telemetry.ironwood.flush.as_micros(),
+        ironwood_cache_estimated_bytes = telemetry.ironwood.cache_bytes,
+        ironwood_peak_cache_estimated_bytes = telemetry.ironwood.peak_cache_bytes,
+        transaction_lock_wait_us = telemetry.transaction_lock_wait.as_micros(),
+        sqlite_commit_us = telemetry.sqlite_commit.as_micros(),
+        cache_reused = telemetry.cache_reused,
+        cache_evicted_after_commit = telemetry.cache_evicted_after_commit,
+        "shardtree persistence telemetry"
+    );
+    if sync_performance_logging_enabled() {
+        append_sync_decision_log(
+            "sync.rs:shardtree_persistence",
+            "shardtree persistence telemetry",
+            format!(
+                "\"operation\":\"{}\",\"sapling_preload_discovery_us\":{},\"sapling_shard_loading_us\":{},\"sapling_cache_hits\":{},\"sapling_cache_misses\":{},\"sapling_cache_evictions\":{},\"sapling_commitments\":{},\"sapling_hash_insert_us\":{},\"sapling_parallel_build_us\":{},\"sapling_parallel_worker_active_us\":{},\"sapling_prepared_insert_us\":{},\"sapling_prepared_trees\":{},\"sapling_checkpoints\":{},\"sapling_checkpoint_us\":{},\"sapling_dirty_shards\":{},\"sapling_dirty_bytes\":{},\"sapling_flush_us\":{},\"sapling_cache_estimated_bytes\":{},\"sapling_peak_cache_estimated_bytes\":{},\"ironwood_preload_discovery_us\":{},\"ironwood_shard_loading_us\":{},\"ironwood_cache_hits\":{},\"ironwood_cache_misses\":{},\"ironwood_cache_evictions\":{},\"ironwood_commitments\":{},\"ironwood_hash_insert_us\":{},\"ironwood_parallel_build_us\":{},\"ironwood_parallel_worker_active_us\":{},\"ironwood_prepared_insert_us\":{},\"ironwood_prepared_trees\":{},\"ironwood_checkpoints\":{},\"ironwood_checkpoint_us\":{},\"ironwood_dirty_shards\":{},\"ironwood_dirty_bytes\":{},\"ironwood_flush_us\":{},\"ironwood_cache_estimated_bytes\":{},\"ironwood_peak_cache_estimated_bytes\":{},\"transaction_lock_wait_us\":{},\"sqlite_commit_us\":{},\"cache_reused\":{},\"cache_evicted_after_commit\":{}",
+                operation,
+                telemetry.sapling.preload_discovery.as_micros(),
+                telemetry.sapling.shard_loading.as_micros(),
+                telemetry.sapling.cache_hits,
+                telemetry.sapling.cache_misses,
+                telemetry.sapling.cache_evictions,
+                telemetry.sapling.commitment_count,
+                telemetry.sapling.commitment_insert.as_micros(),
+                telemetry.sapling.parallel_construction.as_micros(),
+                telemetry.sapling.parallel_worker_active.as_micros(),
+                telemetry.sapling.prepared_tree_insert.as_micros(),
+                telemetry.sapling.prepared_tree_count,
+                telemetry.sapling.checkpoint_count,
+                telemetry.sapling.checkpoint_processing.as_micros(),
+                telemetry.sapling.dirty_shards,
+                telemetry.sapling.dirty_encoded_bytes,
+                telemetry.sapling.flush.as_micros(),
+                telemetry.sapling.cache_bytes,
+                telemetry.sapling.peak_cache_bytes,
+                telemetry.ironwood.preload_discovery.as_micros(),
+                telemetry.ironwood.shard_loading.as_micros(),
+                telemetry.ironwood.cache_hits,
+                telemetry.ironwood.cache_misses,
+                telemetry.ironwood.cache_evictions,
+                telemetry.ironwood.commitment_count,
+                telemetry.ironwood.commitment_insert.as_micros(),
+                telemetry.ironwood.parallel_construction.as_micros(),
+                telemetry.ironwood.parallel_worker_active.as_micros(),
+                telemetry.ironwood.prepared_tree_insert.as_micros(),
+                telemetry.ironwood.prepared_tree_count,
+                telemetry.ironwood.checkpoint_count,
+                telemetry.ironwood.checkpoint_processing.as_micros(),
+                telemetry.ironwood.dirty_shards,
+                telemetry.ironwood.dirty_encoded_bytes,
+                telemetry.ironwood.flush.as_micros(),
+                telemetry.ironwood.cache_bytes,
+                telemetry.ironwood.peak_cache_bytes,
+                telemetry.transaction_lock_wait.as_micros(),
+                telemetry.sqlite_commit.as_micros(),
+                telemetry.cache_reused,
+                telemetry.cache_evicted_after_commit,
+            ),
+        );
+    }
+}
+
+fn apply_pool_batches<S, H, const DEPTH: u8, const SHARD_HEIGHT: u8>(
+    tree: &mut ShardTree<S, DEPTH, SHARD_HEIGHT>,
+    batches: &[ShardtreeBatch],
+    max_committed_height: Option<u32>,
+    verified_roots: &[VerifiedSubtreeRoot<H>],
+    pool_batch: impl for<'a> Fn(
+            &'a ShardtreeBatch,
+        ) -> (Option<Position>, &'a [(H, Retention<BlockHeight>)], bool)
+        + Copy,
+    pool_name: &str,
+) -> Result<ShardtreePoolWork>
+where
+    S: shardtree::store::ShardStore<H = H, CheckpointId = BlockHeight>,
+    S::Error: std::fmt::Display,
+    H: incrementalmerkletree::Hashable + Clone + PartialEq,
+{
+    // batch_insert preserves every embedded checkpoint retention marker, so one
+    // contiguous run avoids repeating the same shard-store work for every block.
+    let mut telemetry = ShardtreePoolWork::default();
+    let mut run_start = None;
+    let mut run_first_batch = None;
+    let mut run_leaf_count = 0usize;
+    let mut ordered_roots = verified_roots.iter().collect::<Vec<_>>();
+    ordered_roots.sort_by_key(|root| (root.end_height, root.index));
+    let mut next_root = 0usize;
+
+    let flush_run = |tree: &mut ShardTree<S, DEPTH, SHARD_HEIGHT>,
+                     run_start: &mut Option<Position>,
+                     run_first_batch: &mut Option<usize>,
+                     run_leaf_count: &mut usize,
+                     run_end_batch: usize,
+                     telemetry: &mut ShardtreePoolWork|
+     -> Result<()> {
+        let Some(start_position) = run_start.take() else {
+            return Ok(());
+        };
+        let first_batch = run_first_batch
+            .take()
+            .expect("a pending ShardTree run has a first batch");
+        let leaves = batches[first_batch..run_end_batch]
+            .iter()
+            .flat_map(|batch| pool_batch(batch).1.iter().cloned());
+        let insert_start = Instant::now();
+        tree.batch_insert(start_position, leaves).map_err(|e| {
+            Error::Sync(format!(
+                "Failed to batch insert {} commitments into shardtree: {}",
+                pool_name, e
+            ))
+        })?;
+        telemetry.commitment_insert += insert_start.elapsed();
+        telemetry.commitment_count = telemetry
+            .commitment_count
+            .saturating_add(*run_leaf_count as u64);
+        *run_leaf_count = 0;
+        Ok(())
+    };
+
+    for (batch_index, batch) in batches.iter().enumerate() {
+        let checkpoint_height = u32::try_from(batch.height).map_err(|_| {
+            Error::Sync(format!(
+                "Checkpoint height {} exceeds u32::MAX",
+                batch.height
+            ))
+        })?;
+        if max_committed_height.is_some_and(|max_h| checkpoint_height <= max_h) {
+            flush_run(
+                tree,
+                &mut run_start,
+                &mut run_first_batch,
+                &mut run_leaf_count,
+                batch_index,
+                &mut telemetry,
+            )?;
+            while ordered_roots
+                .get(next_root)
+                .is_some_and(|root| root.end_height <= batch.height)
+            {
+                next_root = next_root.saturating_add(1);
+            }
+            continue;
+        }
+
+        while let Some(root) = ordered_roots
+            .get(next_root)
+            .filter(|root| root.end_height <= batch.height)
+        {
+            flush_run(
+                tree,
+                &mut run_start,
+                &mut run_first_batch,
+                &mut run_leaf_count,
+                batch_index,
+                &mut telemetry,
+            )?;
+            insert_verified_pool_root(tree, root, pool_name)?;
+            next_root = next_root.saturating_add(1);
+        }
+
+        let (start_position, leaves, empty_checkpoint) = pool_batch(batch);
+        if !leaves.is_empty() {
+            let start_position = start_position.ok_or_else(|| {
+                Error::Sync(format!(
+                    "Missing {} start position for shardtree batch at height {}",
+                    pool_name, batch.height
+                ))
+            })?;
+            let expected_start = run_start.map(|start| {
+                Position::from(u64::from(start).saturating_add(run_leaf_count as u64))
+            });
+            if expected_start.is_some_and(|expected| expected != start_position) {
+                flush_run(
+                    tree,
+                    &mut run_start,
+                    &mut run_first_batch,
+                    &mut run_leaf_count,
+                    batch_index,
+                    &mut telemetry,
+                )?;
+            }
+            if run_start.is_none() {
+                run_start = Some(start_position);
+                run_first_batch = Some(batch_index);
+            }
+            run_leaf_count = run_leaf_count.saturating_add(leaves.len());
+        }
+
+        if empty_checkpoint {
+            flush_run(
+                tree,
+                &mut run_start,
+                &mut run_first_batch,
+                &mut run_leaf_count,
+                batch_index.saturating_add(1),
+                &mut telemetry,
+            )?;
+            let checkpoint_start = Instant::now();
+            tree.checkpoint(BlockHeight::from(checkpoint_height))
+                .map_err(|e| {
+                    Error::Sync(format!(
+                        "Failed to checkpoint {} shardtree: {}",
+                        pool_name, e
+                    ))
+                })?;
+            telemetry.checkpoint_processing += checkpoint_start.elapsed();
+            telemetry.checkpoint_count = telemetry.checkpoint_count.saturating_add(1);
+        }
+    }
+
+    flush_run(
+        tree,
+        &mut run_start,
+        &mut run_first_batch,
+        &mut run_leaf_count,
+        batches.len(),
+        &mut telemetry,
+    )?;
+    if let Some(root) = ordered_roots.get(next_root) {
+        return Err(Error::Sync(format!(
+            "Verified {} subtree root {} completed at height {} outside the persisted block batch",
+            pool_name, root.index, root.end_height
+        )));
+    }
+    Ok(telemetry)
+}
+
 pub(super) fn append_sapling_leaf(
     batch: &mut ShardtreeBatch,
     position: u64,
