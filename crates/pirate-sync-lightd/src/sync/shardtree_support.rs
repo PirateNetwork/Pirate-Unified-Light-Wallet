@@ -1,26 +1,77 @@
 use super::*;
+use incrementalmerkletree::{frontier::CommitmentTree, Address, Level};
+use shardtree::store::{Checkpoint as ShardCheckpoint, ShardStore};
+use shardtree::{LocatedPrunableTree, Node, PrunableTree};
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, BTreeSet};
+use std::mem::size_of;
+use std::rc::Rc;
 
 const SHARD_LEAF_COUNT: u64 = 1u64 << SAPLING_SHARD_HEIGHT;
+const SUBTREE_ROOT_SAMPLE_INTERVAL: u64 = 16;
+const MIN_PARALLEL_TREE_CHUNK_LEAVES: usize = 256;
+const MAX_PARALLEL_TREE_CHUNK_LEAVES: usize = 4_096;
+const TARGET_TREE_CHUNKS_PER_THREAD: usize = 2;
+
+#[derive(Clone)]
+pub(super) struct HistoricalSubtreeRoot<H> {
+    expected_end_height: u64,
+    expected_root: Option<H>,
+    sample_anchor: Option<u64>,
+    trusted: bool,
+}
 
 struct HistoricalSubtreeBuffer<H> {
     subtree_index: u64,
     expected_end_height: u64,
+    expected_root: Option<H>,
+    verify_sample: bool,
+    root_persisted: bool,
+    leaves_emitted: bool,
+    sample_tree: Option<CommitmentTree<H, SAPLING_SHARD_HEIGHT>>,
+    sample_leaf_count: u64,
     buffered_leaves: Vec<(u64, u64, H, Retention<BlockHeight>)>,
 }
 
 pub(super) struct HistoricalSubtreeSkipState<H> {
-    pub(super) roots_by_index: HashMap<u64, u64>,
+    pub(super) roots_by_index: HashMap<u64, HistoricalSubtreeRoot<H>>,
     current_buffer: Option<HistoricalSubtreeBuffer<H>>,
     passthrough_subtree: Option<u64>,
+    verified_samples: HashSet<u64>,
+    pending_roots: Vec<(u64, u64, H)>,
+    grafting_disabled: bool,
+    pool_name: &'static str,
+    leaf_backed_hints: HashSet<u64>,
 }
 
 impl<H> HistoricalSubtreeSkipState<H> {
-    pub(super) fn new(roots_by_index: HashMap<u64, u64>) -> Self {
+    pub(super) fn new(roots_by_index: HashMap<u64, HistoricalSubtreeRoot<H>>) -> Self {
         Self {
             roots_by_index,
             current_buffer: None,
             passthrough_subtree: None,
+            verified_samples: HashSet::new(),
+            pending_roots: Vec::new(),
+            grafting_disabled: false,
+            pool_name: "unknown",
+            leaf_backed_hints: HashSet::new(),
         }
+    }
+
+    pub(super) fn with_leaf_backed_hints(
+        mut self,
+        pool_name: &'static str,
+        hints: &HashSet<u64>,
+    ) -> Self {
+        self.pool_name = pool_name;
+        self.leaf_backed_hints.extend(hints.iter().copied());
+        self
+    }
+
+    fn has_deferred_leaves(&self) -> bool {
+        self.current_buffer
+            .as_ref()
+            .is_some_and(|buffer| !buffer.leaves_emitted && !buffer.root_persisted)
     }
 }
 
@@ -31,9 +82,142 @@ pub(super) struct HistoricalPrefillState {
     pub(super) orchard_prefetched: usize,
 }
 
+pub(super) struct HistoricalSubtreeRootRequest {
+    start_sapling_index: u32,
+    start_orchard_index: u32,
+    historical_ceiling: u64,
+    fetch_sapling: bool,
+    fetch_ironwood: bool,
+}
+
+impl HistoricalSubtreeRootRequest {
+    pub(super) fn retain_capabilities(
+        &mut self,
+        fetch_sapling: bool,
+        fetch_ironwood: bool,
+    ) -> bool {
+        self.fetch_sapling &= fetch_sapling;
+        self.fetch_ironwood &= fetch_ironwood;
+        self.fetch_sapling || self.fetch_ironwood
+    }
+
+    pub(super) fn requested_pools(&self) -> (bool, bool) {
+        (self.fetch_sapling, self.fetch_ironwood)
+    }
+}
+
+#[derive(Default)]
+pub(super) struct RemoteHistoricalSubtreeRoots {
+    sapling: HashMap<u64, HistoricalSubtreeRoot<SaplingNode>>,
+    ironwood: HashMap<u64, HistoricalSubtreeRoot<MerkleHashOrchard>>,
+}
+
+#[derive(Clone)]
+pub(super) struct VerifiedSubtreeRoot<H> {
+    pub(super) index: u64,
+    pub(super) end_height: u64,
+    pub(super) root: H,
+}
+
+#[derive(Clone, Default)]
+pub(super) struct VerifiedSubtreeRoots {
+    pub(super) sapling: Vec<VerifiedSubtreeRoot<SaplingNode>>,
+    pub(super) ironwood: Vec<VerifiedSubtreeRoot<MerkleHashOrchard>>,
+}
+
+impl VerifiedSubtreeRoots {
+    pub(super) fn is_empty(&self) -> bool {
+        self.sapling.is_empty() && self.ironwood.is_empty()
+    }
+
+    pub(super) fn counts(&self) -> (usize, usize) {
+        (self.sapling.len(), self.ironwood.len())
+    }
+}
+
 impl HistoricalPrefillState {
     pub(super) fn prefetched_any(&self) -> bool {
         self.sapling_prefetched > 0 || self.orchard_prefetched > 0
+    }
+
+    pub(super) fn merge_remote_roots(&mut self, remote: RemoteHistoricalSubtreeRoots) {
+        self.sapling_prefetched = self.sapling_prefetched.saturating_add(remote.sapling.len());
+        self.orchard_prefetched = self
+            .orchard_prefetched
+            .saturating_add(remote.ironwood.len());
+        for (index, root) in remote.sapling {
+            self.sapling.roots_by_index.entry(index).or_insert(root);
+        }
+        for (index, root) in remote.ironwood {
+            self.orchard.roots_by_index.entry(index).or_insert(root);
+        }
+    }
+
+    pub(super) fn sapling_checkpoint_safe(&self) -> bool {
+        !self.sapling.has_deferred_leaves()
+    }
+
+    pub(super) fn orchard_checkpoint_safe(&self) -> bool {
+        !self.orchard.has_deferred_leaves()
+    }
+
+    pub(super) fn common_checkpoint_safe(&self) -> bool {
+        self.sapling_checkpoint_safe() && self.orchard_checkpoint_safe()
+    }
+
+    pub(super) fn pending_verified_roots(&self) -> VerifiedSubtreeRoots {
+        let mut sapling = if self.sapling.grafting_disabled {
+            Vec::new()
+        } else {
+            self.sapling
+                .pending_roots
+                .iter()
+                .map(|(index, end_height, root)| VerifiedSubtreeRoot {
+                    index: *index,
+                    end_height: *end_height,
+                    root: *root,
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut ironwood = if self.orchard.grafting_disabled {
+            Vec::new()
+        } else {
+            self.orchard
+                .pending_roots
+                .iter()
+                .map(|(index, end_height, root)| VerifiedSubtreeRoot {
+                    index: *index,
+                    end_height: *end_height,
+                    root: *root,
+                })
+                .collect::<Vec<_>>()
+        };
+        sapling.sort_by_key(|root| root.index);
+        ironwood.sort_by_key(|root| root.index);
+        VerifiedSubtreeRoots { sapling, ironwood }
+    }
+
+    pub(super) fn mark_verified_roots_persisted(&mut self, persisted: &VerifiedSubtreeRoots) {
+        mark_pool_roots_persisted(&mut self.sapling, &persisted.sapling);
+        mark_pool_roots_persisted(&mut self.orchard, &persisted.ironwood);
+    }
+}
+
+fn mark_pool_roots_persisted<H: Clone>(
+    state: &mut HistoricalSubtreeSkipState<H>,
+    persisted: &[VerifiedSubtreeRoot<H>],
+) {
+    let persisted_indices = persisted
+        .iter()
+        .map(|root| root.index)
+        .collect::<BTreeSet<_>>();
+    state
+        .pending_roots
+        .retain(|(index, _, _)| !persisted_indices.contains(index));
+    for index in persisted_indices {
+        if let Some(root) = state.roots_by_index.get_mut(&index) {
+            root.trusted = true;
+        }
     }
 }
 
