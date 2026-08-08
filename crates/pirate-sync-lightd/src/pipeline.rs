@@ -44,6 +44,8 @@ pub struct PerfCounters {
     pub commitments_applied: AtomicU64,
     /// Last batch processing time in milliseconds
     pub last_batch_ms: AtomicU64,
+    /// Latest completed batch rate, stored as f64 bits for an atomic snapshot
+    last_batch_rate_bits: AtomicU64,
     /// Total processing time in milliseconds
     pub total_time_ms: AtomicU64,
     /// Number of batches processed
@@ -56,14 +58,9 @@ impl PerfCounters {
         Self::default()
     }
 
-    /// Get blocks per second
+    /// Get blocks per second for the latest completed batch
     pub fn blocks_per_second(&self) -> f64 {
-        let blocks = self.blocks_processed.load(Ordering::Relaxed);
-        let time_ms = self.total_time_ms.load(Ordering::Relaxed);
-        if time_ms == 0 {
-            return 0.0;
-        }
-        (blocks as f64) / (time_ms as f64 / 1000.0)
+        f64::from_bits(self.last_batch_rate_bits.load(Ordering::Relaxed))
     }
 
     /// Get average batch time in ms
@@ -78,11 +75,18 @@ impl PerfCounters {
 
     /// Record batch completion
     pub fn record_batch(&self, blocks: u64, notes: u64, commitments: u64, duration_ms: u64) {
+        let blocks_per_second = if duration_ms == 0 {
+            0.0
+        } else {
+            blocks as f64 / (duration_ms as f64 / 1000.0)
+        };
         self.blocks_processed.fetch_add(blocks, Ordering::Relaxed);
         self.notes_decrypted.fetch_add(notes, Ordering::Relaxed);
         self.commitments_applied
             .fetch_add(commitments, Ordering::Relaxed);
         self.last_batch_ms.store(duration_ms, Ordering::Relaxed);
+        self.last_batch_rate_bits
+            .store(blocks_per_second.to_bits(), Ordering::Relaxed);
         self.total_time_ms.fetch_add(duration_ms, Ordering::Relaxed);
         self.batches_processed.fetch_add(1, Ordering::Relaxed);
     }
@@ -105,6 +109,7 @@ impl PerfCounters {
         self.notes_decrypted.store(0, Ordering::Relaxed);
         self.commitments_applied.store(0, Ordering::Relaxed);
         self.last_batch_ms.store(0, Ordering::Relaxed);
+        self.last_batch_rate_bits.store(0, Ordering::Relaxed);
         self.total_time_ms.store(0, Ordering::Relaxed);
         self.batches_processed.store(0, Ordering::Relaxed);
     }
@@ -680,6 +685,19 @@ mod tests {
         assert_eq!(counters.blocks_processed.load(Ordering::Relaxed), 200);
         assert_eq!(counters.notes_decrypted.load(Ordering::Relaxed), 8);
         assert_eq!(counters.avg_batch_ms(), 900); // (1000+800)/2
+        assert_eq!(counters.blocks_per_second(), 125.0);
+    }
+
+    #[test]
+    fn test_perf_counters_reset_clears_live_speed() {
+        let counters = PerfCounters::new();
+        counters.record_batch(100, 5, 200, 500);
+        assert_eq!(counters.blocks_per_second(), 200.0);
+
+        counters.reset();
+
+        assert_eq!(counters.blocks_per_second(), 0.0);
+        assert_eq!(counters.avg_batch_ms(), 0);
     }
 
     #[test]
