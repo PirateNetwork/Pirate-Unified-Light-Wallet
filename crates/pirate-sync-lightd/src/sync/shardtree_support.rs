@@ -267,14 +267,24 @@ impl<'a> SyncWarmTrees<'a> {
         batches: &[ShardtreeBatch],
         batch_end_height: Option<u64>,
     ) -> Result<ShardtreePersistResult> {
+        self.persist_batches_with_roots(batches, batch_end_height, &VerifiedSubtreeRoots::default())
+    }
+
+    pub(super) fn persist_batches_with_roots(
+        &mut self,
+        batches: &[ShardtreeBatch],
+        batch_end_height: Option<u64>,
+        verified_roots: &VerifiedSubtreeRoots,
+    ) -> Result<ShardtreePersistResult> {
         let result = apply_shardtree_batches_to_trees(
             &mut self.sapling_tree,
             &mut self.orchard_tree,
             batches,
             batch_end_height,
-            None,
+            CommittedCheckpointHeights::default(),
+            verified_roots,
         )?;
-        if !batches.is_empty() {
+        if !batches.is_empty() || !verified_roots.is_empty() {
             self.dirty = true;
         }
         Ok(result)
@@ -294,6 +304,17 @@ impl<'a> SyncWarmTrees<'a> {
             self.dirty = true;
         }
         Ok(changed)
+    }
+
+    pub(super) fn retain_checkpoint(&mut self, checkpoint_id: BlockHeight) -> Result<()> {
+        self.sapling_tree
+            .ensure_retained(checkpoint_id)
+            .map_err(|e| Error::Sync(format!("Failed to retain warm Sapling checkpoint: {}", e)))?;
+        self.orchard_tree
+            .ensure_retained(checkpoint_id)
+            .map_err(|e| Error::Sync(format!("Failed to retain warm Orchard checkpoint: {}", e)))?;
+        self.dirty = true;
+        Ok(())
     }
 
     pub(super) fn flush_and_reload(self, conn: &'a rusqlite::Connection) -> Result<Self> {
