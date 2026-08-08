@@ -49,8 +49,8 @@ pub use privacy::{BackgroundSyncTunnelGuard, TunnelConfig, TunnelManager};
 pub use progress::{PerfCountersSnapshot, SyncProgress, SyncStage};
 pub use sync::{SyncConfig, SyncEngine};
 pub use sync_profile::{
-    begin_sync_profile_session, detect_device_snapshot, detect_sync_profile,
-    record_sync_profile_failure, record_sync_profile_success, sync_config_for_detected_device,
-    sync_config_for_profile, SyncDeviceClass, SyncDeviceSnapshot, SyncProfileSelection,
-    SyncWorkload,
+    begin_guarded_sync_profile_session, begin_sync_profile_session, detect_device_snapshot,
+    detect_sync_profile, monitor_sync_profile_initial_tip, record_sync_profile_failure,
+    record_sync_profile_success, sync_config_for_detected_device, sync_config_for_profile,
+    SyncDeviceClass, SyncDeviceSnapshot, SyncProfileSelection, SyncProfileSession, SyncWorkload,
 };
