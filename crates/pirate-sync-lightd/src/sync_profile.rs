@@ -207,13 +207,13 @@ impl SyncDeviceClass {
                 target_batch_bytes: 192 * MB,
                 min_batch_bytes: 16 * MB,
                 max_batch_bytes: 256 * MB,
-                prefetch_queue_depth: 2,
+                prefetch_queue_depth: 3,
                 prefetch_queue_max_bytes: 512 * MB,
                 min_batch_size: 100,
-                max_batch_size: 8_000,
-                compact_batch_size: 8_000,
-                deep_batch_size: 4_000,
-                rescan_batch_size: 8_000,
+                max_batch_size: 16_000,
+                compact_batch_size: 16_000,
+                deep_batch_size: 8_000,
+                rescan_batch_size: 16_000,
                 sync_state_flush_every_batches: 6,
                 sync_state_flush_interval_ms: 5_000,
             },
@@ -347,6 +347,8 @@ pub fn sync_config_for_profile(profile: SyncDeviceClass, workload: SyncWorkload)
         sync_state_flush_interval_ms: spec.sync_state_flush_interval_ms,
         prefetch_queue_depth: spec.prefetch_queue_depth,
         prefetch_queue_max_bytes: spec.prefetch_queue_max_bytes,
+        one_batch_ahead_decryption: true,
+        stage_aware_cpu_scheduling: false,
     }
 }
 
