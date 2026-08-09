@@ -356,6 +356,7 @@ pub struct SyncEngine {
     wallet_id: Option<String>,
     storage: Option<StorageSink>,
     keys: Vec<WalletKeyGroup>,
+    trial_decrypt_keys: TrialDecryptKeys,
     nullifier_cache: HashMap<[u8; 32], i64>,
     nullifier_cache_loaded: bool,
     tracked_wallet_txids: HashSet<[u8; 32]>,
@@ -373,15 +374,612 @@ pub struct SyncEngine {
     enrich_semaphore: Arc<tokio::sync::Semaphore>,
     /// Last tip height where queue-based witness integrity check completed.
     last_witness_check_height: Arc<RwLock<u64>>,
+    /// Immutable optimization hints captured before a rescan removes derived
+    /// note rows. Hinted subtrees are scanned leaf-by-leaf instead of grafted.
+    historical_sapling_mark_subtrees: HashSet<u64>,
+    historical_ironwood_mark_subtrees: HashSet<u64>,
+}
+
+enum PrefetchPayload {
+    Fetch {
+        receiver: mpsc::Receiver<Result<FetchedBlockBatch>>,
+        handle: tokio::task::JoinHandle<()>,
+    },
+    Decrypt {
+        handle: tokio::task::JoinHandle<Result<DecryptLookaheadOutput>>,
+        producer_abort: tokio::task::AbortHandle,
+    },
 }
 
 struct PrefetchTask {
     start: u64,
     end: u64,
-    estimated_bytes: u64,
-    handle: tokio::task::JoinHandle<Result<Vec<CompactBlockData>>>,
+    payload: Option<PrefetchPayload>,
 }
 
+struct DecryptLookaheadOutput {
+    fetched: FetchedBlockBatch,
+    notes: Vec<DecryptedNote>,
+    telemetry: TrialDecryptTelemetry,
+    prepared_commitments: PreparedCommitmentBatch,
+    receiver: mpsc::Receiver<Result<FetchedBlockBatch>>,
+    producer_handle: tokio::task::JoinHandle<()>,
+}
+
+struct ReceivedPrefetchBatch {
+    fetched: FetchedBlockBatch,
+    prepared_notes: Option<(Vec<DecryptedNote>, TrialDecryptTelemetry)>,
+    prepared_commitments: Option<PreparedCommitmentBatch>,
+}
+
+struct PreparedSaplingCommitment {
+    output_index: usize,
+    commitment: [u8; 32],
+    node: Option<SaplingNode>,
+}
+
+struct PreparedIronwoodCommitment {
+    commitment: [u8; 32],
+    node: Option<MerkleHashOrchard>,
+}
+
+struct PreparedCommitmentTransaction {
+    hash: Vec<u8>,
+    sapling: Vec<PreparedSaplingCommitment>,
+    ironwood: Vec<PreparedIronwoodCommitment>,
+}
+
+struct PreparedBlockCommitments {
+    height: u64,
+    hash: Vec<u8>,
+    transactions: Vec<PreparedCommitmentTransaction>,
+}
+
+struct PreparedCommitmentBatch {
+    blocks: Vec<PreparedBlockCommitments>,
+    elapsed: Duration,
+    sapling_count: usize,
+    ironwood_count: usize,
+}
+
+impl PreparedCommitmentBatch {
+    fn validate_source(&self, blocks: &[CompactBlockData]) -> Result<()> {
+        if self.blocks.len() != blocks.len()
+            || self.blocks.iter().zip(blocks).any(|(prepared, source)| {
+                prepared.height != source.height || prepared.hash != source.hash
+            })
+        {
+            return Err(Error::Sync(
+                "Prepared commitment batch does not match its validated compact-block source"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+type PersistenceDatabaseOperation = Box<dyn FnOnce(&Database) + Send + 'static>;
+
+enum PersistenceOperation {
+    Execute(PersistenceDatabaseOperation),
+    InvalidateAndExecute(PersistenceDatabaseOperation),
+    PersistShardtrees {
+        batches: Vec<ShardtreeBatch>,
+        batch_end_height: Option<u64>,
+        verified_roots: VerifiedSubtreeRoots,
+        response: oneshot::Sender<Result<ShardtreePersistResult>>,
+    },
+    Checkpoint {
+        checkpoint_id: BlockHeight,
+        response: oneshot::Sender<Result<()>>,
+    },
+    RetainCheckpoint {
+        checkpoint_id: BlockHeight,
+        response: oneshot::Sender<Result<()>>,
+    },
+}
+
+struct PersistenceWorker {
+    sender: Option<std_mpsc::Sender<PersistenceOperation>>,
+    thread: Option<thread::JoinHandle<()>>,
+}
+
+impl PersistenceWorker {
+    #[cfg(test)]
+    fn start(sink: StorageSink, shardtree_cache_limit_bytes: u64) -> Result<Self> {
+        let construction_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_cpus::get().clamp(1, 4))
+            .thread_name(|index| format!("shardtree-build-{}", index))
+            .build()
+            .map(Arc::new)
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "Failed to start ShardTree construction pool: {}",
+                    error
+                ))
+            })?;
+        Self::start_with_pool(sink, shardtree_cache_limit_bytes, construction_pool)
+    }
+
+    fn start_with_pool(
+        sink: StorageSink,
+        shardtree_cache_limit_bytes: u64,
+        construction_pool: Arc<rayon::ThreadPool>,
+    ) -> Result<Self> {
+        let (sender, receiver) = std_mpsc::channel::<PersistenceOperation>();
+        let (ready_sender, ready_receiver) = std_mpsc::sync_channel(1);
+        let thread = thread::Builder::new()
+            .name("pirate-sync-persistence".to_string())
+            .spawn(move || {
+                let db = match Database::open_existing(
+                    &sink.db_path,
+                    &sink.key,
+                    sink.master_key.clone(),
+                ) {
+                    Ok(db) => {
+                        let _ = ready_sender.send(Ok(()));
+                        db
+                    }
+                    Err(error) => {
+                        let _ = ready_sender.send(Err(error.to_string()));
+                        return;
+                    }
+                };
+                let mut shardtrees: Option<PersistenceShardTrees<'_>> = None;
+                while let Ok(operation) = receiver.recv() {
+                    match operation {
+                        PersistenceOperation::Execute(operation) => operation(&db),
+                        PersistenceOperation::InvalidateAndExecute(operation) => {
+                            invalidate_persistence_shardtrees(
+                                &mut shardtrees,
+                                "external_tree_mutation",
+                            );
+                            operation(&db);
+                        }
+                        PersistenceOperation::PersistShardtrees {
+                            batches,
+                            batch_end_height,
+                            verified_roots,
+                            response,
+                        } => {
+                            if shardtrees.is_none() {
+                                match PersistenceShardTrees::load(
+                                    db.conn(),
+                                    shardtree_cache_limit_bytes,
+                                ) {
+                                    Ok(loaded) => shardtrees = Some(loaded),
+                                    Err(error) => {
+                                        let _ = response.send(Err(error));
+                                        continue;
+                                    }
+                                }
+                            }
+                            let result = shardtrees
+                                .as_mut()
+                                .expect("persistence shardtrees loaded")
+                                .persist_owned_batches_with_roots(
+                                    &db,
+                                    batches,
+                                    batch_end_height,
+                                    &verified_roots,
+                                    construction_pool.as_ref(),
+                                );
+                            match result {
+                                Ok((persisted, telemetry, evict)) => {
+                                    log_shardtree_persistence_telemetry(
+                                        "persist_batches",
+                                        &telemetry,
+                                    );
+                                    if evict {
+                                        invalidate_persistence_shardtrees(
+                                            &mut shardtrees,
+                                            "memory_limit",
+                                        );
+                                    }
+                                    if response.send(Ok(persisted)).is_err() {
+                                        invalidate_persistence_shardtrees(
+                                            &mut shardtrees,
+                                            "cancelled_batch_response",
+                                        );
+                                    }
+                                }
+                                Err(error) => {
+                                    tracing::warn!(
+                                        "Invalidating persistence ShardTree cache after failed batch: {}",
+                                        error
+                                    );
+                                    invalidate_persistence_shardtrees(
+                                        &mut shardtrees,
+                                        "failed_batch",
+                                    );
+                                    let _ = response.send(Err(error));
+                                }
+                            }
+                        }
+                        PersistenceOperation::Checkpoint {
+                            checkpoint_id,
+                            response,
+                        } => {
+                            if shardtrees.is_none() {
+                                match PersistenceShardTrees::load(
+                                    db.conn(),
+                                    shardtree_cache_limit_bytes,
+                                ) {
+                                    Ok(loaded) => shardtrees = Some(loaded),
+                                    Err(error) => {
+                                        let _ = response.send(Err(error));
+                                        continue;
+                                    }
+                                }
+                            }
+                            let result = shardtrees
+                                .as_mut()
+                                .expect("persistence shardtrees loaded")
+                                .checkpoint_tip(&db, checkpoint_id);
+                            match result {
+                                Ok((telemetry, evict)) => {
+                                    log_shardtree_persistence_telemetry(
+                                        "checkpoint_tip",
+                                        &telemetry,
+                                    );
+                                    if evict {
+                                        invalidate_persistence_shardtrees(
+                                            &mut shardtrees,
+                                            "memory_limit",
+                                        );
+                                    }
+                                    if response.send(Ok(())).is_err() {
+                                        invalidate_persistence_shardtrees(
+                                            &mut shardtrees,
+                                            "cancelled_checkpoint_response",
+                                        );
+                                    }
+                                }
+                                Err(error) => {
+                                    invalidate_persistence_shardtrees(
+                                        &mut shardtrees,
+                                        "failed_checkpoint",
+                                    );
+                                    let _ = response.send(Err(error));
+                                }
+                            }
+                        }
+                        PersistenceOperation::RetainCheckpoint {
+                            checkpoint_id,
+                            response,
+                        } => {
+                            if shardtrees.is_none() {
+                                match PersistenceShardTrees::load(
+                                    db.conn(),
+                                    shardtree_cache_limit_bytes,
+                                ) {
+                                    Ok(loaded) => shardtrees = Some(loaded),
+                                    Err(error) => {
+                                        let _ = response.send(Err(error));
+                                        continue;
+                                    }
+                                }
+                            }
+                            let result = shardtrees
+                                .as_mut()
+                                .expect("persistence shardtrees loaded")
+                                .retain_checkpoint(&db, checkpoint_id);
+                            match result {
+                                Ok((telemetry, evict)) => {
+                                    log_shardtree_persistence_telemetry(
+                                        "retain_checkpoint",
+                                        &telemetry,
+                                    );
+                                    if evict {
+                                        invalidate_persistence_shardtrees(
+                                            &mut shardtrees,
+                                            "memory_limit",
+                                        );
+                                    }
+                                    if response.send(Ok(())).is_err() {
+                                        invalidate_persistence_shardtrees(
+                                            &mut shardtrees,
+                                            "cancelled_retained_checkpoint_response",
+                                        );
+                                    }
+                                }
+                                Err(error) => {
+                                    invalidate_persistence_shardtrees(
+                                        &mut shardtrees,
+                                        "failed_retained_checkpoint",
+                                    );
+                                    let _ = response.send(Err(error));
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .map_err(|error| {
+                Error::Sync(format!("Failed to start persistence worker: {}", error))
+            })?;
+        match ready_receiver.recv() {
+            Ok(Ok(())) => Ok(Self {
+                sender: Some(sender),
+                thread: Some(thread),
+            }),
+            Ok(Err(error)) => {
+                let _ = thread.join();
+                Err(Error::Sync(format!(
+                    "Failed to open persistence database: {}",
+                    error
+                )))
+            }
+            Err(error) => {
+                let _ = thread.join();
+                Err(Error::Sync(format!(
+                    "Persistence worker stopped during startup: {}",
+                    error
+                )))
+            }
+        }
+    }
+
+    async fn execute<T, F>(&self, operation: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Database) -> Result<T> + Send + 'static,
+    {
+        let (response_sender, response_receiver) = oneshot::channel();
+        let job = Box::new(move |db: &Database| {
+            let _ = response_sender.send(operation(db));
+        });
+        self.sender
+            .as_ref()
+            .ok_or_else(|| Error::Sync("Persistence worker is closed".to_string()))?
+            .send(PersistenceOperation::Execute(job))
+            .map_err(|_| Error::Sync("Persistence worker stopped unexpectedly".to_string()))?;
+        response_receiver
+            .await
+            .map_err(|_| Error::Sync("Persistence worker dropped a response".to_string()))?
+    }
+
+    async fn execute_invalidating_shardtrees<T, F>(&self, operation: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Database) -> Result<T> + Send + 'static,
+    {
+        let (response_sender, response_receiver) = oneshot::channel();
+        let job = Box::new(move |db: &Database| {
+            let _ = response_sender.send(operation(db));
+        });
+        self.sender
+            .as_ref()
+            .ok_or_else(|| Error::Sync("Persistence worker is closed".to_string()))?
+            .send(PersistenceOperation::InvalidateAndExecute(job))
+            .map_err(|_| Error::Sync("Persistence worker stopped unexpectedly".to_string()))?;
+        response_receiver
+            .await
+            .map_err(|_| Error::Sync("Persistence worker dropped a response".to_string()))?
+    }
+
+    async fn persist_shardtree_batches(
+        &self,
+        batches: Vec<ShardtreeBatch>,
+        batch_end_height: Option<u64>,
+    ) -> Result<ShardtreePersistResult> {
+        self.persist_shardtree_batches_with_roots(
+            batches,
+            batch_end_height,
+            VerifiedSubtreeRoots::default(),
+        )
+        .await
+    }
+
+    async fn persist_shardtree_batches_with_roots(
+        &self,
+        batches: Vec<ShardtreeBatch>,
+        batch_end_height: Option<u64>,
+        verified_roots: VerifiedSubtreeRoots,
+    ) -> Result<ShardtreePersistResult> {
+        let (response, receiver) = oneshot::channel();
+        self.sender
+            .as_ref()
+            .ok_or_else(|| Error::Sync("Persistence worker is closed".to_string()))?
+            .send(PersistenceOperation::PersistShardtrees {
+                batches,
+                batch_end_height,
+                verified_roots,
+                response,
+            })
+            .map_err(|_| Error::Sync("Persistence worker stopped unexpectedly".to_string()))?;
+        receiver
+            .await
+            .map_err(|_| Error::Sync("Persistence worker dropped a response".to_string()))?
+    }
+
+    async fn checkpoint_shardtrees(&self, checkpoint_id: BlockHeight) -> Result<()> {
+        let (response, receiver) = oneshot::channel();
+        self.sender
+            .as_ref()
+            .ok_or_else(|| Error::Sync("Persistence worker is closed".to_string()))?
+            .send(PersistenceOperation::Checkpoint {
+                checkpoint_id,
+                response,
+            })
+            .map_err(|_| Error::Sync("Persistence worker stopped unexpectedly".to_string()))?;
+        receiver
+            .await
+            .map_err(|_| Error::Sync("Persistence worker dropped a response".to_string()))?
+    }
+
+    async fn retain_shardtree_checkpoint(&self, checkpoint_id: BlockHeight) -> Result<()> {
+        let (response, receiver) = oneshot::channel();
+        self.sender
+            .as_ref()
+            .ok_or_else(|| Error::Sync("Persistence worker is closed".to_string()))?
+            .send(PersistenceOperation::RetainCheckpoint {
+                checkpoint_id,
+                response,
+            })
+            .map_err(|_| Error::Sync("Persistence worker stopped unexpectedly".to_string()))?;
+        receiver
+            .await
+            .map_err(|_| Error::Sync("Persistence worker dropped a response".to_string()))?
+    }
+}
+
+fn invalidate_persistence_shardtrees(
+    shardtrees: &mut Option<PersistenceShardTrees<'_>>,
+    reason: &'static str,
+) {
+    if let Some(trees) = shardtrees.take() {
+        let (sapling_shards, ironwood_shards) = trees.cached_shard_counts();
+        tracing::debug!(
+            reason,
+            sapling_shards,
+            ironwood_shards,
+            "invalidated persistence ShardTree cache"
+        );
+        if verbose_sync_batch_logging_enabled() {
+            append_sync_decision_log(
+                "sync.rs:persistence_worker",
+                "invalidated persistence shardtree cache",
+                format!(
+                    "\"reason\":\"{}\",\"sapling_evicted_shards\":{},\"ironwood_evicted_shards\":{}",
+                    reason, sapling_shards, ironwood_shards
+                ),
+            );
+        }
+    }
+}
+
+impl Drop for PersistenceWorker {
+    fn drop(&mut self) {
+        self.sender.take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+struct FetchedBlockBatch {
+    blocks: Vec<CompactBlockData>,
+    encoded_bytes: u64,
+    requested_blocks: u64,
+    requested_bytes: u64,
+    source: BlockFetchSource,
+    elapsed: Duration,
+    network_elapsed: Duration,
+    cache_write_elapsed: Duration,
+    spool_reservations: Vec<PrefetchReservation>,
+}
+
+struct PrefetchFlowControl {
+    target_blocks: AtomicU64,
+    target_bytes: AtomicU64,
+    durable_segment_blocks: Arc<AtomicU64>,
+    watermarks: Arc<PrefetchWatermarks>,
+}
+
+struct DurableBlockSegment {
+    blocks: Vec<CompactBlockData>,
+    encoded_block_bytes: Vec<u64>,
+    encoded_bytes: u64,
+    network_elapsed: Duration,
+    cache_write_elapsed: Duration,
+    reservation: PrefetchReservation,
+}
+
+struct AbortTaskOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortTaskOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+#[derive(Default)]
+struct NetworkBatchAccumulator {
+    blocks: Vec<CompactBlockData>,
+    encoded_bytes: u64,
+    network_elapsed: Duration,
+    cache_write_elapsed: Duration,
+    spool_reservations: Vec<PrefetchReservation>,
+}
+
+impl NetworkBatchAccumulator {
+    fn is_empty(&self) -> bool {
+        self.blocks.is_empty()
+    }
+
+    fn reached(&self, target: (u64, u64)) -> bool {
+        self.blocks.len() as u64 >= target.0 || self.encoded_bytes >= target.1
+    }
+
+    fn push(
+        &mut self,
+        mut blocks: Vec<CompactBlockData>,
+        encoded_bytes: u64,
+        network_elapsed: Duration,
+        cache_write_elapsed: Duration,
+        reservation: PrefetchReservation,
+    ) {
+        self.blocks.append(&mut blocks);
+        self.encoded_bytes = self.encoded_bytes.saturating_add(encoded_bytes);
+        self.network_elapsed += network_elapsed;
+        self.cache_write_elapsed += cache_write_elapsed;
+        self.spool_reservations.push(reservation);
+    }
+
+    fn take_batch(&mut self, requested_blocks: u64, requested_bytes: u64) -> FetchedBlockBatch {
+        let network_elapsed = std::mem::take(&mut self.network_elapsed);
+        let cache_write_elapsed = std::mem::take(&mut self.cache_write_elapsed);
+        FetchedBlockBatch {
+            blocks: std::mem::take(&mut self.blocks),
+            encoded_bytes: std::mem::take(&mut self.encoded_bytes),
+            requested_blocks,
+            requested_bytes,
+            source: BlockFetchSource::Network,
+            elapsed: network_elapsed + cache_write_elapsed,
+            network_elapsed,
+            cache_write_elapsed,
+            spool_reservations: std::mem::take(&mut self.spool_reservations),
+        }
+    }
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default)]
+struct BlockFetchTimings {
+    network_elapsed: Duration,
+    cache_write_elapsed: Duration,
+    encoded_bytes: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ValidatedCacheRange {
+    start: u64,
+    end: u64,
+}
+
+impl ValidatedCacheRange {
+    fn contains(self, start: u64, end: u64) -> bool {
+        self.start <= start && end <= self.end
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BlockFetchSource {
+    Cache,
+    Network,
+}
+
+impl BlockFetchSource {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Cache => "cache",
+            Self::Network => "network",
+        }
+    }
+}
+
+#[cfg(test)]
 struct ServerBatchHintTask {
     start: u64,
     handle: tokio::task::JoinHandle<Option<u64>>,
