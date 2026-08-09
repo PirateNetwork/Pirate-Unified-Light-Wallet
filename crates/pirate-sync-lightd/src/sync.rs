@@ -2320,12 +2320,125 @@ impl SyncEngine {
         let has: bool = db
             .conn()
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sapling_tree_checkpoints WHERE checkpoint_id >= ?1)",
+                r#"
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM sapling_tree_checkpoints s
+                    INNER JOIN orchard_tree_checkpoints o
+                        ON o.checkpoint_id = s.checkpoint_id
+                    WHERE s.checkpoint_id = ?1
+                )
+                "#,
                 [height_u32],
                 |row| row.get(0),
             )
             .unwrap_or(false);
         Ok(has)
+    }
+
+    fn partial_tree_replay_checkpoint(
+        &self,
+        requested_tree_height: u64,
+        sapling_activation: u64,
+    ) -> Result<Option<u64>> {
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(None);
+        };
+        let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let sync_state = SyncStateStorage::new(&db).load_sync_state()?;
+        let replay_baseline = sapling_activation.saturating_sub(1);
+        if sync_state.local_height < replay_baseline
+            || sync_state.local_height >= requested_tree_height
+        {
+            return Ok(None);
+        }
+
+        let checkpoint: Option<u32> = db
+            .conn()
+            .query_row(
+                r#"
+                SELECT MAX(s.checkpoint_id)
+                FROM sapling_tree_checkpoints s
+                INNER JOIN orchard_tree_checkpoints o
+                    ON o.checkpoint_id = s.checkpoint_id
+                WHERE s.checkpoint_id <= ?1
+                "#,
+                [u32::try_from(sync_state.local_height).unwrap_or(u32::MAX)],
+                |row| row.get(0),
+            )
+            .map_err(|e| Error::Sync(format!("Failed to query replay checkpoint: {}", e)))?;
+
+        Ok(resumable_tree_replay_checkpoint(
+            sync_state.local_height,
+            requested_tree_height,
+            sapling_activation,
+            checkpoint.map(u64::from),
+        ))
+    }
+
+    async fn rewind_shardtrees_for_replay(&self, checkpoint_height: u64) -> Result<()> {
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        let checkpoint_height = u32::try_from(checkpoint_height).map_err(|_| {
+            Error::Sync(format!(
+                "Replay checkpoint {} exceeds u32::MAX",
+                checkpoint_height
+            ))
+        })?;
+        let checkpoint_id = BlockHeight::from(checkpoint_height);
+        let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let tx = db.unchecked_immediate_transaction().map_err(|e| {
+            Error::Sync(format!("Failed to start replay-resume transaction: {}", e))
+        })?;
+
+        {
+            let store = SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                &tx,
+                SAPLING_TABLE_PREFIX,
+            )
+            .map_err(|e| Error::Sync(format!("Failed to open Sapling shard store: {}", e)))?;
+            let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
+                ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+            tree.truncate_to_checkpoint(&checkpoint_id).map_err(|e| {
+                Error::Sync(format!(
+                    "Failed to resume Sapling replay at {}: {}",
+                    checkpoint_height, e
+                ))
+            })?;
+        }
+        {
+            let store =
+                SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
+                    &tx,
+                    ORCHARD_TABLE_PREFIX,
+                )
+                .map_err(|e| Error::Sync(format!("Failed to open Orchard shard store: {}", e)))?;
+            let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT> =
+                ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+            tree.truncate_to_checkpoint(&checkpoint_id).map_err(|e| {
+                Error::Sync(format!(
+                    "Failed to resume Orchard replay at {}: {}",
+                    checkpoint_height, e
+                ))
+            })?;
+        }
+        tx.execute(
+            r#"
+            UPDATE sync_state
+            SET local_height = ?1,
+                last_checkpoint_height = ?1,
+                updated_at = ?2
+            WHERE id = 1
+            "#,
+            rusqlite::params![checkpoint_height, chrono::Utc::now().to_rfc3339()],
+        )
+        .map_err(|e| Error::Sync(format!("Failed to align replay sync state: {}", e)))?;
+        tx.commit().map_err(|e| {
+            Error::Sync(format!("Failed to commit replay-resume transaction: {}", e))
+        })?;
+        self.recover_position_counters_from_shardtree().await?;
+        Ok(())
     }
 
     /// Initialize ShardTrees for a sync starting at `start_height`.
