@@ -4834,6 +4834,7 @@ impl SyncEngine {
         start: u64,
         end: u64,
         blocks: &[CompactBlockData],
+        validated_cache_range: Option<ValidatedCacheRange>,
     ) -> Result<bool> {
         if let Err(e) = Self::validate_compact_block_range(start, end, blocks) {
             tracing::warn!(
@@ -4844,6 +4845,10 @@ impl SyncEngine {
             );
             let _ = cache.delete_range(start, end);
             return Ok(false);
+        }
+
+        if validated_cache_range.is_some_and(|range| range.contains(start, end)) {
+            return Ok(true);
         }
 
         let Some(last) = blocks.last() else {
@@ -4878,6 +4883,72 @@ impl SyncEngine {
         }
     }
 
+    async fn validate_cache_horizon(
+        client: &LightClient,
+        start: u64,
+        end: u64,
+    ) -> Result<Option<ValidatedCacheRange>> {
+        let cache = match BlockCache::for_endpoint(client.endpoint()) {
+            Ok(cache) => cache,
+            Err(e) => {
+                tracing::debug!("Block cache unavailable for range validation: {}", e);
+                return Ok(None);
+            }
+        };
+        let Some(cached_end) = cache.contiguous_end(start, end)? else {
+            return Ok(None);
+        };
+        let anchor = cache.load_range_for_upgrade(cached_end, cached_end)?;
+        if let Err(e) = Self::validate_compact_block_range(cached_end, cached_end, &anchor.blocks) {
+            tracing::warn!(
+                "Invalid cached compact block anchor at {}; invalidating {}-{}: {}",
+                cached_end,
+                start,
+                cached_end,
+                e
+            );
+            let _ = cache.delete_range(start, cached_end);
+            return Ok(None);
+        }
+
+        let cached_hash = &anchor.blocks[0].hash;
+        match client.get_block(height_to_u32(cached_end)?).await {
+            Ok(remote) if remote.hash == *cached_hash => {
+                tracing::debug!(
+                    "Validated contiguous block cache range {}-{} against remote anchor",
+                    start,
+                    cached_end
+                );
+                Ok(Some(ValidatedCacheRange {
+                    start,
+                    end: cached_end,
+                }))
+            }
+            Ok(remote) => {
+                tracing::warn!(
+                    "Cached compact block anchor {} is stale (cache={}, remote={}); invalidating {}-{}",
+                    cached_end,
+                    hex::encode(cached_hash),
+                    hex::encode(&remote.hash),
+                    start,
+                    cached_end
+                );
+                let _ = cache.delete_range(start, cached_end);
+                Ok(None)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Could not validate cached compact block horizon {}-{} against remote: {}; retaining per-batch validation",
+                    start,
+                    cached_end,
+                    e
+                );
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg(test)]
     async fn fetch_blocks_with_retry_inner(
         client: LightClient,
         start: u64,
