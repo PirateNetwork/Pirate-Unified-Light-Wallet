@@ -6180,7 +6180,12 @@ impl SyncEngine {
         }
     }
 
-    fn spawn_background_enrich(&self, notes: Vec<DecryptedNote>, require_memos: bool) {
+    fn spawn_background_enrich(
+        &self,
+        notes: Vec<DecryptedNote>,
+        require_memos: bool,
+        persistence_worker: Option<Arc<PersistenceWorker>>,
+    ) {
         let sink = match self.storage.clone() {
             Some(s) => s,
             None => return,
@@ -6205,6 +6210,7 @@ impl SyncEngine {
                 max_parallel,
                 &mut notes,
                 require_memos,
+                persistence_worker,
             )
             .await
             {
@@ -6229,6 +6235,7 @@ impl SyncEngine {
         &self,
         notes: &mut [DecryptedNote],
         require_memos: bool,
+        persistence_worker: Option<Arc<PersistenceWorker>>,
     ) -> Result<()> {
         let sink = match self.storage.clone() {
             Some(s) => s,
@@ -6247,11 +6254,13 @@ impl SyncEngine {
             max_parallel,
             notes,
             require_memos,
+            persistence_worker,
         )
         .await
     }
 
     /// Fetch full transactions to enrich notes (memos, Orchard nullifiers, outgoing memo recovery).
+    #[allow(clippy::too_many_arguments)]
     async fn fetch_and_enrich_notes_with_context(
         client: LightClient,
         sink: StorageSink,
@@ -6260,6 +6269,7 @@ impl SyncEngine {
         max_parallel: usize,
         notes: &mut [DecryptedNote],
         require_memos: bool,
+        persistence_worker: Option<Arc<PersistenceWorker>>,
     ) -> Result<()> {
         let mut key_index_by_id: HashMap<i64, usize> = HashMap::new();
         for (idx, key) in keys.iter().enumerate() {
@@ -6648,12 +6658,16 @@ impl SyncEngine {
                                 Ok(Some(decrypted)) => {
                                     let memo = decrypted.memo;
                                     note.set_memo_bytes(memo.clone());
-                                    if let Err(e) = sink.update_note_memo(
+                                    if let Err(e) = Self::persist_enriched_note_memo(
+                                        persistence_worker.as_ref(),
+                                        &sink,
                                         &note.tx_hash,
                                         note.output_index as i64,
                                         NoteType::Sapling,
-                                        Some(&memo),
-                                    ) {
+                                        memo,
+                                    )
+                                    .await
+                                    {
                                         tracing::warn!("Failed to update memo in database: {}", e);
                                     }
                                 }
@@ -6713,12 +6727,16 @@ impl SyncEngine {
                                 if require_memos && note.memo_bytes().is_none() {
                                     let memo = decrypted.memo.to_vec();
                                     note.set_memo_bytes(memo.clone());
-                                    if let Err(e) = sink.update_note_memo(
+                                    if let Err(e) = Self::persist_enriched_note_memo(
+                                        persistence_worker.as_ref(),
+                                        &sink,
                                         &note.tx_hash,
                                         note.output_index as i64,
                                         NoteType::Ironwood,
-                                        Some(&memo),
-                                    ) {
+                                        memo,
+                                    )
+                                    .await
+                                    {
                                         tracing::warn!("Failed to update memo in database: {}", e);
                                     }
                                 }
@@ -6819,15 +6837,26 @@ impl SyncEngine {
             let txid_hex = hex::encode(txid);
             let has_memo = sink.get_tx_memo(&txid_hex).ok().flatten().is_some();
             if !has_memo {
-                if let Err(e) = Self::recover_outgoing_memos(
+                match Self::recover_outgoing_memo(
                     &raw_tx_bytes,
                     work.block.unwrap_or(0),
-                    &txid_hex,
-                    &sink,
                     sapling_ovk,
                     orchard_ovk,
                 ) {
-                    tracing::warn!("Outgoing memo recovery failed: {}", e);
+                    Ok(Some(memo)) => {
+                        if let Err(error) = Self::persist_outgoing_memo(
+                            persistence_worker.as_ref(),
+                            &sink,
+                            txid_hex,
+                            memo,
+                        )
+                        .await
+                        {
+                            tracing::warn!("Outgoing memo persistence failed: {}", error);
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(error) => tracing::warn!("Outgoing memo recovery failed: {}", error),
                 }
             }
         }
