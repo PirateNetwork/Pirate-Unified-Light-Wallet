@@ -7787,6 +7787,7 @@ impl SyncEngine {
         &mut self,
         blocks: &[CompactBlockData],
         db: Option<&Database>,
+        persistence_worker: Option<&PersistenceWorker>,
     ) -> Result<()> {
         let sink = match self.storage.as_ref() {
             Some(s) => s.clone(),
@@ -7943,7 +7944,24 @@ impl SyncEngine {
                             }
                         });
                 if should_attempt_rederive {
-                    match self.rederive_unmatched_spends(&unlinked_entries, db)? {
+                    let recovered = if let Some(worker) = persistence_worker {
+                        let worker_sink = sink.clone();
+                        let worker_keys = self.keys.clone();
+                        let worker_entries = unlinked_entries.clone();
+                        worker
+                            .execute(move |worker_db| {
+                                Self::rederive_unmatched_spends_with_context(
+                                    &worker_sink,
+                                    &worker_keys,
+                                    &worker_entries,
+                                    worker_db,
+                                )
+                            })
+                            .await?
+                    } else {
+                        self.rederive_unmatched_spends(&unlinked_entries, db)?
+                    };
+                    match recovered {
                         recovered if !recovered.is_empty() => {
                             let recover_updates: Vec<(i64, [u8; 32])> = recovered
                                 .iter()
@@ -7979,7 +7997,22 @@ impl SyncEngine {
                 fallback_entries.push((*nf, *txid));
             }
             if !unlinked_entries.is_empty() {
-                if let Err(e) = sink.upsert_unlinked_spend_nullifiers_with_txid(&unlinked_entries) {
+                let result = if let Some(worker) = persistence_worker {
+                    let worker_sink = sink.clone();
+                    let worker_entries = unlinked_entries.clone();
+                    worker
+                        .execute(move |worker_db| {
+                            let repo = Repository::new(worker_db);
+                            Ok(repo.upsert_unlinked_spend_nullifiers_with_txid(
+                                worker_sink.account_id,
+                                &worker_entries,
+                            )?)
+                        })
+                        .await
+                } else {
+                    sink.upsert_unlinked_spend_nullifiers_with_txid(&unlinked_entries)
+                };
+                if let Err(e) = result {
                     tracing::warn!("Failed to store unlinked spend nullifiers: {}", e);
                 }
             }
@@ -8011,17 +8044,37 @@ impl SyncEngine {
         }
 
         let spend_apply_start = Instant::now();
-        match match db {
-            Some(db) => sink.apply_spend_updates_with_txmeta_with_db(
-                db,
-                &spend_updates,
-                &fallback_entries,
-                &tx_updates,
-            ),
-            None => {
-                sink.apply_spend_updates_with_txmeta(&spend_updates, &fallback_entries, &tx_updates)
+        let apply_result = if let Some(worker) = persistence_worker {
+            let worker_sink = sink.clone();
+            let worker_spend_updates = spend_updates.clone();
+            let worker_fallback_entries = fallback_entries.clone();
+            let worker_tx_updates = tx_updates.clone();
+            worker
+                .execute(move |worker_db| {
+                    worker_sink.apply_spend_updates_with_txmeta_with_db(
+                        worker_db,
+                        &worker_spend_updates,
+                        &worker_fallback_entries,
+                        &worker_tx_updates,
+                    )
+                })
+                .await
+        } else {
+            match db {
+                Some(db) => sink.apply_spend_updates_with_txmeta_with_db(
+                    db,
+                    &spend_updates,
+                    &fallback_entries,
+                    &tx_updates,
+                ),
+                None => sink.apply_spend_updates_with_txmeta(
+                    &spend_updates,
+                    &fallback_entries,
+                    &tx_updates,
+                ),
             }
-        } {
+        };
+        match apply_result {
             Ok((updated, fallback)) => {
                 updated_count = updated;
                 fallback_updates = fallback;
@@ -8078,16 +8131,12 @@ impl SyncEngine {
         Ok(())
     }
 
-    fn rederive_unmatched_sapling_spends(
-        &self,
+    fn rederive_unmatched_sapling_spends_with_context(
+        sink: &StorageSink,
+        keys: &[WalletKeyGroup],
         entries: &[TypedSpendEntry],
-        db: Option<&Database>,
+        db: &Database,
     ) -> Result<Vec<RecoveredSpend>> {
-        let sink = match self.storage.as_ref() {
-            Some(s) => s,
-            None => return Ok(Vec::new()),
-        };
-
         let mut spend_map: HashMap<NullifierBytes, TxidBytes> = HashMap::new();
         for (note_type, nf, txid) in entries {
             if *note_type == pirate_storage_sqlite::models::NoteType::Sapling {
@@ -8099,7 +8148,7 @@ impl SyncEngine {
         }
 
         let mut dfvk_by_key: HashMap<i64, ExtendedFullViewingKey> = HashMap::new();
-        for key in &self.keys {
+        for key in keys {
             if let Some(dfvk) = key.sapling_dfvk.as_ref() {
                 dfvk_by_key.insert(key.key_id, dfvk.clone());
             }
@@ -8108,13 +8157,6 @@ impl SyncEngine {
             return Ok(Vec::new());
         }
 
-        let owned_db;
-        let db = if let Some(db) = db {
-            db
-        } else {
-            owned_db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
-            &owned_db
-        };
         let repo = Repository::new(db);
         let notes = repo.get_spend_reconciliation_notes(sink.account_id)?;
 
@@ -8228,16 +8270,30 @@ impl SyncEngine {
         Ok(recovered)
     }
 
-    fn rederive_unmatched_orchard_spends(
+    fn rederive_unmatched_sapling_spends(
         &self,
         entries: &[TypedSpendEntry],
         db: Option<&Database>,
     ) -> Result<Vec<RecoveredSpend>> {
-        let sink = match self.storage.as_ref() {
-            Some(s) => s,
-            None => return Ok(Vec::new()),
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(Vec::new());
         };
+        let opened_db;
+        let db = if let Some(db) = db {
+            db
+        } else {
+            opened_db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            &opened_db
+        };
+        Self::rederive_unmatched_sapling_spends_with_context(sink, &self.keys, entries, db)
+    }
 
+    fn rederive_unmatched_orchard_spends_with_context(
+        sink: &StorageSink,
+        keys: &[WalletKeyGroup],
+        entries: &[TypedSpendEntry],
+        db: &Database,
+    ) -> Result<Vec<RecoveredSpend>> {
         let mut spend_map: HashMap<NullifierBytes, TxidBytes> = HashMap::new();
         for (note_type, nf, txid) in entries {
             if *note_type == pirate_storage_sqlite::models::NoteType::Ironwood {
@@ -8249,7 +8305,7 @@ impl SyncEngine {
         }
 
         let mut fvk_by_key: HashMap<i64, IronwoodExtendedFullViewingKey> = HashMap::new();
-        for key in &self.keys {
+        for key in keys {
             if let Some(fvk) = key.orchard_fvk.as_ref() {
                 fvk_by_key.insert(key.key_id, fvk.clone());
             }
@@ -8258,13 +8314,6 @@ impl SyncEngine {
             return Ok(Vec::new());
         }
 
-        let owned_db;
-        let db = if let Some(db) = db {
-            db
-        } else {
-            owned_db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
-            &owned_db
-        };
         let repo = Repository::new(db);
         let notes = repo.get_spend_reconciliation_notes(sink.account_id)?;
 
@@ -8350,6 +8399,24 @@ impl SyncEngine {
         Ok(recovered)
     }
 
+    fn rederive_unmatched_orchard_spends(
+        &self,
+        entries: &[TypedSpendEntry],
+        db: Option<&Database>,
+    ) -> Result<Vec<RecoveredSpend>> {
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let opened_db;
+        let db = if let Some(db) = db {
+            db
+        } else {
+            opened_db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            &opened_db
+        };
+        Self::rederive_unmatched_orchard_spends_with_context(sink, &self.keys, entries, db)
+    }
+
     fn rederive_unmatched_spends(
         &self,
         entries: &[TypedSpendEntry],
@@ -8366,6 +8433,36 @@ impl SyncEngine {
             ));
         }
         for (id, nf, txid) in self.rederive_unmatched_orchard_spends(entries, db)? {
+            recovered.push((
+                id,
+                pirate_storage_sqlite::models::NoteType::Ironwood,
+                nf,
+                txid,
+            ));
+        }
+        Ok(recovered)
+    }
+
+    fn rederive_unmatched_spends_with_context(
+        sink: &StorageSink,
+        keys: &[WalletKeyGroup],
+        entries: &[TypedSpendEntry],
+        db: &Database,
+    ) -> Result<Vec<TypedRecoveredSpend>> {
+        let mut recovered = Vec::new();
+        for (id, nf, txid) in
+            Self::rederive_unmatched_sapling_spends_with_context(sink, keys, entries, db)?
+        {
+            recovered.push((
+                id,
+                pirate_storage_sqlite::models::NoteType::Sapling,
+                nf,
+                txid,
+            ));
+        }
+        for (id, nf, txid) in
+            Self::rederive_unmatched_orchard_spends_with_context(sink, keys, entries, db)?
+        {
             recovered.push((
                 id,
                 pirate_storage_sqlite::models::NoteType::Ironwood,
