@@ -7158,9 +7158,10 @@ impl StorageSink {
             });
         }
         // Batch-local caches; populate lazily so we don't decrypt full tables each batch.
-        let mut existing_by_output: HashMap<(Vec<u8>, i64, u8), NoteRecord> = HashMap::new();
+        let mut existing_by_output: HashMap<(Vec<u8>, i64, StorageNoteType), NoteRecord> =
+            HashMap::new();
         let mut address_cache: HashMap<String, i64> = HashMap::new();
-        let candidate_output_keys: HashSet<(Vec<u8>, i64, u8)> = notes
+        let candidate_output_keys: HashSet<(Vec<u8>, i64, StorageNoteType)> = notes
             .iter()
             .filter(|note| !note.txid.is_empty())
             .map(|note| {
@@ -7168,25 +7169,20 @@ impl StorageSink {
                     note.txid.clone(),
                     note.output_index as i64,
                     match note.note_type {
-                        crate::pipeline::NoteType::Sapling => 0u8,
-                        crate::pipeline::NoteType::Ironwood => 1u8,
+                        crate::pipeline::NoteType::Sapling => StorageNoteType::Sapling,
+                        crate::pipeline::NoteType::Ironwood => StorageNoteType::Ironwood,
                     },
                 )
             })
             .collect();
         if !candidate_output_keys.is_empty() {
-            for existing in repo.get_unspent_notes(self.account_id)? {
+            for existing in repo.prepare_note_upserts(self.account_id, &candidate_output_keys)? {
                 let key = (
                     existing.txid.clone(),
                     existing.output_index,
-                    match existing.note_type {
-                        pirate_storage_sqlite::models::NoteType::Sapling => 0u8,
-                        pirate_storage_sqlite::models::NoteType::Ironwood => 1u8,
-                    },
+                    existing.note_type,
                 );
-                if candidate_output_keys.contains(&key) {
-                    existing_by_output.insert(key, existing);
-                }
+                existing_by_output.insert(key, existing);
             }
         }
 
@@ -7346,11 +7342,7 @@ impl StorageSink {
             }
 
             let address_id = derive_address_id(n, timestamp, &mut address_cache)?;
-            let note_type_tag = match note_type {
-                pirate_storage_sqlite::models::NoteType::Sapling => 0u8,
-                pirate_storage_sqlite::models::NoteType::Ironwood => 1u8,
-            };
-            let output_key = (n.txid.clone(), n.output_index as i64, note_type_tag);
+            let output_key = (n.txid.clone(), n.output_index as i64, note_type);
             let existing_note = existing_by_output.get(&output_key).cloned();
 
             if let Some(existing) = existing_note {
@@ -7616,7 +7608,18 @@ impl StorageSink {
         memo: Option<&[u8]>,
     ) -> Result<()> {
         let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
-        let repo = Repository::new(&db);
+        self.update_note_memo_with_db(&db, txid, output_index, note_type, memo)
+    }
+
+    fn update_note_memo_with_db(
+        &self,
+        db: &Database,
+        txid: &[u8],
+        output_index: i64,
+        note_type: NoteType,
+        memo: Option<&[u8]>,
+    ) -> Result<()> {
+        let repo = Repository::new(db);
         let note_type = match note_type {
             NoteType::Sapling => pirate_storage_sqlite::models::NoteType::Sapling,
             NoteType::Ironwood => pirate_storage_sqlite::models::NoteType::Ironwood,
@@ -7670,7 +7673,11 @@ impl StorageSink {
 
     fn upsert_tx_memo(&self, txid_hex: &str, memo: &[u8]) -> Result<()> {
         let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
-        let repo = Repository::new(&db);
+        self.upsert_tx_memo_with_db(&db, txid_hex, memo)
+    }
+
+    fn upsert_tx_memo_with_db(&self, db: &Database, txid_hex: &str, memo: &[u8]) -> Result<()> {
+        let repo = Repository::new(db);
         Ok(repo.upsert_tx_memo(txid_hex, memo)?)
     }
 
@@ -7686,31 +7693,14 @@ impl StorageSink {
         Ok(sync_state.load_sync_state()?)
     }
 
-    fn save_sync_state(
-        &self,
-        local_height: u64,
-        target_height: u64,
-        last_checkpoint_height: u64,
-    ) -> Result<()> {
-        let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
-        self.save_sync_state_with_db(&db, local_height, target_height, last_checkpoint_height)
-    }
-
-    fn save_sync_state_with_db(
+    fn save_sync_progress_with_db(
         &self,
         db: &Database,
+        blocks: &[CompactBlockData],
         local_height: u64,
         target_height: u64,
         last_checkpoint_height: u64,
     ) -> Result<()> {
-        let sync_state = SyncStateStorage::new(db);
-        Ok(sync_state.save_sync_state(local_height, target_height, last_checkpoint_height)?)
-    }
-
-    fn save_chain_blocks_with_db(&self, db: &Database, blocks: &[CompactBlockData]) -> Result<()> {
-        if blocks.is_empty() {
-            return Ok(());
-        }
         let rows: Vec<ChainBlockRow> = blocks
             .iter()
             .map(|block| ChainBlockRow {
@@ -7721,12 +7711,26 @@ impl StorageSink {
             })
             .collect();
         let sync_state = SyncStateStorage::new(db);
-        Ok(sync_state.save_chain_blocks(&rows)?)
+        Ok(sync_state.save_sync_progress(
+            &rows,
+            local_height,
+            target_height,
+            last_checkpoint_height,
+            MAX_REORG_SEARCH_DEPTH,
+        )?)
     }
 
     fn load_chain_block(&self, height: u64) -> Result<Option<ChainBlockRow>> {
         let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
-        let sync_state = SyncStateStorage::new(&db);
+        self.load_chain_block_with_db(&db, height)
+    }
+
+    fn load_chain_block_with_db(
+        &self,
+        db: &Database,
+        height: u64,
+    ) -> Result<Option<ChainBlockRow>> {
+        let sync_state = SyncStateStorage::new(db);
         Ok(sync_state.load_chain_block(height)?)
     }
 
@@ -7757,7 +7761,7 @@ impl TxOutputKey {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct PositionMaps {
     sapling_by_tx: HashMap<TxOutputKey, u64>,
     orchard_by_commitment: HashMap<[u8; 32], u64>,
@@ -7775,12 +7779,98 @@ struct WalletKeyGroup {
     orchard_ovk: Option<orchard::keys::OutgoingViewingKey>,
 }
 
+#[derive(Clone, Default)]
+struct TrialDecryptKeys {
+    sapling_ivks: Vec<PreparedIncomingViewingKey>,
+    sapling_key_ids: Vec<i64>,
+    sapling_scopes: Vec<AddressScope>,
+    orchard_ivks: Vec<OrchardPreparedIncomingViewingKey>,
+    orchard_key_ids: Vec<i64>,
+    orchard_scopes: Vec<AddressScope>,
+    orchard_fvks: Vec<orchard::keys::FullViewingKey>,
+}
+
+impl TrialDecryptKeys {
+    fn from_key_groups(keys: &[WalletKeyGroup]) -> Self {
+        let mut prepared = Self::default();
+        prepared.sapling_ivks.reserve(keys.len().saturating_mul(2));
+        prepared
+            .sapling_key_ids
+            .reserve(keys.len().saturating_mul(2));
+        prepared
+            .sapling_scopes
+            .reserve(keys.len().saturating_mul(2));
+        prepared.orchard_ivks.reserve(keys.len().saturating_mul(2));
+        prepared
+            .orchard_key_ids
+            .reserve(keys.len().saturating_mul(2));
+        prepared
+            .orchard_scopes
+            .reserve(keys.len().saturating_mul(2));
+        prepared.orchard_fvks.reserve(keys.len().saturating_mul(2));
+
+        for key in keys {
+            if let Some(ivk_bytes) = key.sapling_ivk {
+                if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&ivk_bytes)) {
+                    let sapling_ivk = SaplingIvk(ivk_fr);
+                    prepared
+                        .sapling_ivks
+                        .push(PreparedIncomingViewingKey::new(&sapling_ivk));
+                    prepared.sapling_key_ids.push(key.key_id);
+                    prepared.sapling_scopes.push(AddressScope::External);
+                }
+            }
+
+            if let Some(dfvk) = key.sapling_dfvk.as_ref() {
+                let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
+                if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes)) {
+                    let sapling_ivk = SaplingIvk(ivk_fr);
+                    prepared
+                        .sapling_ivks
+                        .push(PreparedIncomingViewingKey::new(&sapling_ivk));
+                    prepared.sapling_key_ids.push(key.key_id);
+                    prepared.sapling_scopes.push(AddressScope::Internal);
+                }
+            }
+
+            if let (Some(ivk_bytes), Some(fvk)) = (key.orchard_ivk, key.orchard_fvk.as_ref()) {
+                let ivk_ct = IronwoodIncomingViewingKey::from_bytes(&ivk_bytes);
+                if bool::from(ivk_ct.is_some()) {
+                    let ivk = ivk_ct.unwrap();
+                    prepared
+                        .orchard_ivks
+                        .push(OrchardPreparedIncomingViewingKey::new(&ivk));
+                    prepared.orchard_key_ids.push(key.key_id);
+                    prepared.orchard_scopes.push(AddressScope::External);
+                    prepared.orchard_fvks.push(fvk.inner.clone());
+                }
+            }
+
+            if let Some(fvk) = key.orchard_fvk.as_ref() {
+                let internal_ivk_bytes = fvk.to_internal_ivk_bytes();
+                let ivk_ct = IronwoodIncomingViewingKey::from_bytes(&internal_ivk_bytes);
+                if bool::from(ivk_ct.is_some()) {
+                    let ivk = ivk_ct.unwrap();
+                    prepared
+                        .orchard_ivks
+                        .push(OrchardPreparedIncomingViewingKey::new(&ivk));
+                    prepared.orchard_key_ids.push(key.key_id);
+                    prepared.orchard_scopes.push(AddressScope::Internal);
+                    prepared.orchard_fvks.push(fvk.inner.clone());
+                }
+            }
+        }
+
+        prepared
+    }
+}
+
 #[derive(Clone, Debug)]
 struct SaplingOutputMeta {
     height: u64,
     tx_index: usize,
     output_index: usize,
-    tx_hash: Vec<u8>,
+    tx_hash_index: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -7788,7 +7878,7 @@ struct OrchardOutputMeta {
     height: u64,
     tx_index: usize,
     output_index: usize,
-    tx_hash: Vec<u8>,
+    tx_hash_index: usize,
     commitment: [u8; 32],
 }
 
