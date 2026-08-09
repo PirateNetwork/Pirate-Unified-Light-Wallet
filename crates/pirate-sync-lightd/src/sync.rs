@@ -6994,16 +6994,51 @@ impl SyncEngine {
         Ok(())
     }
 
-    fn recover_outgoing_memos(
+    async fn persist_enriched_note_memo(
+        worker: Option<&Arc<PersistenceWorker>>,
+        sink: &StorageSink,
+        txid: &[u8],
+        output_index: i64,
+        note_type: NoteType,
+        memo: Vec<u8>,
+    ) -> Result<()> {
+        if let Some(worker) = worker {
+            let sink = sink.clone();
+            let txid = txid.to_vec();
+            worker
+                .execute(move |db| {
+                    sink.update_note_memo_with_db(db, &txid, output_index, note_type, Some(&memo))
+                })
+                .await
+        } else {
+            sink.update_note_memo(txid, output_index, note_type, Some(&memo))
+        }
+    }
+
+    async fn persist_outgoing_memo(
+        worker: Option<&Arc<PersistenceWorker>>,
+        sink: &StorageSink,
+        txid_hex: String,
+        memo: Vec<u8>,
+    ) -> Result<()> {
+        if let Some(worker) = worker {
+            let sink = sink.clone();
+            worker
+                .execute(move |db| sink.upsert_tx_memo_with_db(db, &txid_hex, &memo))
+                .await
+        } else {
+            sink.upsert_tx_memo(&txid_hex, &memo)
+        }
+    }
+
+    fn recover_outgoing_memo(
         raw_tx_bytes: &[u8],
         height: u64,
-        txid_hex: &str,
-        sink: &StorageSink,
         sapling_ovk: Option<&SaplingOutgoingViewingKey>,
         orchard_ovk: Option<&orchard::keys::OutgoingViewingKey>,
-    ) -> Result<()> {
+    ) -> Result<Option<Vec<u8>>> {
         if sapling_ovk.is_none() && orchard_ovk.is_none() {
-            return Ok(());
+            return Ok(None);
         }
 
         let tx = read_pirate_transaction(raw_tx_bytes)
@@ -7052,17 +7087,14 @@ impl SyncEngine {
             }
         }
 
-        if let Some(memo) = memo_to_store {
-            sink.upsert_tx_memo(txid_hex, &memo)?;
-        }
-
-        Ok(())
+        Ok(memo_to_store)
     }
 
     /// Process block commitments into ShardTree batches and track positions.
     ///
     /// ShardTree is the single source of truth for commitment tree state.
     /// Positions are tracked via simple counters (initialized from frontier at sync start).
+    #[allow(clippy::too_many_arguments)]
     async fn update_commitment_trees(
         &self,
         blocks: &[CompactBlockData],
