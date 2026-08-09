@@ -2918,9 +2918,10 @@ impl SyncEngine {
         &self,
         current_height: u64,
         db_session: Option<&Database>,
+        persistence_worker: Option<&PersistenceWorker>,
     ) -> Result<Option<(u64, u64)>> {
         let sink = match self.storage.as_ref() {
-            Some(s) => s,
+            Some(s) => s.clone(),
             None => return Ok(None),
         };
 
@@ -2929,13 +2930,36 @@ impl SyncEngine {
             *last >= current_height
         };
 
-        let owned_db;
-        let db = if let Some(db) = db_session {
-            db
+        let outcome = if let Some(worker) = persistence_worker {
+            worker
+                .execute(move |db| {
+                    Self::check_witnesses_with_db(&sink, current_height, already_checked, db)
+                })
+                .await?
         } else {
-            owned_db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
-            &owned_db
+            let owned_db;
+            let db = if let Some(db) = db_session {
+                db
+            } else {
+                owned_db =
+                    Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+                &owned_db
+            };
+            Self::check_witnesses_with_db(&sink, current_height, already_checked, db)?
         };
+        if outcome.checked {
+            let mut last = self.last_witness_check_height.write().await;
+            *last = (*last).max(current_height);
+        }
+        Ok(outcome.repair_range)
+    }
+
+    fn check_witnesses_with_db(
+        sink: &StorageSink,
+        current_height: u64,
+        already_checked: bool,
+        db: &Database,
+    ) -> Result<WitnessCheckDbOutcome> {
         let repo = Repository::new(db);
         let spendability = SpendabilityStateStorage::new(db);
         let scan_queue = ScanQueueStorage::new(db);
@@ -2956,12 +2980,18 @@ impl SyncEngine {
                 "Skipping witness integrity check at tip {}: scan queue extrema not available yet",
                 current_height
             );
-            return Ok(None);
+            return Ok(WitnessCheckDbOutcome {
+                repair_range: None,
+                checked: false,
+            });
         };
 
         let state = spendability.load_state().unwrap_or_default();
         if state.rescan_required {
-            return Ok(None);
+            return Ok(WitnessCheckDbOutcome {
+                repair_range: None,
+                checked: false,
+            });
         }
 
         // If tip didn't advance and state is already validated for this anchor epoch,
@@ -2973,7 +3003,10 @@ impl SyncEngine {
                 && state.reason_code == "OK"
                 && state.validated_anchor_height >= computed_anchor_height;
             if state_ok {
-                return Ok(None);
+                return Ok(WitnessCheckDbOutcome {
+                    repair_range: None,
+                    checked: false,
+                });
             }
         }
 
@@ -2996,8 +3029,6 @@ impl SyncEngine {
             } else {
                 spendability.mark_validated(target_height, computed_anchor_height)?;
             }
-            let mut last = self.last_witness_check_height.write().await;
-            *last = (*last).max(current_height);
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -3022,7 +3053,10 @@ impl SyncEngine {
                 computed_anchor_height,
                 witness_check.considered_notes
             );
-            return Ok(None);
+            return Ok(WitnessCheckDbOutcome {
+                repair_range: None,
+                checked: true,
+            });
         }
 
         let mut queued_start = u64::MAX;
@@ -3047,8 +3081,6 @@ impl SyncEngine {
             queued_start,
             SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
         )?;
-        let mut last = self.last_witness_check_height.write().await;
-        *last = (*last).max(current_height);
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -3075,7 +3107,10 @@ impl SyncEngine {
             witness_check.orchard_missing,
             witness_check.repair_ranges.len()
         );
-        Ok(Some((queued_start, queued_end)))
+        Ok(WitnessCheckDbOutcome {
+            repair_range: Some((queued_start, queued_end)),
+            checked: true,
+        })
     }
 
     /// Run a tip-level witness validation pass without failing the sync task.
