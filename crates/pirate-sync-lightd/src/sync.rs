@@ -1046,6 +1046,108 @@ struct ServerBatchHintTask {
     handle: tokio::task::JoinHandle<Option<u64>>,
 }
 
+struct HistoricalPrefillTask {
+    handle: Option<tokio::task::JoinHandle<Result<RemoteHistoricalSubtreeRoots>>>,
+}
+
+impl HistoricalPrefillTask {
+    fn spawn(
+        client: LightClient,
+        request: HistoricalSubtreeRootRequest,
+        timeout: Duration,
+        cancel: CancelToken,
+    ) -> Self {
+        let handle = tokio::spawn(async move {
+            tokio::select! {
+                roots = fetch_remote_historical_subtree_roots(&client, request, timeout) => {
+                    Ok(roots)
+                },
+                _ = cancel.cancelled() => Err(Error::Cancelled),
+            }
+        });
+        Self {
+            handle: Some(handle),
+        }
+    }
+
+    async fn take_ready(&mut self) -> Option<Result<RemoteHistoricalSubtreeRoots>> {
+        if !self
+            .handle
+            .as_ref()
+            .is_some_and(tokio::task::JoinHandle::is_finished)
+        {
+            return None;
+        }
+        let handle = self.handle.take()?;
+        Some(
+            handle
+                .await
+                .map_err(|error| {
+                    Error::Sync(format!(
+                        "Historical subtree-root prefill task failed: {}",
+                        error
+                    ))
+                })
+                .and_then(|result| result),
+        )
+    }
+}
+
+impl Drop for HistoricalPrefillTask {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
+    }
+}
+
+async fn merge_ready_historical_prefill(
+    task: &mut Option<HistoricalPrefillTask>,
+    state: &mut Option<HistoricalPrefillState>,
+) -> bool {
+    let ready = match task.as_mut() {
+        Some(task) => task.take_ready().await,
+        None => None,
+    };
+    let Some(result) = ready else {
+        return false;
+    };
+    *task = None;
+
+    match result {
+        Ok(remote) => {
+            if let Some(state) = state.as_mut() {
+                state.merge_remote_roots(remote);
+                append_sync_decision_log(
+                    "sync.rs:sync_range_internal",
+                    "remote subtree roots merged at batch boundary",
+                    format!(
+                        "\"sapling_prefetched\":{},\"ironwood_prefetched\":{},\"sapling_available\":{},\"ironwood_available\":{}",
+                        state.sapling_prefetched,
+                        state.orchard_prefetched,
+                        state.sapling.roots_by_index.len(),
+                        state.orchard.roots_by_index.len()
+                    ),
+                );
+            }
+        }
+        Err(Error::Cancelled) => {}
+        Err(error) => {
+            tracing::warn!(
+                "Optional historical subtree-root prefill unavailable; continuing with compact blocks: {}",
+                error
+            );
+            append_sync_decision_log(
+                "sync.rs:sync_range_internal",
+                "remote subtree-root prefill unavailable",
+                format!("\"error\":\"{}\"", error.to_string().replace('"', "'")),
+            );
+        }
+    }
+    true
+}
+
+#[cfg(test)]
 #[derive(Clone, Copy, Debug)]
 struct BatchTuning {
     target_bytes: u64,
@@ -1078,9 +1180,236 @@ struct TreeStateRetryProfile {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FrontierInitSource {
-    None,
     LocalSnapshot,
     RemoteTreeState,
+    ReplayFrom(u64),
+}
+
+fn wallet_relevant_blocks(
+    blocks: &[CompactBlockData],
+    birthday_height: u32,
+) -> &[CompactBlockData] {
+    let birthday_height = u64::from(birthday_height);
+    let first_relevant = blocks.partition_point(|block| block.height < birthday_height);
+    &blocks[first_relevant..]
+}
+
+fn prepare_commitment_batch(blocks: &[CompactBlockData]) -> PreparedCommitmentBatch {
+    let started = Instant::now();
+    let prepared_blocks = blocks
+        .par_iter()
+        .map(|block| {
+            let mut monotonic = true;
+            let mut last_index = 0u64;
+            for (fallback_index, tx) in block.transactions.iter().enumerate() {
+                let index = tx.index.unwrap_or(fallback_index as u64);
+                if fallback_index > 0 && index < last_index {
+                    monotonic = false;
+                    break;
+                }
+                last_index = index;
+            }
+
+            let mut ordered_transactions =
+                block.transactions.iter().enumerate().collect::<Vec<_>>();
+            if !monotonic {
+                ordered_transactions
+                    .sort_by_key(|(fallback_index, tx)| tx.index.unwrap_or(*fallback_index as u64));
+            }
+
+            let transactions = ordered_transactions
+                .into_iter()
+                .map(|(_, tx)| {
+                    let sapling = tx
+                        .outputs
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(output_index, output)| {
+                            let commitment: [u8; 32] = output.cmu.as_slice().try_into().ok()?;
+                            let node = Option::<SaplingExtractedNoteCommitment>::from(
+                                SaplingExtractedNoteCommitment::from_bytes(&commitment),
+                            )
+                            .map(|cmu| SaplingNode::from_cmu(&cmu));
+                            Some(PreparedSaplingCommitment {
+                                output_index,
+                                commitment,
+                                node,
+                            })
+                        })
+                        .collect();
+                    let ironwood = tx
+                        .actions
+                        .iter()
+                        .filter_map(|action| {
+                            let commitment: [u8; 32] = action.cmx.as_slice().try_into().ok()?;
+                            let node = Option::<OrchardExtractedNoteCommitment>::from(
+                                OrchardExtractedNoteCommitment::from_bytes(&commitment),
+                            )
+                            .map(|cmx| MerkleHashOrchard::from_cmx(&cmx));
+                            Some(PreparedIronwoodCommitment { commitment, node })
+                        })
+                        .collect();
+                    PreparedCommitmentTransaction {
+                        hash: tx.hash.clone(),
+                        sapling,
+                        ironwood,
+                    }
+                })
+                .collect();
+
+            PreparedBlockCommitments {
+                height: block.height,
+                hash: block.hash.clone(),
+                transactions,
+            }
+        })
+        .collect::<Vec<_>>();
+    let (sapling_count, ironwood_count) = prepared_blocks
+        .iter()
+        .flat_map(|block| &block.transactions)
+        .fold((0usize, 0usize), |(sapling, ironwood), tx| {
+            (
+                sapling.saturating_add(tx.sapling.len()),
+                ironwood.saturating_add(tx.ironwood.len()),
+            )
+        });
+
+    PreparedCommitmentBatch {
+        blocks: prepared_blocks,
+        elapsed: started.elapsed(),
+        sapling_count,
+        ironwood_count,
+    }
+}
+
+#[cfg(test)]
+fn batch_cap_for_target_latency(
+    current_cap: u64,
+    fetched_blocks: u64,
+    elapsed: Duration,
+    min_batch_size: u64,
+    max_batch_size: u64,
+) -> u64 {
+    let max_batch_size = max_batch_size.max(min_batch_size).max(1);
+    let min_batch_size = min_batch_size.max(1).min(max_batch_size);
+    let current_cap = current_cap.clamp(min_batch_size, max_batch_size);
+    if fetched_blocks == 0 {
+        return current_cap;
+    }
+
+    let projected = (u128::from(fetched_blocks) * TARGET_FETCH_BATCH_MS)
+        .checked_div(elapsed.as_millis().max(1))
+        .unwrap_or(u128::from(max_batch_size))
+        .min(u128::from(max_batch_size)) as u64;
+    let growth_cap = current_cap
+        .saturating_mul(MAX_BATCH_CAP_GROWTH_FACTOR)
+        .min(max_batch_size);
+    let adjusted = if projected > current_cap {
+        projected.min(growth_cap)
+    } else {
+        projected
+    };
+
+    adjusted.clamp(min_batch_size, max_batch_size)
+}
+
+#[cfg(test)]
+fn network_batch_cap_after_fetch(
+    current_cap: u64,
+    source: BlockFetchSource,
+    fetched_blocks: u64,
+    elapsed: Duration,
+    min_batch_size: u64,
+    max_batch_size: u64,
+) -> u64 {
+    if source == BlockFetchSource::Cache {
+        current_cap
+    } else {
+        batch_cap_for_target_latency(
+            current_cap,
+            fetched_blocks,
+            elapsed,
+            min_batch_size,
+            max_batch_size,
+        )
+    }
+}
+
+#[cfg(test)]
+fn initial_network_batch_cap(config: &SyncConfig) -> u64 {
+    let min_batch_size = config.min_batch_size.max(1);
+    let max_batch_size = config.max_batch_size.max(min_batch_size);
+    let memory_limit = config.max_batch_memory_bytes.unwrap_or(u64::MAX);
+    let byte_limit = config
+        .target_batch_bytes
+        .min(config.max_batch_bytes)
+        .min(memory_limit);
+    let heavy_block_size = config.heavy_block_threshold_bytes.max(1);
+
+    (byte_limit / heavy_block_size).clamp(min_batch_size, max_batch_size)
+}
+
+#[cfg(test)]
+fn cached_batch_block_cap() -> u64 {
+    // This is only a logical planning horizon. The bounded cache decoder and
+    // byte semaphore split it using actual encoded row sizes, so a coarse
+    // device profile must not impose a second, stale block-count cliff.
+    MAX_CACHED_BATCH_BLOCKS
+}
+
+fn prefetched_batch_encoded_byte_cap(config: &SyncConfig) -> u64 {
+    config
+        .max_batch_bytes
+        .max(1)
+        .min(config.max_batch_memory_bytes.unwrap_or(u64::MAX).max(1))
+        .min(config.prefetch_queue_max_bytes.max(1))
+}
+
+fn resumable_tree_replay_checkpoint(
+    sync_height: u64,
+    requested_tree_height: u64,
+    sapling_activation: u64,
+    common_checkpoint: Option<u64>,
+) -> Option<u64> {
+    let replay_baseline = sapling_activation.saturating_sub(1);
+    if sync_height < replay_baseline || sync_height >= requested_tree_height {
+        return None;
+    }
+
+    common_checkpoint
+        .filter(|checkpoint| *checkpoint >= replay_baseline && *checkpoint <= sync_height)
+}
+
+fn tree_replay_prefetch_end(replay_target: Option<u64>, next_start: u64, sync_end: u64) -> u64 {
+    replay_target
+        .filter(|target| next_start <= *target)
+        .map_or(sync_end, |target| sync_end.min(target))
+}
+
+fn tree_replay_checkpoint_due(
+    replay_target: Option<u64>,
+    batch_end: u64,
+    sync_state_flush_due: bool,
+    checkpoint_written: bool,
+) -> bool {
+    replay_target.is_some()
+        && !checkpoint_written
+        && (sync_state_flush_due || replay_target.is_some_and(|target| batch_end >= target))
+}
+
+fn select_sync_target(
+    start_height: u64,
+    requested_end: Option<u64>,
+    server_height: u64,
+    follow_tip: bool,
+) -> u64 {
+    requested_end.unwrap_or_else(|| {
+        if follow_tip {
+            server_height
+        } else {
+            server_height.max(start_height)
+        }
+    })
 }
 
 impl SyncEngine {
