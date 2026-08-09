@@ -8514,6 +8514,8 @@ impl SyncEngine {
         &self,
         height: u64,
         warm_trees: Option<&mut SyncWarmTrees<'_>>,
+        db_session: Option<&Database>,
+        persistence_worker: Option<&PersistenceWorker>,
     ) -> Result<()> {
         let Some(sink) = self.storage.as_ref() else {
             return Ok(());
@@ -8528,10 +8530,24 @@ impl SyncEngine {
             return Ok(());
         }
 
-        let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        if let Some(worker) = persistence_worker {
+            return worker.checkpoint_shardtrees(checkpoint_id).await;
+        }
+
+        let opened_db;
+        let db = if let Some(db) = db_session {
+            db
+        } else {
+            opened_db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            &opened_db
+        };
+        Self::create_checkpoint_with_db(db, checkpoint_height)
+    }
+
+    fn create_checkpoint_with_db(db: &Database, checkpoint_height: u32) -> Result<()> {
+        let checkpoint_id = BlockHeight::from(checkpoint_height);
         let tx = db
-            .conn()
-            .unchecked_transaction()
+            .unchecked_immediate_transaction()
             .map_err(|e| Error::Sync(format!("Failed to start checkpoint transaction: {}", e)))?;
 
         let checkpoint_exists = |table_prefix: &str| -> Result<bool> {
@@ -8601,7 +8617,88 @@ impl SyncEngine {
         Ok(())
     }
 
+    async fn retain_checkpoint(
+        &self,
+        height: u64,
+        warm_trees: Option<&mut SyncWarmTrees<'_>>,
+        db_session: Option<&Database>,
+        persistence_worker: Option<&PersistenceWorker>,
+    ) -> Result<()> {
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        let checkpoint_height = u32::try_from(height).map_err(|_| {
+            Error::Sync(format!(
+                "Retained checkpoint height {} exceeds u32::MAX",
+                height
+            ))
+        })?;
+        let checkpoint_id = BlockHeight::from(checkpoint_height);
+
+        if let Some(trees) = warm_trees {
+            return trees.retain_checkpoint(checkpoint_id);
+        }
+
+        if let Some(worker) = persistence_worker {
+            return worker.retain_shardtree_checkpoint(checkpoint_id).await;
+        }
+
+        let opened_db;
+        let db = if let Some(db) = db_session {
+            db
+        } else {
+            opened_db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            &opened_db
+        };
+        Self::retain_checkpoint_with_db(db, checkpoint_height)
+    }
+
+    fn retain_checkpoint_with_db(db: &Database, checkpoint_height: u32) -> Result<()> {
+        let checkpoint_id = BlockHeight::from(checkpoint_height);
+        let tx = db.unchecked_immediate_transaction().map_err(|e| {
+            Error::Sync(format!(
+                "Failed to start retained-checkpoint transaction: {}",
+                e
+            ))
+        })?;
+        {
+            let store = SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                &tx,
+                SAPLING_TABLE_PREFIX,
+            )
+            .map_err(|e| Error::Sync(format!("Failed to open Sapling shard store: {}", e)))?;
+            let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
+                ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+            tree.ensure_retained(checkpoint_id).map_err(|e| {
+                Error::Sync(format!(
+                    "Failed to retain Sapling checkpoint {}: {}",
+                    checkpoint_height, e
+                ))
+            })?;
+        }
+        {
+            let store =
+                SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
+                    &tx,
+                    ORCHARD_TABLE_PREFIX,
+                )
+                .map_err(|e| Error::Sync(format!("Failed to open Orchard shard store: {}", e)))?;
+            let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT> =
+                ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+            tree.ensure_retained(checkpoint_id).map_err(|e| {
+                Error::Sync(format!(
+                    "Failed to retain Orchard checkpoint {}: {}",
+                    checkpoint_height, e
+                ))
+            })?;
+        }
+        tx.commit()
+            .map_err(|e| Error::Sync(format!("Failed to commit retained checkpoint: {}", e)))?;
+        Ok(())
+    }
+
     /// Save sync state periodically
+    #[allow(clippy::too_many_arguments)]
     async fn save_sync_state(
         &self,
         local_height: u64,
