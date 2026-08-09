@@ -2644,12 +2644,10 @@ impl SyncEngine {
             ) {
                 Ok(f) => Some(f),
                 Err(e) => {
-                    tracing::warn!(
-                        "Sapling frontier parse failed at height {}: {} -- treating as empty tree",
-                        tree_height,
-                        e
-                    );
-                    None
+                    return Err(Error::Sync(format!(
+                        "Invalid Sapling frontier at height {}: {}",
+                        tree_height, e
+                    )))
                 }
             }
         } else if !tree_state.sapling_tree.is_empty() {
@@ -2657,14 +2655,17 @@ impl SyncEngine {
             {
                 Ok(f) => Some(f),
                 Err(e) => {
-                    tracing::warn!(
-                        "Sapling tree parse failed at height {}: {} -- treating as empty tree",
-                        tree_height,
-                        e
-                    );
-                    None
+                    return Err(Error::Sync(format!(
+                        "Invalid Sapling tree state at height {}: {}",
+                        tree_height, e
+                    )))
                 }
             }
+        } else if sapling_required {
+            return Err(Error::Sync(format!(
+                "Server returned no Sapling tree data at active height {}",
+                tree_height
+            )));
         } else {
             tracing::info!(
                 "No Sapling tree data from server at height {} -- empty tree",
@@ -2673,13 +2674,21 @@ impl SyncEngine {
             None
         };
 
+        let orchard_required = self.orchard_tree_required(tree_height);
         let orchard_hex_len = tree_state.ironwood_tree.len();
-        let orchard_frontier = if tree_state.ironwood_tree.is_empty() {
-            tracing::info!(
-                "No Orchard tree data from server at height {} -- empty tree",
-                tree_height
-            );
+        let orchard_frontier = if !orchard_required {
+            if !tree_state.ironwood_tree.is_empty() {
+                tracing::debug!(
+                    "Ignoring pre-activation Ironwood tree data at height {}",
+                    tree_height
+                );
+            }
             None
+        } else if tree_state.ironwood_tree.is_empty() {
+            return Err(Error::Sync(format!(
+                "Server returned no Orchard tree data at active height {}",
+                tree_height
+            )));
         } else {
             match Self::parse_frontier_hex::<MerkleHashOrchard>(
                 "ironwood_tree",
@@ -2706,10 +2715,6 @@ impl SyncEngine {
                     Some(f)
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "Orchard tree parse failed at height {}: {} (hex_len={}) -- treating as empty tree",
-                        tree_height, e, orchard_hex_len
-                    );
                     append_debug_log_line(&format!(
                         r#"{{"id":"log_orchard_frontier_parse_failed","timestamp":{},"location":"sync.rs:seed_shardtrees_from_remote","message":"Orchard frontier parse failed","data":{{"tree_height":{},"hex_len":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
                         std::time::SystemTime::now()
@@ -2720,7 +2725,10 @@ impl SyncEngine {
                         orchard_hex_len,
                         e
                     ));
-                    None
+                    return Err(Error::Sync(format!(
+                        "Invalid Orchard tree state at height {}: {}",
+                        tree_height, e
+                    )));
                 }
             }
         };
@@ -2737,7 +2745,7 @@ impl SyncEngine {
             return Ok(());
         };
         let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
-        let tx = db.conn().unchecked_transaction().map_err(|e| {
+        let tx = db.unchecked_immediate_transaction().map_err(|e| {
             Error::Sync(format!("Failed to start shardtree seed transaction: {}", e))
         })?;
 
@@ -2750,6 +2758,8 @@ impl SyncEngine {
             tx.execute("DELETE FROM sapling_tree_shards", [])
                 .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
             tx.execute("DELETE FROM sapling_tree_cap", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+            tx.execute("DELETE FROM sapling_tree_retained_checkpoints", [])
                 .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
 
             let store = SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
@@ -2788,6 +2798,8 @@ impl SyncEngine {
             tx.execute("DELETE FROM orchard_tree_shards", [])
                 .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
             tx.execute("DELETE FROM orchard_tree_cap", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+            tx.execute("DELETE FROM orchard_tree_retained_checkpoints", [])
                 .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
 
             let store =
