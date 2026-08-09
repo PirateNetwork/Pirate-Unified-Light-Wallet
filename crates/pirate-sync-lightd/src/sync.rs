@@ -2451,10 +2451,11 @@ impl SyncEngine {
         &self,
         start_height: u64,
     ) -> Result<FrontierInitSource> {
-        if start_height <= 1 {
-            *self.sapling_tree_position.write().await = 0;
-            *self.orchard_tree_position.write().await = 0;
-            return Ok(FrontierInitSource::None);
+        let sapling_activation =
+            u64::from(PirateParamsNetwork::from_type(self.network_type).sapling_activation_height)
+                .max(1);
+        if start_height <= sapling_activation {
+            return self.prepare_shardtrees_for_replay(sapling_activation).await;
         }
 
         let tree_height = start_height.saturating_sub(1);
@@ -2472,7 +2473,9 @@ impl SyncEngine {
             );
         });
 
-        if self.shardtree_has_checkpoints_at_or_above(tree_height)? {
+        if self.shardtrees_have_checkpoint(tree_height)? {
+            self.retain_checkpoint(tree_height, None, None, None)
+                .await?;
             self.recover_position_counters_from_shardtree().await?;
             tracing::debug!(
                 "ShardTree already has checkpoints at height {}; reusing existing state",
@@ -2481,14 +2484,159 @@ impl SyncEngine {
             return Ok(FrontierInitSource::LocalSnapshot);
         }
 
-        self.seed_shardtrees_from_remote(tree_height).await?;
-        Ok(FrontierInitSource::RemoteTreeState)
+        // A Zcash-style wallet birthday consists of both a height and the exact
+        // note-commitment frontier at the end of the preceding block. Always try
+        // that bounded remote seed before resuming an activation-era replay. This
+        // lets wallets created by older builds escape an accidentally-started
+        // replay as soon as a conforming light server is available.
+        let partial_replay =
+            self.partial_tree_replay_checkpoint(tree_height, sapling_activation)?;
+        let remote_seed = match self.fetch_tree_state_with_retry(tree_height).await {
+            Ok(tree_state) => {
+                self.seed_shardtrees_from_tree_state(tree_height, tree_state)
+                    .await
+            }
+            Err(e) => Err(e),
+        };
+
+        match remote_seed {
+            Ok(()) => {
+                self.retain_checkpoint(tree_height, None, None, None)
+                    .await?;
+                Ok(FrontierInitSource::RemoteTreeState)
+            }
+            Err(remote_error) => {
+                if let Some(checkpoint_height) = partial_replay {
+                    self.rewind_shardtrees_for_replay(checkpoint_height).await?;
+                    tracing::warn!(
+                        "Historical tree state at {} is unavailable ({}); resuming the previously-started commitment-tree replay at {}",
+                        tree_height,
+                        remote_error,
+                        checkpoint_height
+                    );
+                    return Ok(FrontierInitSource::ReplayFrom(
+                        checkpoint_height.saturating_add(1),
+                    ));
+                }
+
+                Err(Error::Sync(format!(
+                    "Cannot initialize wallet birthday {} because the selected light server did not provide a valid tree state at height {}: {}. Retry or select another light server; refusing to replay automatically from Sapling activation {}",
+                    start_height, tree_height, remote_error, sapling_activation
+                )))
+            }
+        }
     }
 
-    /// Seed both ShardTrees from the remote lightwalletd tree state at the given height.
-    async fn seed_shardtrees_from_remote(&self, tree_height: u64) -> Result<()> {
-        let tree_state = self.fetch_tree_state_with_retry(tree_height).await?;
+    async fn prepare_shardtrees_for_replay(
+        &self,
+        replay_height: u64,
+    ) -> Result<FrontierInitSource> {
+        self.prepare_empty_shardtrees_for_replay(replay_height.saturating_sub(1))
+            .await?;
+        Ok(FrontierInitSource::ReplayFrom(replay_height))
+    }
 
+    async fn prepare_empty_shardtrees_for_replay(&self, checkpoint_height: u64) -> Result<()> {
+        let Some(sink) = self.storage.as_ref() else {
+            *self.sapling_tree_position.write().await = 0;
+            *self.orchard_tree_position.write().await = 0;
+            return Ok(());
+        };
+        let checkpoint_height = u32::try_from(checkpoint_height).map_err(|_| {
+            Error::Sync(format!(
+                "Replay baseline checkpoint {} exceeds u32::MAX",
+                checkpoint_height
+            ))
+        })?;
+        let checkpoint_id = BlockHeight::from(checkpoint_height);
+        let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let tx = db
+            .conn()
+            .unchecked_transaction()
+            .map_err(|e| Error::Sync(format!("Failed to start shardtree replay reset: {}", e)))?;
+        for prefix in [SAPLING_TABLE_PREFIX, ORCHARD_TABLE_PREFIX] {
+            for suffix in [
+                "tree_checkpoint_marks_removed",
+                "tree_checkpoints",
+                "tree_shards",
+                "tree_cap",
+                "tree_retained_checkpoints",
+            ] {
+                tx.execute(&format!("DELETE FROM {}_{}", prefix, suffix), [])
+                    .map_err(|e| {
+                        Error::Sync(format!(
+                            "Failed to reset {} shardtree for deterministic replay: {}",
+                            prefix, e
+                        ))
+                    })?;
+            }
+        }
+        {
+            let store = SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                &tx,
+                SAPLING_TABLE_PREFIX,
+            )
+            .map_err(|e| Error::Sync(format!("Failed to open Sapling shard store: {}", e)))?;
+            let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
+                ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+            tree.checkpoint(checkpoint_id).map_err(|e| {
+                Error::Sync(format!(
+                    "Failed to create Sapling replay baseline at {}: {}",
+                    checkpoint_height, e
+                ))
+            })?;
+        }
+        {
+            let store =
+                SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
+                    &tx,
+                    ORCHARD_TABLE_PREFIX,
+                )
+                .map_err(|e| Error::Sync(format!("Failed to open Orchard shard store: {}", e)))?;
+            let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT> =
+                ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+            tree.checkpoint(checkpoint_id).map_err(|e| {
+                Error::Sync(format!(
+                    "Failed to create Orchard replay baseline at {}: {}",
+                    checkpoint_height, e
+                ))
+            })?;
+        }
+        tx.execute(
+            r#"
+            UPDATE sync_state
+            SET local_height = ?1,
+                last_checkpoint_height = ?1,
+                updated_at = ?2
+            WHERE id = 1
+            "#,
+            rusqlite::params![checkpoint_height, chrono::Utc::now().to_rfc3339()],
+        )
+        .map_err(|e| Error::Sync(format!("Failed to align replay baseline state: {}", e)))?;
+        tx.commit()
+            .map_err(|e| Error::Sync(format!("Failed to commit shardtree replay reset: {}", e)))?;
+        *self.sapling_tree_position.write().await = 0;
+        *self.orchard_tree_position.write().await = 0;
+        Ok(())
+    }
+
+    /// Seed both ShardTrees from a lightwalletd tree state at the given height.
+    async fn seed_shardtrees_from_tree_state(
+        &self,
+        tree_height: u64,
+        tree_state: TreeState,
+    ) -> Result<()> {
+        if tree_state.height != tree_height {
+            return Err(Error::Sync(format!(
+                "Server returned tree state for height {}, expected {}",
+                tree_state.height, tree_height
+            )));
+        }
+
+        let sapling_required = tree_height
+            >= u64::from(
+                PirateParamsNetwork::from_type(self.network_type).sapling_activation_height,
+            );
         let sapling_frontier = if !tree_state.sapling_frontier.is_empty() {
             match Self::parse_frontier_hex::<SaplingNode>(
                 "sapling_frontier",
