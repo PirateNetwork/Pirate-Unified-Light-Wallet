@@ -7098,11 +7098,15 @@ impl SyncEngine {
     async fn update_commitment_trees(
         &self,
         blocks: &[CompactBlockData],
+        prepared_commitments: PreparedCommitmentBatch,
         notes: &[DecryptedNote],
         checkpoint_mode: FrontierCheckpointMode,
         warm_trees: Option<&mut SyncWarmTrees<'_>>,
         historical_prefill_state: Option<&mut HistoricalPrefillState>,
-    ) -> Result<(u64, PositionMaps, bool)> {
+        run_db: Option<&Database>,
+        persistence_worker: Option<&PersistenceWorker>,
+    ) -> Result<(u64, PositionMaps, bool, ShardtreePersistResult)> {
+        prepared_commitments.validate_source(blocks)?;
         let mut sapling_pos = self.sapling_tree_position.write().await;
         let mut orchard_pos = self.orchard_tree_position.write().await;
         let mut count = 0u64;
@@ -7119,8 +7123,9 @@ impl SyncEngine {
             .collect();
         let has_owned_sapling = !sapling_owned.is_empty();
         let has_owned_orchard = !orchard_owned.is_empty();
-        let mut shardtree_batches: Vec<ShardtreeBatch> = Vec::with_capacity(blocks.len());
-        let batch_end_height = blocks.last().map(|block| block.height);
+        let mut shardtree_batches: Vec<ShardtreeBatch> =
+            Vec::with_capacity(prepared_commitments.blocks.len());
+        let batch_end_height = prepared_commitments.blocks.last().map(|block| block.height);
         let mut historical_prefill_state = historical_prefill_state;
 
         if checkpoint_mode != FrontierCheckpointMode::OwnedOnly {
@@ -7136,40 +7141,35 @@ impl SyncEngine {
             }
         }
 
-        for block in blocks {
+        for block in prepared_commitments.blocks {
             let mut shardtree_batch = ShardtreeBatch::new(block.height);
-            let sapling_pos_ref = &mut *sapling_pos;
-            let orchard_pos_ref = &mut *orchard_pos;
-            let count_ref = &mut count;
-            let position_mappings_ref = &mut position_mappings;
-            let (mut sapling_skip_state, mut orchard_skip_state) =
-                if checkpoint_mode == FrontierCheckpointMode::OwnedOnly {
-                    match historical_prefill_state.as_deref_mut() {
-                        Some(state) => (Some(&mut state.sapling), Some(&mut state.orchard)),
-                        None => (None, None),
-                    }
-                } else {
-                    (None, None)
-                };
+            {
+                let sapling_pos_ref = &mut *sapling_pos;
+                let orchard_pos_ref = &mut *orchard_pos;
+                let count_ref = &mut count;
+                let position_mappings_ref = &mut position_mappings;
+                let (mut sapling_skip_state, mut orchard_skip_state) =
+                    if checkpoint_mode == FrontierCheckpointMode::OwnedOnly {
+                        match historical_prefill_state.as_deref_mut() {
+                            Some(state) => (Some(&mut state.sapling), Some(&mut state.orchard)),
+                            None => (None, None),
+                        }
+                    } else {
+                        (None, None)
+                    };
 
-            let mut process_tx = |tx: &crate::client::CompactTx| -> Result<()> {
-                let txid = tx.hash.as_slice();
-                for (output_idx, output) in tx.outputs.iter().enumerate() {
-                    if output.cmu.len() == 32 {
-                        let mut cm = [0u8; 32];
-                        cm.copy_from_slice(&output.cmu);
+                for tx in block.transactions {
+                    for output in tx.sapling {
                         let pos = *sapling_pos_ref;
                         *sapling_pos_ref = sapling_pos_ref.saturating_add(1);
-                        let is_owned = has_owned_sapling && sapling_owned.contains(&cm);
+                        let is_owned =
+                            has_owned_sapling && sapling_owned.contains(&output.commitment);
                         if is_owned {
-                            if let Some(key) = TxOutputKey::new(txid, output_idx) {
+                            if let Some(key) = TxOutputKey::new(&tx.hash, output.output_index) {
                                 position_mappings_ref.sapling_by_tx.insert(key, pos);
                             }
                         }
-                        let cmu_opt: Option<SaplingExtractedNoteCommitment> =
-                            SaplingExtractedNoteCommitment::from_bytes(&cm).into();
-                        if let Some(cmu_value) = cmu_opt {
-                            let node = SaplingNode::from_cmu(&cmu_value);
+                        if let Some(node) = output.node {
                             let retention = if is_owned {
                                 Retention::Marked
                             } else {
@@ -7186,26 +7186,22 @@ impl SyncEngine {
                                     shardtree_batches: &mut shardtree_batches,
                                 },
                                 append_sapling_leaf,
-                            );
+                            )?;
                             *count_ref += 1;
                         }
                     }
-                }
 
-                for action in &tx.actions {
-                    if action.cmx.len() == 32 {
-                        let mut cm = [0u8; 32];
-                        cm.copy_from_slice(&action.cmx);
+                    for action in tx.ironwood {
                         let pos = *orchard_pos_ref;
                         *orchard_pos_ref = orchard_pos_ref.saturating_add(1);
-                        let is_owned = has_owned_orchard && orchard_owned.contains(&cm);
+                        let is_owned =
+                            has_owned_orchard && orchard_owned.contains(&action.commitment);
                         if is_owned {
-                            position_mappings_ref.orchard_by_commitment.insert(cm, pos);
+                            position_mappings_ref
+                                .orchard_by_commitment
+                                .insert(action.commitment, pos);
                         }
-                        let cmx_opt: Option<OrchardExtractedNoteCommitment> =
-                            OrchardExtractedNoteCommitment::from_bytes(&cm).into();
-                        if let Some(cmx) = cmx_opt {
-                            let cmx_hash = MerkleHashOrchard::from_cmx(&cmx);
+                        if let Some(node) = action.node {
                             let retention = if is_owned {
                                 Retention::Marked
                             } else {
@@ -7215,42 +7211,17 @@ impl SyncEngine {
                                 orchard_skip_state.as_deref_mut(),
                                 pos,
                                 block.height,
-                                cmx_hash,
+                                node,
                                 retention,
                                 HistoricalLeafSink {
                                     current_batch: &mut shardtree_batch,
                                     shardtree_batches: &mut shardtree_batches,
                                 },
                                 append_orchard_leaf,
-                            );
+                            )?;
                             *count_ref += 1;
                         }
                     }
-                }
-
-                Ok(())
-            };
-
-            let mut monotonic = true;
-            let mut last_idx = 0u64;
-            for (fallback_idx, tx) in block.transactions.iter().enumerate() {
-                let idx = tx.index.unwrap_or(fallback_idx as u64);
-                if fallback_idx > 0 && idx < last_idx {
-                    monotonic = false;
-                    break;
-                }
-                last_idx = idx;
-            }
-
-            if monotonic {
-                for tx in &block.transactions {
-                    process_tx(tx)?;
-                }
-            } else {
-                let mut txs: Vec<_> = block.transactions.iter().enumerate().collect();
-                txs.sort_by_key(|(fallback_idx, tx)| tx.index.unwrap_or(*fallback_idx as u64));
-                for (_, tx) in txs {
-                    process_tx(tx)?;
                 }
             }
 
@@ -7261,20 +7232,36 @@ impl SyncEngine {
                 ))
             })?;
             let checkpoint_id = BlockHeight::from(checkpoint_height);
-            let has_wallet_mark = shardtree_batch
+            let sapling_wallet_mark = shardtree_batch
                 .sapling
                 .iter()
-                .any(|(_, retention)| retention.is_marked())
-                || shardtree_batch
-                    .orchard
-                    .iter()
-                    .any(|(_, retention)| retention.is_marked());
-            let should_checkpoint = match checkpoint_mode {
-                FrontierCheckpointMode::PerBlock => true,
-                FrontierCheckpointMode::OwnedOnly => has_wallet_mark,
-            };
-            shardtree_batch.checkpoint_id = should_checkpoint.then_some(checkpoint_id);
-            if should_checkpoint {
+                .any(|(_, retention)| retention.is_marked());
+            let orchard_wallet_mark = shardtree_batch
+                .orchard
+                .iter()
+                .any(|(_, retention)| retention.is_marked());
+            let (sapling_checkpoint_safe, orchard_checkpoint_safe) = historical_prefill_state
+                .as_deref()
+                .map(|state| {
+                    (
+                        state.sapling_checkpoint_safe(),
+                        state.orchard_checkpoint_safe(),
+                    )
+                })
+                .unwrap_or((true, true));
+            let sapling_should_checkpoint = sapling_checkpoint_safe
+                && match checkpoint_mode {
+                    FrontierCheckpointMode::PerBlock => true,
+                    FrontierCheckpointMode::OwnedOnly => sapling_wallet_mark,
+                };
+            let orchard_should_checkpoint = orchard_checkpoint_safe
+                && match checkpoint_mode {
+                    FrontierCheckpointMode::PerBlock => true,
+                    FrontierCheckpointMode::OwnedOnly => orchard_wallet_mark,
+                };
+            shardtree_batch.checkpoint_id =
+                (sapling_should_checkpoint || orchard_should_checkpoint).then_some(checkpoint_id);
+            if sapling_should_checkpoint {
                 if let Some((_, retention)) = shardtree_batch.sapling.last_mut() {
                     *retention = Retention::Checkpoint {
                         id: checkpoint_id,
@@ -7287,6 +7274,8 @@ impl SyncEngine {
                 } else {
                     shardtree_batch.sapling_empty_checkpoint = true;
                 }
+            }
+            if orchard_should_checkpoint {
                 if let Some((_, retention)) = shardtree_batch.orchard.last_mut() {
                     *retention = Retention::Checkpoint {
                         id: checkpoint_id,
@@ -7304,37 +7293,138 @@ impl SyncEngine {
             shardtree_batches.push(shardtree_batch);
         }
 
+        let verified_roots = historical_prefill_state
+            .as_ref()
+            .map(|state| state.pending_verified_roots())
+            .unwrap_or_default();
         let persist_result = if let Some(trees) = warm_trees {
-            trees.persist_batches(&shardtree_batches, batch_end_height)?
+            trees.persist_batches_with_roots(
+                &shardtree_batches,
+                batch_end_height,
+                &verified_roots,
+            )?
+        } else if let Some(worker) = persistence_worker {
+            worker
+                .persist_shardtree_batches_with_roots(
+                    shardtree_batches,
+                    batch_end_height,
+                    verified_roots.clone(),
+                )
+                .await?
         } else {
-            self.persist_shardtree_batches(&shardtree_batches, batch_end_height)?
+            Self::persist_shardtree_batches_with_roots_for_storage(
+                self.storage.as_ref(),
+                &shardtree_batches,
+                batch_end_height,
+                run_db,
+                &verified_roots,
+            )?
         };
+        if !verified_roots.is_empty() {
+            if let Some(state) = historical_prefill_state.take() {
+                state.mark_verified_roots_persisted(&verified_roots);
+            }
+            let grafted = verified_roots.counts();
+            tracing::info!(
+                "Grafted sampled historical subtree roots atomically: sapling={}, ironwood={}",
+                grafted.0,
+                grafted.1
+            );
+        }
         Ok((
             count,
             position_mappings,
             persist_result.batch_end_checkpointed,
+            persist_result,
         ))
+    }
+
+    async fn flush_historical_prefill_buffers(
+        &self,
+        historical_prefill_state: &mut Option<HistoricalPrefillState>,
+        warm_trees: &mut Option<SyncWarmTrees<'_>>,
+        run_db: Option<&Database>,
+        persistence_worker: Option<&PersistenceWorker>,
+    ) -> Result<()> {
+        let Some(state) = historical_prefill_state.as_mut() else {
+            return Ok(());
+        };
+        let mut pending_batches = Vec::new();
+        merge_emitted_batches(
+            &mut pending_batches,
+            drain_historical_skip_state(&mut state.sapling, append_sapling_leaf),
+        );
+        merge_emitted_batches(
+            &mut pending_batches,
+            drain_historical_skip_state(&mut state.orchard, append_orchard_leaf),
+        );
+        if pending_batches.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(trees) = warm_trees.as_mut() {
+            let _ = trees.persist_batches(&pending_batches, None)?;
+        } else if let Some(worker) = persistence_worker {
+            let _ = worker
+                .persist_shardtree_batches(pending_batches, None)
+                .await?;
+        } else {
+            let _ = Self::persist_shardtree_batches_for_storage(
+                self.storage.as_ref(),
+                &pending_batches,
+                None,
+                run_db,
+            )?;
+        }
+        Ok(())
     }
 
     /// Persist commitment batches to the ShardTree (SQLite-backed).
     ///
     /// Uses upstream-style retained leaves and encodes per-block checkpoints at insert time.
-    fn persist_shardtree_batches(
-        &self,
+    fn persist_shardtree_batches_for_storage(
+        storage: Option<&StorageSink>,
         batches: &[ShardtreeBatch],
         batch_end_height: Option<u64>,
+        run_db: Option<&Database>,
     ) -> Result<ShardtreePersistResult> {
-        if batches.is_empty() {
+        Self::persist_shardtree_batches_with_roots_for_storage(
+            storage,
+            batches,
+            batch_end_height,
+            run_db,
+            &VerifiedSubtreeRoots::default(),
+        )
+    }
+
+    fn persist_shardtree_batches_with_roots_for_storage(
+        storage: Option<&StorageSink>,
+        batches: &[ShardtreeBatch],
+        batch_end_height: Option<u64>,
+        run_db: Option<&Database>,
+        verified_roots: &VerifiedSubtreeRoots,
+    ) -> Result<ShardtreePersistResult> {
+        if batches.is_empty() && verified_roots.is_empty() {
             return Ok(ShardtreePersistResult::default());
         }
-        let Some(sink) = self.storage.as_ref() else {
+        let Some(sink) = storage else {
+            if !verified_roots.is_empty() {
+                return Err(Error::Sync(
+                    "Verified subtree roots require persistent storage".to_string(),
+                ));
+            }
             return Ok(ShardtreePersistResult::default());
         };
 
-        let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let opened_db;
+        let db = if let Some(db) = run_db {
+            db
+        } else {
+            opened_db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            &opened_db
+        };
         let tx = db
-            .conn()
-            .unchecked_transaction()
+            .unchecked_immediate_transaction()
             .map_err(|e| Error::Sync(format!("Failed to start shardtree transaction: {}", e)))?;
 
         let sapling_store =
@@ -7349,11 +7439,6 @@ impl SyncEngine {
                 ORCHARD_TABLE_PREFIX,
             )
             .map_err(|e| Error::Sync(format!("Failed to open Orchard shard store: {}", e)))?;
-
-        let mut sapling_tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
-            ShardTree::new(sapling_store, SHARDTREE_PRUNING_DEPTH);
-        let mut orchard_tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT> =
-            ShardTree::new(orchard_store, SHARDTREE_PRUNING_DEPTH);
 
         // Guard: find the highest block height already checkpointed so we can
         // skip blocks that were already committed to the tree. Re-appending
@@ -7374,22 +7459,87 @@ impl SyncEngine {
                 |row| row.get(0),
             )
             .unwrap_or(None);
-        let max_committed_height = match (
-            max_existing_sapling_checkpoint,
-            max_existing_orchard_checkpoint,
-        ) {
-            (Some(s), Some(o)) => Some(s.max(o)),
-            (Some(s), None) => Some(s),
-            (None, Some(o)) => Some(o),
-            (None, None) => None,
+        let max_committed_heights = CommittedCheckpointHeights {
+            sapling: max_existing_sapling_checkpoint,
+            ironwood: max_existing_orchard_checkpoint,
         };
 
-        let result = apply_shardtree_batches_to_trees(
-            &mut sapling_tree,
-            &mut orchard_tree,
-            batches,
-            batch_end_height,
-            max_committed_height,
+        let checkpoint_heavy = batches
+            .iter()
+            .filter(|batch| batch.checkpoint_id.is_some())
+            .take(2)
+            .count()
+            > 1;
+        let result = if checkpoint_heavy || !verified_roots.is_empty() {
+            let sapling_preloads =
+                sparse_preload_addresses::<_, SAPLING_SHARD_HEIGHT>(&sapling_store, "Sapling")?;
+            let orchard_preloads =
+                sparse_preload_addresses::<_, ORCHARD_SHARD_HEIGHT>(&orchard_store, "Orchard")?;
+            let sapling_store =
+                SparseCachingShardStore::with_preloaded(sapling_store, sapling_preloads).map_err(
+                    |e| Error::Sync(format!("Failed to preload Sapling shard store: {}", e)),
+                )?;
+            let orchard_store =
+                SparseCachingShardStore::with_preloaded(orchard_store, orchard_preloads).map_err(
+                    |e| Error::Sync(format!("Failed to preload Orchard shard store: {}", e)),
+                )?;
+            let mut sapling_tree: ShardTree<
+                _,
+                { NOTE_COMMITMENT_TREE_DEPTH },
+                SAPLING_SHARD_HEIGHT,
+            > = ShardTree::new(sapling_store, SHARDTREE_PRUNING_DEPTH);
+            let mut orchard_tree: ShardTree<
+                _,
+                { NOTE_COMMITMENT_TREE_DEPTH },
+                ORCHARD_SHARD_HEIGHT,
+            > = ShardTree::new(orchard_store, SHARDTREE_PRUNING_DEPTH);
+            let result = apply_shardtree_batches_to_trees(
+                &mut sapling_tree,
+                &mut orchard_tree,
+                batches,
+                batch_end_height,
+                max_committed_heights,
+                verified_roots,
+            )?;
+            sapling_tree
+                .into_store()
+                .flush()
+                .map_err(|e| Error::Sync(format!("Failed to flush Sapling shard store: {}", e)))?;
+            orchard_tree
+                .into_store()
+                .flush()
+                .map_err(|e| Error::Sync(format!("Failed to flush Orchard shard store: {}", e)))?;
+            result
+        } else {
+            let mut sapling_tree: ShardTree<
+                _,
+                { NOTE_COMMITMENT_TREE_DEPTH },
+                SAPLING_SHARD_HEIGHT,
+            > = ShardTree::new(sapling_store, SHARDTREE_PRUNING_DEPTH);
+            let mut orchard_tree: ShardTree<
+                _,
+                { NOTE_COMMITMENT_TREE_DEPTH },
+                ORCHARD_SHARD_HEIGHT,
+            > = ShardTree::new(orchard_store, SHARDTREE_PRUNING_DEPTH);
+            apply_shardtree_batches_to_trees(
+                &mut sapling_tree,
+                &mut orchard_tree,
+                batches,
+                batch_end_height,
+                max_committed_heights,
+                verified_roots,
+            )?
+        };
+
+        persist_verified_pool_roots::<SaplingNode, SAPLING_SHARD_HEIGHT>(
+            &tx,
+            SAPLING_TABLE_PREFIX,
+            &verified_roots.sapling,
+        )?;
+        persist_verified_pool_roots::<MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>(
+            &tx,
+            ORCHARD_TABLE_PREFIX,
+            &verified_roots.ironwood,
         )?;
 
         tx.commit()
