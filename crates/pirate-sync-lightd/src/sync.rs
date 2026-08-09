@@ -9,8 +9,14 @@
 //! - Checkpoint loading and restoration
 //! - Rollback on interruption/corruption/reorg
 
-use crate::block_cache::{acquire_inflight, BlockCache, InflightLease};
-use crate::client::{CompactBlockData, TransportMode};
+use crate::block_cache::{acquire_inflight, BlockCache, InflightLease, InflightToken};
+use crate::client::{CompactBlockData, LightdInfo, TransportMode, TreeState};
+use crate::intake::{
+    local_batch_prefix_len, AdaptiveDurableSegmentController, AdaptiveScanBatcher,
+    DurableSegmentObservation, PrefetchReservation, PrefetchWatermarks, ScanBatchObservation,
+    ScanBatchSource, DEFAULT_DURABLE_SEGMENT_BLOCKS, DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+    DURABLE_SEGMENT_CHANNEL_CAPACITY, LOCAL_SCAN_BATCH_CHANNEL_CAPACITY,
+};
 use crate::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes;
 use crate::pipeline::NoteType;
 use crate::pipeline::{DecryptedNote, OrchardDecryptedNoteInit, PerfCounters};
@@ -61,16 +67,19 @@ use sapling::{
     note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment, Node as SaplingNode,
     PaymentAddress as SaplingPaymentAddress, Rseed, SaplingIvk, NOTE_COMMITMENT_TREE_DEPTH,
 };
-use shardtree::store::caching::CachingShardStore;
+use shardtree::store::caching::{CachingShardStore, SparseCachingShardStore};
 use shardtree::ShardTree;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, OnceLock};
+use std::thread;
 use std::time::{Duration, Instant};
 use subtle::CtOption;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tonic::Code;
 use zcash_note_encryption::try_output_recovery_with_ovk;
 use zcash_note_encryption::{
@@ -87,9 +96,13 @@ mod shardtree_support;
 
 use self::shardtree_support::{
     append_orchard_leaf, append_sapling_leaf, apply_shardtree_batches_to_trees,
-    drain_historical_skip_state, merge_emitted_batches, prefill_historical_subtree_roots,
-    process_historical_leaf, warm_shardtree_cache_with_subtrees_enabled, HistoricalLeafSink,
-    HistoricalPrefillState, ShardtreeBatch, ShardtreePersistResult, SyncWarmTrees,
+    drain_historical_skip_state, fetch_remote_historical_subtree_roots,
+    log_shardtree_persistence_telemetry, merge_emitted_batches, persist_verified_pool_roots,
+    prepare_historical_subtree_roots, process_historical_leaf, sparse_preload_addresses,
+    warm_shardtree_cache_with_subtrees_enabled, CommittedCheckpointHeights, HistoricalLeafSink,
+    HistoricalPrefillState, HistoricalSubtreeRootRequest, PersistenceShardTrees,
+    RemoteHistoricalSubtreeRoots, ShardtreeBatch, ShardtreePersistResult, SyncWarmTrees,
+    VerifiedSubtreeRoots,
 };
 
 type StorageNoteType = pirate_storage_sqlite::models::NoteType;
@@ -127,6 +140,10 @@ fn verbose_sync_batch_logging_enabled() -> bool {
     })
 }
 
+fn sync_performance_logging_enabled() -> bool {
+    pirate_core::debug_log::is_enabled() || verbose_sync_batch_logging_enabled()
+}
+
 fn height_to_u32(height: u64) -> Result<u32> {
     u32::try_from(height)
         .map_err(|_| Error::Sync(format!("Block height {} exceeds u32::MAX", height)))
@@ -154,6 +171,20 @@ const SAPLING_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
 const ORCHARD_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
 const SAPLING_TABLE_PREFIX: &str = "sapling";
 const ORCHARD_TABLE_PREFIX: &str = "orchard";
+const MIN_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 8_000_000;
+const DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 64_000_000;
+const MAX_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 128_000_000;
+
+fn persistence_shardtree_cache_limit(max_batch_memory_bytes: Option<u64>) -> u64 {
+    max_batch_memory_bytes
+        .map(|bytes| bytes / 4)
+        .unwrap_or(DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES)
+        .clamp(
+            MIN_PERSISTENCE_SHARDTREE_CACHE_BYTES,
+            MAX_PERSISTENCE_SHARDTREE_CACHE_BYTES,
+        )
+}
+
 /// Shard height used for subtree-addressed spendability/repair scheduling.
 fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKeyGroup>> {
     let key_id = key.id.unwrap_or(0);
@@ -248,30 +279,58 @@ pub struct SyncConfig {
     pub prefetch_queue_depth: usize,
     /// Approximate byte cap for queued prefetched batches.
     pub prefetch_queue_max_bytes: u64,
+    /// Trial-decrypt exactly one fetched batch while the preceding batch is persisted.
+    pub one_batch_ahead_decryption: bool,
+    /// Experimental A/B switch that splits lookahead decryption into additional
+    /// ordered tasks. Disabled by default because the release benchmark showed
+    /// no critical-path benefit over Rayon's existing work stealing.
+    pub stage_aware_cpu_scheduling: bool,
 }
 
 /// Constants for retry logic
+#[cfg(test)]
 const MAX_RETRY_ATTEMPTS: u32 = 3;
+#[cfg(test)]
 const RETRY_BACKOFF_MS: u64 = 100;
 // BridgeTree snapshot retention removed -- ShardTree is persistent in SQLite.
-const MIN_PARALLEL_OUTPUTS: usize = 256;
+const MIN_PARALLEL_OUTPUTS: usize = 96;
+const MIN_PARALLEL_DECRYPT_CHUNK: usize = 64;
 const SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED: &str = "ERR_WITNESS_REPAIR_QUEUED";
 const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 1;
 const LOW_HEIGHT_BATCH_CAP_HEIGHT: u64 = 10_000;
+#[cfg(test)]
 const LOW_HEIGHT_BATCH_MAX_BLOCKS: u64 = 1_024;
 const HISTORIC_AUX_FLUSH_BLOCK_INTERVAL: u64 = 25_000;
 const HISTORIC_AUX_FLUSH_INTERVAL_MS: u64 = 30_000;
 const HISTORIC_SPARSE_CHECKPOINT_INTERVAL: u64 = 50_000;
 const MAX_REORG_SEARCH_DEPTH: u64 = 2_000;
-const SERVER_BATCH_HINT_WAIT_MS: u64 = 1_500;
+const CANONICAL_BLOCK_WINDOW: usize = MAX_REORG_SEARCH_DEPTH as usize + 1;
+#[cfg(test)]
 const SERVER_BATCH_GROUP_TARGET_BYTES: u64 = 4_000_000;
-const MAX_SERVER_BATCH_GROUP_MULTIPLIER: u64 = 8;
+#[cfg(test)]
+const TARGET_FETCH_BATCH_MS: u128 = 5_000;
+#[cfg(test)]
+const MAX_BATCH_CAP_GROWTH_FACTOR: u64 = 2;
+#[cfg(test)]
+const MAX_CACHED_BATCH_BLOCKS: u64 = 16_000;
+const LOOKAHEAD_DECRYPT_TASK_MULTIPLIER: usize = 4;
+
+// Keep the batch tip and every ancestor that find_common_ancestor can inspect.
+fn canonical_block_window(blocks: &[CompactBlockData]) -> &[CompactBlockData] {
+    let start = blocks.len().saturating_sub(CANONICAL_BLOCK_WINDOW);
+    &blocks[start..]
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TipWitnessValidationOutcome {
     Clean,
     RepairQueued { start: u64, end_exclusive: u64 },
     Error,
+}
+
+struct WitnessCheckDbOutcome {
+    repair_range: Option<(u64, u64)>,
+    checked: bool,
 }
 
 impl Default for SyncConfig {
@@ -342,6 +401,8 @@ impl Default for SyncConfig {
             sync_state_flush_interval_ms,
             prefetch_queue_depth,
             prefetch_queue_max_bytes,
+            one_batch_ahead_decryption: true,
+            stage_aware_cpu_scheduling: false,
         }
     }
 }
