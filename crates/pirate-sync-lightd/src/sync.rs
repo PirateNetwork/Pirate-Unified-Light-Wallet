@@ -8704,102 +8704,163 @@ impl SyncEngine {
         local_height: u64,
         target_height: u64,
         last_checkpoint: u64,
+        canonical_blocks: &[CompactBlockData],
         include_aux_state_update: bool,
         db_session: Option<&Database>,
-    ) -> Result<()> {
+        persistence_worker: Option<&PersistenceWorker>,
+    ) -> Result<(u128, u128)> {
         if let Some(ref sink) = self.storage {
-            match db_session {
-                Some(db) => {
-                    sink.save_sync_state_with_db(db, local_height, target_height, last_checkpoint)?
-                }
-                None => sink.save_sync_state(local_height, target_height, last_checkpoint)?,
+            if let Some(worker) = persistence_worker {
+                let worker_sink = sink.clone();
+                let worker_blocks = canonical_blocks.to_vec();
+                let birthday_height = self.birthday_height;
+                return worker
+                    .execute(move |worker_db| {
+                        Self::save_sync_state_with_db(
+                            &worker_sink,
+                            birthday_height,
+                            local_height,
+                            target_height,
+                            last_checkpoint,
+                            &worker_blocks,
+                            include_aux_state_update,
+                            worker_db,
+                        )
+                    })
+                    .await;
             }
-            if !include_aux_state_update {
-                return Ok(());
-            }
-            let owned_db;
+            let opened_db;
             let db = if let Some(db) = db_session {
                 db
             } else {
-                owned_db =
+                opened_db =
                     Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
-                &owned_db
+                &opened_db
             };
-            let scan_queue = ScanQueueStorage::new(db);
-            let historic_start = (self.birthday_height as u64).max(1);
-            let historic_end = local_height.saturating_add(1);
-            scan_queue.record_historic_scanned_range(
-                historic_start,
-                historic_end.max(historic_start.saturating_add(1)),
-                Some("historic_sync_progress"),
-            )?;
-            let _ = scan_queue.mark_found_note_done_through(local_height.saturating_add(1));
-            let spendability = SpendabilityStateStorage::new(db);
-            if let Some((computed_target, computed_anchor)) = spendability
-                .get_target_and_anchor_heights_for_account(
-                    SPENDABILITY_MIN_CONFIRMATIONS,
-                    sink.account_id,
-                )?
-            {
-                let next_found_note_row = scan_queue.next_found_note_range()?;
-                let has_found_note_work = next_found_note_row.is_some();
-                let current_state = spendability.load_state().unwrap_or_default();
-                let at_or_past_target = local_height.saturating_add(1) >= computed_target;
-                let validated_for_anchor = current_state.spendable
-                    && current_state.validated_anchor_height >= computed_anchor;
-
-                if has_found_note_work {
-                    let repair_from = next_found_note_row
-                        .as_ref()
-                        .map(|row| row.range_start.max(1))
-                        .unwrap_or_else(|| computed_anchor.max(1));
-                    spendability.mark_repair_pending_without_enqueue(
-                        repair_from,
-                        SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
-                    )?;
-                } else if !at_or_past_target || !validated_for_anchor {
-                    // Only downgrade to ERR_SYNC_FINALIZING if the wallet was NOT
-                    // previously validated, or if the anchor has drifted far enough
-                    // that the old validation is no longer trustworthy.
-                    //
-                    // When the chain advances by just a few blocks the previous
-                    // validated_anchor_height falls behind the new computed_anchor,
-                    // but the commitment tree at the old validated anchor is still
-                    // valid — the tip witness check will re-validate shortly.
-                    // Eagerly downgrading here creates a race where save_sync_state
-                    // keeps undoing the validation that check_witnesses just performed,
-                    // trapping the wallet in ERR_SYNC_FINALIZING forever.
-                    let confirmations_u64 = u64::from(SPENDABILITY_MIN_CONFIRMATIONS);
-                    let anchor_drift =
-                        computed_anchor.saturating_sub(current_state.validated_anchor_height);
-                    let recently_validated = current_state.spendable
-                        && current_state.validated_anchor_height > 0
-                        && anchor_drift <= confirmations_u64;
-
-                    if !recently_validated {
-                        spendability.mark_sync_finalizing(computed_target, computed_anchor)?;
-                    }
-                }
-            } else {
-                spendability.mark_sync_finalizing(0, 0)?;
-            }
+            return Self::save_sync_state_with_db(
+                sink,
+                self.birthday_height,
+                local_height,
+                target_height,
+                last_checkpoint,
+                canonical_blocks,
+                include_aux_state_update,
+                db,
+            );
         }
-        Ok(())
+        Ok((0, 0))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn save_sync_state_with_db(
+        sink: &StorageSink,
+        birthday_height: u32,
+        local_height: u64,
+        target_height: u64,
+        last_checkpoint: u64,
+        canonical_blocks: &[CompactBlockData],
+        include_aux_state_update: bool,
+        db: &Database,
+    ) -> Result<(u128, u128)> {
+        let progress_start = Instant::now();
+        sink.save_sync_progress_with_db(
+            db,
+            canonical_blocks,
+            local_height,
+            target_height,
+            last_checkpoint,
+        )?;
+        let progress_ms = progress_start.elapsed().as_millis();
+        if !include_aux_state_update {
+            return Ok((progress_ms, 0));
+        }
+        let aux_start = Instant::now();
+        let scan_queue = ScanQueueStorage::new(db);
+        let historic_start = (birthday_height as u64).max(1);
+        let historic_end = local_height.saturating_add(1);
+        scan_queue.record_historic_scanned_range(
+            historic_start,
+            historic_end.max(historic_start.saturating_add(1)),
+            Some("historic_sync_progress"),
+        )?;
+        let _ = scan_queue.mark_found_note_done_through(local_height.saturating_add(1));
+        let spendability = SpendabilityStateStorage::new(db);
+        if let Some((computed_target, computed_anchor)) = spendability
+            .get_target_and_anchor_heights_for_account(
+                SPENDABILITY_MIN_CONFIRMATIONS,
+                sink.account_id,
+            )?
+        {
+            let next_found_note_row = scan_queue.next_found_note_range()?;
+            let has_found_note_work = next_found_note_row.is_some();
+            let current_state = spendability.load_state().unwrap_or_default();
+            let at_or_past_target = local_height.saturating_add(1) >= computed_target;
+            let validated_for_anchor =
+                current_state.spendable && current_state.validated_anchor_height >= computed_anchor;
+
+            if has_found_note_work {
+                let repair_from = next_found_note_row
+                    .as_ref()
+                    .map(|row| row.range_start.max(1))
+                    .unwrap_or_else(|| computed_anchor.max(1));
+                spendability.mark_repair_pending_without_enqueue(
+                    repair_from,
+                    SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+                )?;
+            } else if !at_or_past_target || !validated_for_anchor {
+                // Only downgrade to ERR_SYNC_FINALIZING if the wallet was NOT
+                // previously validated, or if the anchor has drifted far enough
+                // that the old validation is no longer trustworthy.
+                //
+                // When the chain advances by just a few blocks the previous
+                // validated_anchor_height falls behind the new computed_anchor,
+                // but the commitment tree at the old validated anchor is still
+                // valid — the tip witness check will re-validate shortly.
+                // Eagerly downgrading here creates a race where save_sync_state
+                // keeps undoing the validation that check_witnesses just performed,
+                // trapping the wallet in ERR_SYNC_FINALIZING forever.
+                let confirmations_u64 = u64::from(SPENDABILITY_MIN_CONFIRMATIONS);
+                let anchor_drift =
+                    computed_anchor.saturating_sub(current_state.validated_anchor_height);
+                let recently_validated = current_state.spendable
+                    && current_state.validated_anchor_height > 0
+                    && anchor_drift <= confirmations_u64;
+
+                if !recently_validated {
+                    spendability.mark_sync_finalizing(computed_target, computed_anchor)?;
+                }
+            }
+        } else {
+            spendability.mark_sync_finalizing(0, 0)?;
+        }
+        Ok((progress_ms, aux_start.elapsed().as_millis()))
     }
 
     /// Rollback to a specific checkpoint height.
     ///
     /// Uses only ShardTree truncation (via `truncate_above_height`). Position counters
     /// are recovered from the ShardTree's checkpoint state after truncation.
-    async fn rollback_to_checkpoint(&mut self, checkpoint_height: u64) -> Result<u64> {
+    async fn rollback_to_checkpoint(
+        &mut self,
+        checkpoint_height: u64,
+        persistence_worker: Option<&PersistenceWorker>,
+    ) -> Result<u64> {
         let Some(ref sink) = self.storage else {
             *self.sapling_tree_position.write().await = 0;
             *self.orchard_tree_position.write().await = 0;
             return Ok(checkpoint_height);
         };
 
-        let mut db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
-        truncate_above_height(&mut db, checkpoint_height)?;
+        let tree_replay_height = if let Some(worker) = persistence_worker {
+            worker
+                .execute_invalidating_shardtrees(move |db| {
+                    truncate_above_height(db, checkpoint_height).map_err(Into::into)
+                })
+                .await?
+        } else {
+            let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            truncate_above_height(&db, checkpoint_height)?
+        };
 
         self.nullifier_cache.clear();
         self.nullifier_cache_loaded = false;
@@ -8807,12 +8868,13 @@ impl SyncEngine {
         self.recover_position_counters_from_shardtree().await?;
 
         tracing::info!(
-            "Rolled back to checkpoint height {} (sapling_pos={}, orchard_pos={})",
+            "Rolled back wallet data to {} and commitment trees to {} (sapling_pos={}, orchard_pos={})",
             checkpoint_height,
+            tree_replay_height,
             *self.sapling_tree_position.read().await,
             *self.orchard_tree_position.read().await,
         );
-        Ok(checkpoint_height)
+        Ok(tree_replay_height)
     }
 
     /// Rollback to last checkpoint and resume
@@ -8831,7 +8893,7 @@ impl SyncEngine {
             self.birthday_height as u64
         };
 
-        let rollback_height = self.rollback_to_checkpoint(checkpoint_height).await?;
+        let rollback_height = self.rollback_to_checkpoint(checkpoint_height, None).await?;
         // Resume must be contiguous from the rollback point; clamping to a later "birthday"
         // can skip commitments and corrupt anchor roots.
         let resume_height = rollback_height.saturating_add(1).max(1);
@@ -8858,7 +8920,7 @@ impl SyncEngine {
         if let Some(local) = local_block {
             if local.hash != remote_block.hash {
                 tracing::warn!("Reorg detected at height {}", height);
-                self.rollback_to_common_ancestor(height).await?;
+                self.rollback_to_common_ancestor(height, None).await?;
                 return Ok(true);
             }
         }
