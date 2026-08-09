@@ -4955,9 +4955,49 @@ impl SyncEngine {
         end: u64,
         cancel: CancelToken,
         wallet_id: Option<String>,
-    ) -> Result<Vec<CompactBlockData>> {
+        validated_cache_range: Option<ValidatedCacheRange>,
+        max_chunk_bytes: u64,
+    ) -> Result<FetchedBlockBatch> {
+        let started = Instant::now();
+        let (blocks, source, timings) = Self::fetch_blocks_with_retry_unmeasured(
+            client,
+            start,
+            end,
+            cancel,
+            wallet_id,
+            validated_cache_range,
+            max_chunk_bytes,
+        )
+        .await?;
+        Ok(FetchedBlockBatch {
+            encoded_bytes: timings.encoded_bytes,
+            blocks,
+            requested_blocks: end.saturating_sub(start).saturating_add(1),
+            requested_bytes: max_chunk_bytes,
+            source,
+            elapsed: started.elapsed(),
+            network_elapsed: timings.network_elapsed,
+            cache_write_elapsed: timings.cache_write_elapsed,
+            spool_reservations: Vec::new(),
+        })
+    }
+
+    #[cfg(test)]
+    async fn fetch_blocks_with_retry_unmeasured(
+        client: LightClient,
+        start: u64,
+        end: u64,
+        cancel: CancelToken,
+        wallet_id: Option<String>,
+        validated_cache_range: Option<ValidatedCacheRange>,
+        max_chunk_bytes: u64,
+    ) -> Result<(Vec<CompactBlockData>, BlockFetchSource, BlockFetchTimings)> {
         if start > end {
-            return Ok(Vec::new());
+            return Ok((
+                Vec::new(),
+                BlockFetchSource::Cache,
+                BlockFetchTimings::default(),
+            ));
         }
 
         if cancel.is_cancelled() {
@@ -4967,8 +5007,9 @@ impl SyncEngine {
         let expected_blocks = end.saturating_sub(start).saturating_add(1) as usize;
 
         if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
-            match cache.load_range(start, end) {
-                Ok(blocks) if blocks.len() == expected_blocks => {
+            match cache.load_range_for_upgrade(start, end) {
+                Ok(cached_range) if cached_range.blocks.len() == expected_blocks => {
+                    let blocks = cached_range.blocks;
                     tracing::debug!(
                         "Block cache hit for {}-{} ({} blocks)",
                         start,
@@ -4990,18 +5031,46 @@ impl SyncEngine {
                             blocks.len()
                         ));
                     }
-                    if Self::cached_blocks_are_canonical(&client, &cache, start, end, &blocks)
-                        .await?
+                    if Self::cached_blocks_are_canonical(
+                        &client,
+                        &cache,
+                        start,
+                        end,
+                        &blocks,
+                        validated_cache_range,
+                    )
+                    .await?
                     {
-                        return Ok(blocks);
+                        if !cached_range.legacy_heights.is_empty() {
+                            match cache.upgrade_legacy_rows(&blocks, &cached_range.legacy_heights) {
+                                Ok(upgraded) if upgraded > 0 => tracing::debug!(
+                                    "Upgraded {} canonical cache rows to protobuf for {}-{}",
+                                    upgraded,
+                                    start,
+                                    end
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::debug!(
+                                    "Cache codec upgrade failed for {}-{}: {}",
+                                    start,
+                                    end,
+                                    e
+                                ),
+                            }
+                        }
+                        return Ok((
+                            blocks,
+                            BlockFetchSource::Cache,
+                            BlockFetchTimings::default(),
+                        ));
                     }
                 }
-                Ok(blocks) if !blocks.is_empty() => {
+                Ok(cached_range) if !cached_range.blocks.is_empty() => {
                     tracing::debug!(
                         "Block cache partial hit for {}-{} ({} of {})",
                         start,
                         end,
-                        blocks.len(),
+                        cached_range.blocks.len(),
                         expected_blocks
                     );
                     if verbose_sync_batch_logging_enabled() {
@@ -5016,7 +5085,7 @@ impl SyncEngine {
                             ts,
                             start,
                             end,
-                            blocks.len(),
+                            cached_range.blocks.len(),
                             expected_blocks
                         ));
                     }
@@ -5043,20 +5112,40 @@ impl SyncEngine {
             let inflight = acquire_inflight(client.endpoint(), start, end);
 
             match inflight {
-                InflightLease::Follower(notify) => {
+                InflightLease::Follower(waiter) => {
                     tokio::select! {
-                        _ = notify.notified() => {}
+                        _ = waiter.wait() => {}
                         _ = cancel.cancelled() => return Err(Error::Cancelled),
                     }
                     if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
-                        if let Ok(blocks) = cache.load_range(start, end) {
-                            if blocks.len() == expected_blocks
+                        if let Ok(cached_range) = cache.load_range_for_upgrade(start, end) {
+                            if cached_range.blocks.len() == expected_blocks
                                 && Self::cached_blocks_are_canonical(
-                                    &client, &cache, start, end, &blocks,
+                                    &client,
+                                    &cache,
+                                    start,
+                                    end,
+                                    &cached_range.blocks,
+                                    validated_cache_range,
                                 )
                                 .await?
                             {
-                                return Ok(blocks);
+                                if let Err(e) = cache.upgrade_legacy_rows(
+                                    &cached_range.blocks,
+                                    &cached_range.legacy_heights,
+                                ) {
+                                    tracing::debug!(
+                                        "Cache codec upgrade failed for {}-{}: {}",
+                                        start,
+                                        end,
+                                        e
+                                    );
+                                }
+                                return Ok((
+                                    cached_range.blocks,
+                                    BlockFetchSource::Cache,
+                                    BlockFetchTimings::default(),
+                                ));
                             }
                         }
                     }
@@ -5064,75 +5153,136 @@ impl SyncEngine {
                 }
                 InflightLease::Leader(token) => {
                     let mut attempts = 0;
+                    let mut timings = BlockFetchTimings::default();
+                    let mut blocks: Vec<CompactBlockData> = Vec::with_capacity(expected_blocks);
+                    let mut next_height = start;
                     let result = loop {
-                        // Use get_compact_block_range with retry logic
-                        let fetch = tokio::select! {
-                            res = client.get_compact_block_range_with_wallet(
-                                start as u32..(end + 1) as u32,
-                                wallet_id.as_deref()
-                            ) => res,
-                            _ = cancel.cancelled() => Err(Error::Cancelled),
-                        };
-
-                        let fetch = match fetch {
-                            Ok(blocks) => {
-                                match Self::validate_compact_block_range(start, end, &blocks) {
-                                    Ok(()) => Ok(blocks),
-                                    Err(e) => Err(e),
+                        let stream_start = next_height;
+                        let mut receiver = client.compact_block_chunk_stream(
+                            height_to_u32(stream_start)?..height_to_u32(end.saturating_add(1))?,
+                            max_chunk_bytes,
+                            wallet_id.clone(),
+                        );
+                        let network_started = Instant::now();
+                        let mut stream_error = None;
+                        loop {
+                            let received = tokio::select! {
+                                chunk = receiver.recv() => chunk,
+                                _ = cancel.cancelled() => {
+                                    stream_error = Some(Error::Cancelled);
+                                    None
+                                }
+                            };
+                            let Some(received) = received else {
+                                break;
+                            };
+                            let chunk = match received {
+                                Ok(chunk) => chunk,
+                                Err(error) => {
+                                    stream_error = Some(error);
+                                    break;
+                                }
+                            };
+                            let Some(chunk_start) = chunk.start_height() else {
+                                continue;
+                            };
+                            let chunk_end = chunk.end_height().ok_or_else(|| {
+                                Error::Sync("bounded compact block chunk had no end".to_string())
+                            })?;
+                            if chunk_start != next_height {
+                                stream_error = Some(Error::Sync(format!(
+                                    "bounded compact block stream expected {}, received {}",
+                                    next_height, chunk_start
+                                )));
+                                break;
+                            }
+                            if let Err(error) = Self::validate_compact_block_range(
+                                chunk_start,
+                                chunk_end,
+                                &chunk.blocks,
+                            ) {
+                                stream_error = Some(error);
+                                break;
+                            }
+                            if let (Some(previous), Some(first)) =
+                                (blocks.last(), chunk.blocks.first())
+                            {
+                                if first.prev_hash != previous.hash {
+                                    stream_error = Some(Error::Sync(format!(
+                                        "bounded compact block chunks disconnected at height {}",
+                                        first.height
+                                    )));
+                                    break;
                                 }
                             }
-                            Err(e) => Err(e),
-                        };
 
-                        match fetch {
-                            Ok(blocks) => {
-                                if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
-                                    if let Err(e) = cache.store_blocks(&blocks) {
-                                        tracing::debug!(
-                                            "Block cache store failed for {}-{}: {}",
-                                            start,
-                                            end,
-                                            e
-                                        );
-                                    } else if verbose_sync_batch_logging_enabled() {
-                                        let ts = std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap_or_default()
-                                            .as_millis();
-                                        let id = format!("{:08x}", ts);
-                                        append_debug_log_line(&format!(
-                                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache store","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                                            id,
-                                            ts,
-                                            start,
-                                            end,
-                                            blocks.len()
-                                        ));
-                                    }
-                                }
-                                break Ok(blocks);
+                            timings.encoded_bytes =
+                                timings.encoded_bytes.saturating_add(chunk.encoded_bytes);
+                            next_height = chunk_end.saturating_add(1);
+                            let cache_write_started = Instant::now();
+                            let endpoint = client.endpoint().to_string();
+                            let chunk_blocks = chunk.blocks;
+                            let (chunk_blocks, cache_result) =
+                                tokio::task::spawn_blocking(move || {
+                                    let result = BlockCache::for_endpoint(&endpoint)
+                                        .and_then(|cache| cache.store_blocks(&chunk_blocks));
+                                    (chunk_blocks, result)
+                                })
+                                .await
+                                .map_err(|error| {
+                                    Error::Sync(format!(
+                                        "compact block cache worker failed for {}-{}: {}",
+                                        chunk_start, chunk_end, error
+                                    ))
+                                })?;
+                            timings.cache_write_elapsed += cache_write_started.elapsed();
+                            if let Err(error) = cache_result {
+                                tracing::debug!(
+                                    "Block cache store failed for {}-{}: {}",
+                                    chunk_start,
+                                    chunk_end,
+                                    error
+                                );
                             }
-                            Err(e) if matches!(e, Error::Cancelled) => break Err(e),
-                            Err(e) if attempts < MAX_RETRY_ATTEMPTS => {
+                            blocks.extend(chunk_blocks);
+                        }
+                        timings.network_elapsed += network_started.elapsed();
+
+                        if next_height > end {
+                            break Self::validate_compact_block_range(start, end, &blocks)
+                                .map(|_| blocks);
+                        }
+
+                        let error = stream_error.unwrap_or_else(|| {
+                            Error::Network(format!(
+                                "compact block stream ended at {}, expected {}",
+                                next_height,
+                                end.saturating_add(1)
+                            ))
+                        });
+                        match error {
+                            Error::Cancelled => break Err(Error::Cancelled),
+                            error if attempts < MAX_RETRY_ATTEMPTS => {
                                 attempts += 1;
                                 let backoff = RETRY_BACKOFF_MS * (1 << attempts);
                                 tracing::warn!(
-                                    "Fetch failed (attempt {}/{}), retrying in {}ms: {}",
+                                    "Compact stream stopped after durable height {} (attempt {}/{}); resuming in {}ms: {}",
+                                    next_height.saturating_sub(1),
                                     attempts,
                                     MAX_RETRY_ATTEMPTS,
                                     backoff,
-                                    e
+                                    error
                                 );
                                 tokio::select! {
                                     _ = tokio::time::sleep(Duration::from_millis(backoff)) => {}
                                     _ = cancel.cancelled() => break Err(Error::Cancelled),
                                 }
                             }
-                            Err(e) => break Err(e),
+                            error => break Err(error),
                         }
                     };
                     token.complete();
-                    return result;
+                    return result.map(|blocks| (blocks, BlockFetchSource::Network, timings));
                 }
             }
         }
