@@ -2171,60 +2171,26 @@ impl SyncEngine {
             e
         })?;
         tracing::debug!("Connected to lightwalletd");
-        self.require_server_consensus_branch().await?;
 
-        let follow_tip = end_height.is_none();
+        // One server-info snapshot supplies both the target and the consensus
+        // branch, avoiding two independently timed control-plane RPCs.
+        let info = self.validated_server_info().await?;
+        let end = select_sync_target(start_height, end_height, info.block_height, follow_tip);
+        tracing::debug!(
+            "Using sync target {} from validated server height {}",
+            end,
+            info.block_height
+        );
 
-        // Get latest block if end not specified
-        let end = match end_height {
-            Some(h) => {
-                tracing::debug!("Using provided end height: {}", h);
-                h
-            }
-            None => {
-                tracing::debug!("Fetching latest block from server...");
-                // #region agent log
-                pirate_core::debug_log::with_locked_file(|file| {
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:294","message":"get_latest_block call","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                        id, ts
-                    );
-                });
-                // #endregion
-                let latest_result = self.client.get_latest_block().await;
-                // #region agent log
-                pirate_core::debug_log::with_locked_file(|file| {
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:297","message":"get_latest_block result in sync","data":{{"success":{},"height":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                        id,
-                        ts,
-                        latest_result.is_ok(),
-                        latest_result.as_ref().ok().copied().unwrap_or(0),
-                        latest_result.as_ref().err()
-                    );
-                });
-                // #endregion
-                let latest = latest_result.map_err(|e| {
-                    tracing::error!("Failed to get latest block: {:?}", e);
-                    e
-                })?;
-                tracing::info!("Latest block height from server: {}", latest);
-                latest
-            }
-        };
-
+        // Publish progress from the same validated server snapshot used to
+        // select this run's target height.
+        {
+            let progress = self.progress.write().await;
+            progress.set_target(end);
+            progress.set_current(start_height.saturating_sub(1));
+            progress.set_stage(SyncStage::Preparing);
+            progress.start();
+        }
         // Validate end height.
         //
         // In follow-tip mode we cannot early-return when local resume height is ahead of
@@ -2235,7 +2201,7 @@ impl SyncEngine {
             if follow_tip {
                 // The server tip hasn't advanced past our resume height yet.
                 // Keep effective_start_height at resume height so the batch-fetch
-                // loop is a no-op (start > end → nothing to fetch). The follow-tip
+                // loop is a no-op (start > end, so there is nothing to fetch). The follow-tip
                 // monitoring loop will then wait for new blocks and handle repairs.
                 //
                 // CRITICAL: do NOT clamp start down to `end` — that would re-fetch
@@ -2265,14 +2231,14 @@ impl SyncEngine {
         {
             let progress = self.progress.write().await;
             progress.set_target(end);
-            progress.set_current(effective_start_height);
-            progress.set_stage(SyncStage::Headers);
+            progress.set_current(effective_start_height.saturating_sub(1));
+            progress.set_stage(SyncStage::TreeState);
             progress.start();
             tracing::debug!(
                 "Progress initialized: current={}, target={}, stage={:?}",
                 effective_start_height,
                 end,
-                SyncStage::Headers
+                SyncStage::TreeState
             );
         }
 
@@ -2327,15 +2293,25 @@ impl SyncEngine {
             self.progress.write().await.complete();
             tracing::info!("Sync completed successfully");
         } else {
-            self.progress.write().await.set_stage(SyncStage::Verify);
+            let durable_state = self
+                .storage
+                .as_ref()
+                .and_then(|sink| sink.load_sync_state().ok());
+            let progress = self.progress.write().await;
+            if let Some(state) = durable_state {
+                progress.set_current(state.local_height);
+                progress.set_checkpoint(state.last_checkpoint_height);
+            }
+            progress.set_stage(SyncStage::Verify);
             tracing::error!("Sync failed: {:?}", result);
         }
 
         result
     }
 
-    /// Check whether the ShardTree already has checkpoints at or above a given height.
-    fn shardtree_has_checkpoints_at_or_above(&self, height: u64) -> Result<bool> {
+    /// Check whether both ShardTrees have the exact checkpoint required by the
+    /// persisted sync cursor.
+    fn shardtrees_have_checkpoint(&self, height: u64) -> Result<bool> {
         let Some(sink) = self.storage.as_ref() else {
             return Ok(false);
         };
