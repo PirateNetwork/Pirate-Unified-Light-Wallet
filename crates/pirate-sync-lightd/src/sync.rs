@@ -7926,17 +7926,23 @@ type CompactDecryptResult<D> = Option<(
 
 #[derive(Debug, Default, Clone)]
 struct DecryptBackendTelemetry {
-    cpu_ms: u128,
+    pool_wall: Duration,
+    worker_active: Duration,
+    task_count: u64,
 }
 
 #[derive(Debug, Default, Clone)]
 struct TrialDecryptTelemetry {
-    cpu_ms: u128,
+    pool_wall: Duration,
+    worker_active: Duration,
+    task_count: u64,
 }
 
 impl TrialDecryptTelemetry {
     fn merge_stage(&mut self, stage: &DecryptBackendTelemetry, _note_type: NoteType) {
-        self.cpu_ms += stage.cpu_ms;
+        self.pool_wall += stage.pool_wall;
+        self.worker_active += stage.worker_active;
+        self.task_count = self.task_count.saturating_add(stage.task_count);
     }
 }
 
@@ -7956,8 +7962,100 @@ struct TrialDecryptBatchInputs<'a> {
     orchard_fvks: &'a [orchard::keys::FullViewingKey],
     decrypt_pool: &'a rayon::ThreadPool,
     max_parallel: usize,
+    task_multiplier: usize,
 }
 
+struct MeasuredDecrypt<T> {
+    value: T,
+    worker_active: Duration,
+    task_count: u64,
+}
+
+fn try_compact_note_decryption_parallel_measured<D, Output>(
+    pool: &rayon::ThreadPool,
+    ivks: &[D::IncomingViewingKey],
+    outputs: &[(D, Output)],
+    max_parallel: usize,
+    task_multiplier: usize,
+) -> MeasuredDecrypt<Vec<CompactDecryptResult<D>>>
+where
+    D: zcash_note_encryption::BatchDomain + Sync,
+    Output: ShieldedOutput<D, COMPACT_NOTE_SIZE> + Sync,
+    D::IncomingViewingKey: Sync,
+    D::Note: Send,
+    D::Recipient: Send,
+{
+    if ivks.is_empty() {
+        return MeasuredDecrypt {
+            value: (0..outputs.len()).map(|_| None).collect(),
+            worker_active: Duration::ZERO,
+            task_count: 0,
+        };
+    }
+
+    let outputs_len = outputs.len();
+    if outputs_len == 0 {
+        return MeasuredDecrypt {
+            value: Vec::new(),
+            worker_active: Duration::ZERO,
+            task_count: 0,
+        };
+    }
+
+    let max_parallel = max_parallel.max(1);
+    if max_parallel == 1 || outputs_len < MIN_PARALLEL_OUTPUTS {
+        let worker_started = Instant::now();
+        let value = note_batch::try_compact_note_decryption(ivks, outputs);
+        return MeasuredDecrypt {
+            value,
+            worker_active: worker_started.elapsed(),
+            task_count: 1,
+        };
+    }
+
+    // Lookahead decryption shares this pool with current-batch ShardTree
+    // construction. More, shorter ordered tasks give later critical-path tree
+    // work scheduling opportunities without adding threads or mutable state.
+    let target_tasks = max_parallel.saturating_mul(task_multiplier.max(1));
+    let mut chunk_size = outputs_len.div_ceil(target_tasks);
+    if chunk_size < MIN_PARALLEL_DECRYPT_CHUNK {
+        chunk_size = MIN_PARALLEL_DECRYPT_CHUNK;
+    }
+    let chunk_count = outputs_len.div_ceil(chunk_size);
+    if chunk_count <= 1 {
+        let worker_started = Instant::now();
+        let value = note_batch::try_compact_note_decryption(ivks, outputs);
+        return MeasuredDecrypt {
+            value,
+            worker_active: worker_started.elapsed(),
+            task_count: 1,
+        };
+    }
+
+    let chunks = pool.install(|| {
+        outputs
+            .par_chunks(chunk_size)
+            .map(|chunk| {
+                let worker_started = Instant::now();
+                let results = note_batch::try_compact_note_decryption(ivks, chunk);
+                (results, worker_started.elapsed())
+            })
+            .collect::<Vec<_>>()
+    });
+    let worker_active = chunks.iter().map(|(_, active)| *active).sum::<Duration>();
+    let task_count = chunks.len() as u64;
+    let value = chunks
+        .into_iter()
+        .flat_map(|(results, _)| results)
+        .collect();
+    MeasuredDecrypt {
+        value,
+        worker_active,
+        task_count,
+    }
+}
+
+#[cfg(test)]
 fn try_compact_note_decryption_parallel<D, Output>(
     pool: &rayon::ThreadPool,
     ivks: &[D::IncomingViewingKey],
@@ -7971,38 +8069,7 @@ where
     D::Note: Send,
     D::Recipient: Send,
 {
-    if ivks.is_empty() {
-        return (0..outputs.len()).map(|_| None).collect();
-    }
-
-    let outputs_len = outputs.len();
-    if outputs_len == 0 {
-        return Vec::new();
-    }
-
-    let max_parallel = max_parallel.max(1);
-    if max_parallel == 1 || outputs_len < MIN_PARALLEL_OUTPUTS {
-        return note_batch::try_compact_note_decryption(ivks, outputs);
-    }
-
-    let mut chunk_size = outputs_len.div_ceil(max_parallel);
-    if chunk_size < MIN_PARALLEL_OUTPUTS {
-        chunk_size = MIN_PARALLEL_OUTPUTS;
-    }
-    let chunk_count = outputs_len.div_ceil(chunk_size);
-    if chunk_count <= 1 {
-        return note_batch::try_compact_note_decryption(ivks, outputs);
-    }
-
-    pool.install(|| {
-        outputs
-            .par_chunks(chunk_size)
-            .map(|chunk| note_batch::try_compact_note_decryption(ivks, chunk))
-            .collect::<Vec<_>>()
-            .into_iter()
-            .flatten()
-            .collect()
-    })
+    try_compact_note_decryption_parallel_measured(pool, ivks, outputs, max_parallel, 1).value
 }
 
 fn try_compact_note_decryption_backend<D, Output>(
@@ -8010,6 +8077,7 @@ fn try_compact_note_decryption_backend<D, Output>(
     ivks: &[D::IncomingViewingKey],
     outputs: &[(D, Output)],
     max_parallel: usize,
+    task_multiplier: usize,
 ) -> (Vec<CompactDecryptResult<D>>, DecryptBackendTelemetry)
 where
     D: zcash_note_encryption::BatchDomain + Sync,
@@ -8019,11 +8087,19 @@ where
     D::Recipient: Send,
 {
     let started = Instant::now();
-    let results = try_compact_note_decryption_parallel(pool, ivks, outputs, max_parallel);
+    let measured = try_compact_note_decryption_parallel_measured(
+        pool,
+        ivks,
+        outputs,
+        max_parallel,
+        task_multiplier,
+    );
     let telemetry = DecryptBackendTelemetry {
-        cpu_ms: started.elapsed().as_millis(),
+        pool_wall: started.elapsed(),
+        worker_active: measured.worker_active,
+        task_count: measured.task_count,
     };
-    (results, telemetry)
+    (measured.value, telemetry)
 }
 
 fn trial_decrypt_batch_impl(
@@ -8040,18 +8116,54 @@ fn trial_decrypt_batch_impl(
         orchard_fvks,
         decrypt_pool,
         max_parallel,
+        task_multiplier,
     } = inputs;
 
-    let mut sapling_outputs: Vec<(SaplingDomain, SaplingBatchOutput)> = Vec::new();
-    let mut sapling_meta: Vec<SaplingOutputMeta> = Vec::new();
-    let mut orchard_outputs: Vec<(IronwoodDomain, CompactAction)> = Vec::new();
-    let mut orchard_meta: Vec<OrchardOutputMeta> = Vec::new();
+    let sapling_output_capacity = if sapling_ivks.is_empty() {
+        0
+    } else {
+        blocks
+            .iter()
+            .flat_map(|block| &block.transactions)
+            .map(|tx| tx.outputs.len())
+            .sum()
+    };
+    let orchard_output_capacity = if orchard_ivks.is_empty() {
+        0
+    } else {
+        blocks
+            .iter()
+            .flat_map(|block| &block.transactions)
+            .map(|tx| tx.actions.len())
+            .sum()
+    };
+    let transaction_capacity = if sapling_ivks.is_empty() && orchard_ivks.is_empty() {
+        0
+    } else {
+        blocks.iter().map(|block| block.transactions.len()).sum()
+    };
+    let mut sapling_outputs: Vec<(SaplingDomain, SaplingBatchOutput)> =
+        Vec::with_capacity(sapling_output_capacity);
+    let mut sapling_meta: Vec<SaplingOutputMeta> = Vec::with_capacity(sapling_output_capacity);
+    let mut orchard_outputs: Vec<(IronwoodDomain, CompactAction)> =
+        Vec::with_capacity(orchard_output_capacity);
+    let mut orchard_meta: Vec<OrchardOutputMeta> = Vec::with_capacity(orchard_output_capacity);
+    let mut tx_hashes: Vec<Vec<u8>> = Vec::with_capacity(transaction_capacity);
+    let network = PirateNetwork::default();
 
     for block in blocks {
         let height = block.height;
+        let sapling_zip212 = (!sapling_ivks.is_empty())
+            .then(|| zip212_enforcement(&network, BlockHeight::from_u32(height as u32)));
         for (tx_idx, tx) in block.transactions.iter().enumerate() {
             let tx_index = tx.index.unwrap_or(tx_idx as u64) as usize;
-            let tx_hash = tx.hash.clone();
+            let has_decryptable_pool = (!sapling_ivks.is_empty() && !tx.outputs.is_empty())
+                || (!orchard_ivks.is_empty() && !tx.actions.is_empty());
+            let tx_hash_index = has_decryptable_pool.then(|| {
+                let index = tx_hashes.len();
+                tx_hashes.push(tx.hash.clone());
+                index
+            });
 
             if !sapling_ivks.is_empty() {
                 for (output_idx, output) in tx.outputs.iter().enumerate() {
@@ -8069,10 +8181,9 @@ fn trial_decrypt_batch_impl(
                     let mut ciphertext = [0u8; 52];
                     ciphertext.copy_from_slice(&output.ciphertext[..52]);
 
-                    let domain = SaplingDomain::new(zip212_enforcement(
-                        &PirateNetwork::default(),
-                        BlockHeight::from_u32(height as u32),
-                    ));
+                    let domain = SaplingDomain::new(
+                        sapling_zip212.expect("Sapling outputs require a ZIP 212 policy"),
+                    );
                     sapling_outputs.push((
                         domain,
                         SaplingBatchOutput {
@@ -8085,7 +8196,8 @@ fn trial_decrypt_batch_impl(
                         height,
                         tx_index,
                         output_index: output_idx,
-                        tx_hash: tx_hash.clone(),
+                        tx_hash_index: tx_hash_index
+                            .expect("Sapling outputs require a cached transaction hash"),
                     });
                 }
             }
@@ -8133,7 +8245,8 @@ fn trial_decrypt_batch_impl(
                         height,
                         tx_index,
                         output_index: action_idx,
-                        tx_hash: tx_hash.clone(),
+                        tx_hash_index: tx_hash_index
+                            .expect("Orchard actions require a cached transaction hash"),
                         commitment: cmx.to_bytes(),
                     });
                 }
@@ -8150,6 +8263,7 @@ fn trial_decrypt_batch_impl(
             sapling_ivks,
             &sapling_outputs,
             max_parallel,
+            task_multiplier,
         );
         telemetry.merge_stage(&sapling_telemetry, NoteType::Sapling);
 
@@ -8174,7 +8288,7 @@ fn trial_decrypt_batch_impl(
                     [0u8; 32],
                     Vec::new(),
                 );
-                note_rec.set_tx_hash(meta.tx_hash.clone());
+                note_rec.set_tx_hash(tx_hashes[meta.tx_hash_index].clone());
                 note_rec.key_id = key_id;
                 note_rec.address_scope = scope;
                 note_rec.diversifier = address.diversifier().0.to_vec();
@@ -8192,6 +8306,7 @@ fn trial_decrypt_batch_impl(
             orchard_ivks,
             &orchard_outputs,
             max_parallel,
+            task_multiplier,
         );
         telemetry.merge_stage(&orchard_telemetry, NoteType::Ironwood);
 
@@ -8219,7 +8334,7 @@ fn trial_decrypt_batch_impl(
                     encrypted_memo: Vec::new(),
                     position: Some(0),
                 });
-                note_rec.set_tx_hash(meta.tx_hash.clone());
+                note_rec.set_tx_hash(tx_hashes[meta.tx_hash_index].clone());
                 note_rec.key_id = key_id;
                 note_rec.address_scope = scope;
                 note_rec.diversifier = address.diversifier().as_array().to_vec();
@@ -8284,6 +8399,7 @@ fn trial_decrypt_block(
         orchard_fvks: &orchard_fvks,
         decrypt_pool: &decrypt_pool,
         max_parallel: 1,
+        task_multiplier: 1,
     })?;
     Ok(batch.notes)
 }
@@ -8293,6 +8409,349 @@ fn trial_decrypt_block(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::{rngs::StdRng, SeedableRng};
+
+    fn shardtree_test_database(
+        passphrase: &str,
+        salt_byte: u8,
+    ) -> (tempfile::NamedTempFile, Database, StorageSink) {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let key = EncryptionKey::from_passphrase(passphrase, &[salt_byte; 32]).unwrap();
+        let master_key =
+            MasterKey::generate(pirate_storage_sqlite::EncryptionAlgorithm::ChaCha20Poly1305);
+        let db = Database::open(file.path(), &key, master_key.clone()).unwrap();
+        let sink = StorageSink {
+            db_path: file.path().to_path_buf(),
+            key: EncryptionKey::from_bytes(*key.as_bytes()),
+            master_key,
+            account_id: 1,
+            address_network_type: NetworkType::Mainnet,
+        };
+        (file, db, sink)
+    }
+
+    fn persistence_test_batches() -> Vec<ShardtreeBatch> {
+        persistence_test_batches_with_count(4)
+    }
+
+    fn persistence_test_batches_with_count(count: u32) -> Vec<ShardtreeBatch> {
+        (0..count)
+            .map(|offset| {
+                let height = 100 + offset;
+                let marking = if offset == 0 {
+                    Marking::Marked
+                } else {
+                    Marking::None
+                };
+                let retention = Retention::Checkpoint {
+                    id: BlockHeight::from(height),
+                    marking,
+                };
+                let mut batch = ShardtreeBatch::new(u64::from(height));
+                batch.checkpoint_id = Some(BlockHeight::from(height));
+                shardtree_support::append_sapling_leaf(
+                    &mut batch,
+                    u64::from(offset),
+                    SaplingNode::empty_leaf(),
+                    retention,
+                );
+                shardtree_support::append_orchard_leaf(
+                    &mut batch,
+                    u64::from(offset),
+                    MerkleHashOrchard::empty_leaf(),
+                    retention,
+                );
+                batch
+            })
+            .collect()
+    }
+
+    fn empty_compact_block(height: u64) -> CompactBlockData {
+        CompactBlockData {
+            proto_version: 1,
+            height,
+            hash: vec![0; 32],
+            prev_hash: vec![0; 32],
+            time: 0,
+            header: Vec::new(),
+            transactions: Vec::new(),
+        }
+    }
+
+    fn linked_compact_blocks(start: u64, end: u64) -> Vec<CompactBlockData> {
+        let mut previous_hash = vec![0x5a; 32];
+        (start..=end)
+            .map(|height| {
+                let mut block = empty_compact_block(height);
+                block.prev_hash = previous_hash.clone();
+                block.hash = vec![(height & 0xff) as u8; 32];
+                previous_hash = block.hash.clone();
+                block
+            })
+            .collect()
+    }
+
+    fn canonical_test_commitment(value: u8) -> Vec<u8> {
+        let mut commitment = vec![0u8; 32];
+        commitment[0] = value;
+        commitment
+    }
+
+    fn compact_tx_with_commitments(
+        index: u64,
+        hash_byte: u8,
+        sapling_commitment: u8,
+        ironwood_commitment: u8,
+    ) -> crate::client::CompactTx {
+        crate::client::CompactTx {
+            index: Some(index),
+            hash: vec![hash_byte; 32],
+            fee: None,
+            spends: Vec::new(),
+            outputs: vec![crate::client::CompactSaplingOutput {
+                cmu: canonical_test_commitment(sapling_commitment),
+                ephemeral_key: Vec::new(),
+                ciphertext: Vec::new(),
+            }],
+            actions: vec![crate::client::CompactIronwoodAction {
+                nullifier: Vec::new(),
+                cmx: canonical_test_commitment(ironwood_commitment),
+                ephemeral_key: Vec::new(),
+                enc_ciphertext: Vec::new(),
+                out_ciphertext: Vec::new(),
+            }],
+        }
+    }
+
+    #[test]
+    fn immutable_commitment_preparation_preserves_consensus_transaction_order() {
+        let mut block = empty_compact_block(500);
+        block.hash = vec![0xa5; 32];
+        block.transactions = vec![
+            compact_tx_with_commitments(2, 0x22, 2, 12),
+            compact_tx_with_commitments(1, 0x11, 1, 11),
+        ];
+        block.transactions[1]
+            .outputs
+            .push(crate::client::CompactSaplingOutput {
+                cmu: vec![0xff; 31],
+                ephemeral_key: Vec::new(),
+                ciphertext: Vec::new(),
+            });
+
+        let prepared = prepare_commitment_batch(std::slice::from_ref(&block));
+
+        prepared
+            .validate_source(std::slice::from_ref(&block))
+            .unwrap();
+        assert_eq!(prepared.sapling_count, 2);
+        assert_eq!(prepared.ironwood_count, 2);
+        assert_eq!(prepared.blocks[0].transactions[0].hash, vec![0x11; 32]);
+        assert_eq!(prepared.blocks[0].transactions[1].hash, vec![0x22; 32]);
+        assert_eq!(
+            prepared.blocks[0].transactions[0].sapling[0].commitment[0],
+            1
+        );
+        assert_eq!(
+            prepared.blocks[0].transactions[1].ironwood[0].commitment[0],
+            12
+        );
+        assert!(prepared.blocks[0].transactions[0].sapling[0].node.is_some());
+        assert!(prepared.blocks[0].transactions[0].ironwood[0]
+            .node
+            .is_some());
+
+        let mut mismatched = block.clone();
+        mismatched.hash[0] ^= 0xff;
+        assert!(prepared
+            .validate_source(std::slice::from_ref(&mismatched))
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn prepared_commitment_finalization_preserves_positions_for_both_pools() {
+        let mut block = empty_compact_block(500);
+        block.hash = vec![0xa5; 32];
+        block.transactions = vec![
+            compact_tx_with_commitments(2, 0x22, 2, 12),
+            compact_tx_with_commitments(1, 0x11, 1, 11),
+        ];
+        let prepared = prepare_commitment_batch(std::slice::from_ref(&block));
+        let mut sapling_note = DecryptedNote::new(500, 1, 0, 1, [2; 32], [0; 32], Vec::new());
+        sapling_note.commitment = canonical_test_commitment(2).try_into().unwrap();
+        let ironwood_note = DecryptedNote::new_ironwood(OrchardDecryptedNoteInit {
+            height: 500,
+            tx_index: 0,
+            output_index: 0,
+            value: 1,
+            commitment: canonical_test_commitment(11).try_into().unwrap(),
+            nullifier: [0; 32],
+            encrypted_memo: Vec::new(),
+            position: None,
+        });
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 1);
+
+        let (count, mappings, _, _) = engine
+            .update_commitment_trees(
+                std::slice::from_ref(&block),
+                prepared,
+                &[sapling_note, ironwood_note],
+                FrontierCheckpointMode::OwnedOnly,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(count, 4);
+        assert_eq!(*engine.sapling_tree_position.read().await, 2);
+        assert_eq!(*engine.orchard_tree_position.read().await, 2);
+        assert_eq!(
+            mappings.sapling_by_tx.get(&TxOutputKey {
+                txid: [0x22; 32],
+                index: 0,
+            }),
+            Some(&1)
+        );
+        let owned_ironwood_commitment: [u8; 32] = canonical_test_commitment(11).try_into().unwrap();
+        assert_eq!(
+            mappings
+                .orchard_by_commitment
+                .get(&owned_ironwood_commitment),
+            Some(&0)
+        );
+    }
+
+    #[tokio::test]
+    async fn mismatched_prepared_commitments_cannot_advance_frontier_state() {
+        let mut prepared_block = empty_compact_block(500);
+        prepared_block.hash = vec![0xa5; 32];
+        prepared_block.transactions = vec![compact_tx_with_commitments(0, 0x11, 1, 11)];
+        let prepared = prepare_commitment_batch(std::slice::from_ref(&prepared_block));
+        let mut validated_block = prepared_block;
+        validated_block.hash[0] ^= 0xff;
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 1);
+
+        let result = engine
+            .update_commitment_trees(
+                std::slice::from_ref(&validated_block),
+                prepared,
+                &[],
+                FrontierCheckpointMode::OwnedOnly,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(*engine.sapling_tree_position.read().await, 0);
+        assert_eq!(*engine.orchard_tree_position.read().await, 0);
+    }
+
+    #[test]
+    fn canonical_block_window_covers_the_full_reorg_search_depth() {
+        let blocks = (10_000..18_000)
+            .map(empty_compact_block)
+            .collect::<Vec<_>>();
+
+        let retained = canonical_block_window(&blocks);
+
+        assert_eq!(retained.len(), MAX_REORG_SEARCH_DEPTH as usize + 1);
+        assert_eq!(retained.first().unwrap().height, 15_999);
+        assert_eq!(retained.last().unwrap().height, 17_999);
+    }
+
+    #[test]
+    fn canonical_block_window_keeps_short_batches_intact() {
+        let blocks = (20_000..20_500)
+            .map(empty_compact_block)
+            .collect::<Vec<_>>();
+
+        assert_eq!(canonical_block_window(&blocks).len(), blocks.len());
+    }
+
+    #[test]
+    fn compact_block_range_requires_complete_linked_sequence() {
+        let blocks = linked_compact_blocks(42, 45);
+
+        SyncEngine::validate_compact_block_range(42, 45, &blocks).unwrap();
+    }
+
+    #[test]
+    fn compact_block_range_rejects_missing_or_reordered_heights() {
+        let mut blocks = linked_compact_blocks(42, 45);
+        blocks.remove(1);
+        assert!(SyncEngine::validate_compact_block_range(42, 45, &blocks).is_err());
+
+        let mut blocks = linked_compact_blocks(42, 45);
+        blocks.swap(1, 2);
+        assert!(SyncEngine::validate_compact_block_range(42, 45, &blocks).is_err());
+    }
+
+    #[test]
+    fn compact_block_range_rejects_disconnected_or_malformed_hashes() {
+        let mut disconnected = linked_compact_blocks(42, 45);
+        disconnected[2].prev_hash = vec![0xff; 32];
+        assert!(SyncEngine::validate_compact_block_range(42, 45, &disconnected).is_err());
+
+        let mut malformed = linked_compact_blocks(42, 45);
+        malformed[1].hash.truncate(31);
+        assert!(SyncEngine::validate_compact_block_range(42, 45, &malformed).is_err());
+    }
+
+    #[test]
+    fn batch_boundary_uses_the_previous_in_memory_hash() {
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 1);
+        let blocks = linked_compact_blocks(42, 45);
+
+        assert!(engine
+            .validate_batch_boundary(42, &blocks, None, Some(&[0x5a; 32]))
+            .unwrap());
+        assert!(!engine
+            .validate_batch_boundary(42, &blocks, None, Some(&[0xff; 32]))
+            .unwrap());
+    }
+
+    #[test]
+    fn historical_mark_positions_are_reduced_to_pool_subtree_hints() {
+        let subtree_leaves = 1u64 << SAPLING_SHARD_HEIGHT;
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 1)
+            .with_historical_mark_positions(
+                [subtree_leaves + 7, 3 * subtree_leaves + 1],
+                [2 * subtree_leaves + 9],
+            );
+
+        assert_eq!(
+            engine.historical_sapling_mark_subtrees,
+            HashSet::from([1, 3])
+        );
+        assert_eq!(engine.historical_ironwood_mark_subtrees, HashSet::from([2]));
+    }
+
+    #[test]
+    fn validated_cache_range_is_bounded_on_both_sides() {
+        let range = ValidatedCacheRange {
+            start: 100,
+            end: 200,
+        };
+
+        assert!(range.contains(100, 200));
+        assert!(range.contains(125, 175));
+        assert!(!range.contains(99, 175));
+        assert!(!range.contains(125, 201));
+    }
+
+    #[test]
+    fn bounded_latest_sync_returns_at_one_validated_tip_snapshot() {
+        assert_eq!(select_sync_target(100, None, 150, false), 150);
+        assert_eq!(select_sync_target(160, None, 150, false), 160);
+        assert_eq!(select_sync_target(100, None, 150, true), 150);
+        assert_eq!(select_sync_target(100, Some(125), 150, false), 125);
+    }
 
     #[test]
     fn test_sync_config_default() {
