@@ -3123,6 +3123,7 @@ impl SyncEngine {
         &self,
         tip_height: u64,
         context: &'static str,
+        persistence_worker: Option<&PersistenceWorker>,
     ) -> TipWitnessValidationOutcome {
         let mut queued_start = 0u64;
         let mut queued_end_exclusive = 0u64;
@@ -3130,7 +3131,7 @@ impl SyncEngine {
         let mut error_detail = String::new();
         let result;
         match self
-            .check_witnesses_and_queue_rescans(tip_height, None)
+            .check_witnesses_and_queue_rescans(tip_height, None, persistence_worker)
             .await
         {
             Ok(Some((repair_from_height, repair_end_exclusive))) => {
@@ -3182,14 +3183,38 @@ impl SyncEngine {
         result
     }
 
-    async fn activate_queued_found_note_range(&self) -> Result<Option<(u64, u64)>> {
+    async fn activate_queued_found_note_range(
+        &self,
+        persistence_worker: Option<&PersistenceWorker>,
+    ) -> Result<Option<(u64, u64)>> {
         let sink = match self.storage.as_ref() {
-            Some(s) => s,
+            Some(s) => s.clone(),
             None => return Ok(None),
         };
-        let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
-        let scan_queue = ScanQueueStorage::new(&db);
-        let spendability = SpendabilityStateStorage::new(&db);
+        let range = if let Some(worker) = persistence_worker {
+            worker
+                .execute(Self::activate_queued_found_note_range_with_db)
+                .await?
+        } else {
+            let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            Self::activate_queued_found_note_range_with_db(&db)?
+        };
+        if let Some((range_start, _)) = range {
+            // Force one post-repair integrity pass at the same tip after replay
+            // finishes, so spendability can return to validated without waiting for
+            // a new block.
+            let mut last = self.last_witness_check_height.write().await;
+            let force_height = range_start.saturating_sub(1);
+            if *last > force_height {
+                *last = force_height;
+            }
+        }
+        Ok(range)
+    }
+
+    fn activate_queued_found_note_range_with_db(db: &Database) -> Result<Option<(u64, u64)>> {
+        let scan_queue = ScanQueueStorage::new(db);
+        let spendability = SpendabilityStateStorage::new(db);
         let Some(row) = scan_queue.next_found_note_range()? else {
             return Ok(None);
         };
@@ -3202,16 +3227,6 @@ impl SyncEngine {
             range_start,
             SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
         )?;
-        // Force one post-repair integrity pass at the same tip after replay
-        // finishes, so spendability can return to validated without waiting for
-        // a new block.
-        {
-            let mut last = self.last_witness_check_height.write().await;
-            let force_height = range_start.saturating_sub(1);
-            if *last > force_height {
-                *last = force_height;
-            }
-        }
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
