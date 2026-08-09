@@ -5749,17 +5749,213 @@ impl SyncEngine {
         let client = self.client.clone();
         let cancel = self.cancel.clone();
         let wallet_id = self.wallet_id.clone();
+        let max_chunk_bytes = prefetched_batch_encoded_byte_cap(&self.config);
+        let (sender, receiver) = mpsc::channel(LOCAL_SCAN_BATCH_CHANNEL_CAPACITY);
         let handle = tokio::spawn(async move {
-            SyncEngine::fetch_blocks_with_retry_inner(client, start, end, cancel, wallet_id).await
+            if let Err(error) = SyncEngine::produce_prefetched_batches(
+                client,
+                start,
+                end,
+                cancel,
+                wallet_id,
+                validated_cache_range,
+                max_chunk_bytes,
+                flow,
+                &sender,
+            )
+            .await
+            {
+                let _ = sender.send(Err(error)).await;
+            }
         });
         PrefetchTask {
             start,
             end,
-            estimated_bytes,
-            handle,
+            payload: Some(PrefetchPayload::Fetch { receiver, handle }),
         }
     }
 
+    fn abort_prefetch_task(task: &mut PrefetchTask) {
+        match task.payload.take() {
+            None => {}
+            Some(PrefetchPayload::Fetch { handle, .. }) => handle.abort(),
+            Some(PrefetchPayload::Decrypt {
+                handle,
+                producer_abort,
+            }) => {
+                handle.abort();
+                producer_abort.abort();
+            }
+        }
+    }
+
+    async fn receive_prefetch_batch(
+        &self,
+        task: &mut PrefetchTask,
+    ) -> Result<ReceivedPrefetchBatch> {
+        let payload = task.payload.take().ok_or_else(|| {
+            Error::Sync(format!(
+                "prefetch task {}-{} had no active payload",
+                task.start, task.end
+            ))
+        })?;
+        match payload {
+            PrefetchPayload::Fetch {
+                mut receiver,
+                handle,
+            } => {
+                let received = tokio::select! {
+                    received = receiver.recv() => received,
+                    _ = self.cancel.cancelled() => {
+                        handle.abort();
+                        return Err(Error::Cancelled);
+                    }
+                };
+                task.payload = Some(PrefetchPayload::Fetch { receiver, handle });
+                let fetched = received.unwrap_or_else(|| {
+                    Err(Error::Sync(format!(
+                        "bounded compact block producer ended before {}-{} completed",
+                        task.start, task.end
+                    )))
+                })?;
+                Ok(ReceivedPrefetchBatch {
+                    fetched,
+                    prepared_notes: None,
+                    prepared_commitments: None,
+                })
+            }
+            PrefetchPayload::Decrypt {
+                mut handle,
+                producer_abort,
+            } => {
+                let output = tokio::select! {
+                    joined = &mut handle => joined.map_err(|error| {
+                        Error::Sync(format!("trial-decrypt lookahead task failed: {}", error))
+                    })?,
+                    _ = self.cancel.cancelled() => {
+                        handle.abort();
+                        producer_abort.abort();
+                        return Err(Error::Cancelled);
+                    }
+                }?;
+                task.payload = Some(PrefetchPayload::Fetch {
+                    receiver: output.receiver,
+                    handle: output.producer_handle,
+                });
+                Ok(ReceivedPrefetchBatch {
+                    fetched: output.fetched,
+                    prepared_notes: Some((output.notes, output.telemetry)),
+                    prepared_commitments: Some(output.prepared_commitments),
+                })
+            }
+        }
+    }
+
+    fn start_one_batch_decrypt_lookahead(&self, queue: &mut VecDeque<PrefetchTask>) {
+        if !self.config.one_batch_ahead_decryption {
+            return;
+        }
+        let Some(mut task) = queue.pop_front() else {
+            return;
+        };
+        let Some(PrefetchPayload::Fetch {
+            mut receiver,
+            handle: producer_handle,
+        }) = task.payload.take()
+        else {
+            queue.push_front(task);
+            return;
+        };
+
+        let producer_abort = producer_handle.abort_handle();
+        let cancel = self.cancel.clone();
+        let decrypt_keys = self.trial_decrypt_keys.clone();
+        let decrypt_pool = Arc::clone(&self.decrypt_pool);
+        let birthday_height = self.birthday_height;
+        let max_parallel = self.config.max_parallel_decrypt;
+        let task_multiplier = if self.config.stage_aware_cpu_scheduling {
+            LOOKAHEAD_DECRYPT_TASK_MULTIPLIER
+        } else {
+            1
+        };
+        let planned_start = task.start;
+        let planned_end = task.end;
+        let lookahead = tokio::spawn(async move {
+            let fetched = tokio::select! {
+                received = receiver.recv() => {
+                    received.unwrap_or_else(|| {
+                        Err(Error::Sync(format!(
+                            "bounded compact block producer ended before lookahead {}-{} completed",
+                            planned_start, planned_end
+                        )))
+                    })?
+                }
+                _ = cancel.cancelled() => {
+                    producer_handle.abort();
+                    return Err(Error::Cancelled);
+                }
+            };
+
+            let decrypt_cancel = cancel.clone();
+            let (fetched, result, prepared_commitments) = tokio::task::spawn_blocking(move || {
+                let relevant = wallet_relevant_blocks(&fetched.blocks, birthday_height);
+                let (result, prepared_commitments) = decrypt_pool.install(|| {
+                    rayon::join(
+                        || {
+                            if decrypt_keys.sapling_ivks.is_empty()
+                                && decrypt_keys.orchard_ivks.is_empty()
+                            {
+                                Ok(TrialDecryptBatchResult {
+                                    notes: Vec::new(),
+                                    telemetry: TrialDecryptTelemetry::default(),
+                                })
+                            } else {
+                                trial_decrypt_batch_impl(TrialDecryptBatchInputs {
+                                    blocks: relevant,
+                                    sapling_ivks: &decrypt_keys.sapling_ivks,
+                                    sapling_key_ids: &decrypt_keys.sapling_key_ids,
+                                    sapling_scopes: &decrypt_keys.sapling_scopes,
+                                    orchard_ivks: &decrypt_keys.orchard_ivks,
+                                    orchard_key_ids: &decrypt_keys.orchard_key_ids,
+                                    orchard_scopes: &decrypt_keys.orchard_scopes,
+                                    orchard_fvks: &decrypt_keys.orchard_fvks,
+                                    decrypt_pool: decrypt_pool.as_ref(),
+                                    max_parallel,
+                                    task_multiplier,
+                                })
+                            }
+                        },
+                        || prepare_commitment_batch(&fetched.blocks),
+                    )
+                });
+                (fetched, result, prepared_commitments)
+            })
+            .await
+            .map_err(|error| {
+                Error::Sync(format!("trial-decrypt lookahead worker failed: {}", error))
+            })?;
+            if decrypt_cancel.is_cancelled() {
+                producer_handle.abort();
+                return Err(Error::Cancelled);
+            }
+            let decrypted = result?;
+            Ok(DecryptLookaheadOutput {
+                fetched,
+                notes: decrypted.notes,
+                telemetry: decrypted.telemetry,
+                prepared_commitments,
+                receiver,
+                producer_handle,
+            })
+        });
+        task.payload = Some(PrefetchPayload::Decrypt {
+            handle: lookahead,
+            producer_abort,
+        });
+        queue.push_front(task);
+    }
+
+    #[cfg(test)]
     fn spawn_server_batch_hint_prefetch(&self, start: u64) -> ServerBatchHintTask {
         let client = self.client.clone();
         let cancel = self.cancel.clone();
@@ -5777,19 +5973,19 @@ impl SyncEngine {
         ServerBatchHintTask { start, handle }
     }
 
+    #[cfg(test)]
     async fn resolve_server_batch_hint_task(
         &self,
         mut task: ServerBatchHintTask,
-        wait: Duration,
     ) -> Result<(Option<u64>, Option<ServerBatchHintTask>)> {
+        if !task.handle.is_finished() {
+            return Ok((None, Some(task)));
+        }
         tokio::select! {
             joined = &mut task.handle => {
                 let value = joined
                     .map_err(|e| Error::Sync(format!("server batch hint task failed: {}", e)))?;
                 Ok((value.filter(|end| *end >= task.start), None))
-            }
-            _ = tokio::time::sleep(wait) => {
-                Ok((None, Some(task)))
             }
             _ = self.cancel.cancelled() => {
                 task.handle.abort();
@@ -5798,97 +5994,39 @@ impl SyncEngine {
         }
     }
 
-    fn abort_prefetch_queue(
-        prefetch_queue: &mut VecDeque<PrefetchTask>,
-        queued_prefetch_bytes: &mut u64,
-    ) {
+    fn abort_prefetch_queue(prefetch_queue: &mut VecDeque<PrefetchTask>) {
         while let Some(prefetch) = prefetch_queue.pop_front() {
-            prefetch.handle.abort();
-        }
-        *queued_prefetch_bytes = 0;
-    }
-
-    fn abort_pending_server_batch_hint(
-        pending_server_group_hint: &mut Option<ServerBatchHintTask>,
-    ) {
-        if let Some(task) = pending_server_group_hint.take() {
-            task.handle.abort();
+            let mut prefetch = prefetch;
+            Self::abort_prefetch_task(&mut prefetch);
         }
     }
 
-    fn estimate_prefetch_bytes(start: u64, end: u64, avg_block_size_estimate: u64) -> u64 {
-        let blocks = end.saturating_sub(start).saturating_add(1);
-        blocks.saturating_mul(avg_block_size_estimate.max(1))
-    }
-
-    async fn fill_prefetch_queue(
+    fn fill_prefetch_queue(
         &self,
         prefetch_queue: &mut VecDeque<PrefetchTask>,
-        queued_prefetch_bytes: &mut u64,
         sync_bounds: (u64, u64),
-        batch_tuning: BatchTuning,
-        hints: (&mut Option<u64>, &mut Option<ServerBatchHintTask>),
-    ) -> Result<()> {
+        validated_cache_range: Option<ValidatedCacheRange>,
+        flow: Arc<PrefetchFlowControl>,
+    ) {
         let (start_height, end_height) = sync_bounds;
-        let (server_group_end_hint, pending_server_group_hint) = hints;
 
-        if start_height > end_height {
-            return Ok(());
+        if start_height > end_height || !prefetch_queue.is_empty() {
+            return;
         }
 
-        let max_depth = self.config.prefetch_queue_depth.max(1);
-        let max_bytes = self.config.prefetch_queue_max_bytes.max(1);
-        let mut next_start = prefetch_queue
-            .back()
-            .map(|task| task.end.saturating_add(1))
-            .unwrap_or(start_height);
-
-        while prefetch_queue.len() < max_depth && next_start <= end_height {
-            let (batch_end, _desired_blocks) = self
-                .compute_batch_end(
-                    next_start,
-                    end_height,
-                    batch_tuning,
-                    server_group_end_hint,
-                    pending_server_group_hint,
-                )
-                .await?;
-
-            if batch_end < next_start {
-                break;
-            }
-
-            let estimated_bytes = Self::estimate_prefetch_bytes(
-                next_start,
-                batch_end,
-                batch_tuning.avg_block_size_estimate,
-            );
-            let would_exceed_bytes =
-                queued_prefetch_bytes.saturating_add(estimated_bytes) > max_bytes;
-            if would_exceed_bytes && !prefetch_queue.is_empty() {
-                break;
-            }
-
-            prefetch_queue.push_back(self.spawn_prefetch(next_start, batch_end, estimated_bytes));
-            *queued_prefetch_bytes = queued_prefetch_bytes.saturating_add(estimated_bytes);
-            next_start = batch_end.saturating_add(1);
-
-            if self.config.use_server_batch_recommendations && next_start <= end_height {
-                let replace_hint = match pending_server_group_hint.as_ref() {
-                    Some(task) => task.start != next_start,
-                    None => true,
-                };
-                if replace_hint {
-                    Self::abort_pending_server_batch_hint(pending_server_group_hint);
-                    *pending_server_group_hint =
-                        Some(self.spawn_server_batch_hint_prefetch(next_start));
-                }
-            }
-        }
-
-        Ok(())
+        // One producer owns the whole bounded sync horizon. Its gRPC request is
+        // therefore independent of device speed and local scan-batch decisions.
+        // Tree-replay boundaries still split the horizon where correctness
+        // requires an intermediate checkpoint.
+        prefetch_queue.push_back(self.spawn_prefetch(
+            start_height,
+            end_height,
+            validated_cache_range,
+            flow,
+        ));
     }
 
+    #[cfg(test)]
     async fn compute_batch_end(
         &self,
         current_height: u64,
@@ -5896,6 +6034,7 @@ impl SyncEngine {
         batch_tuning: BatchTuning,
         server_group_end_hint: &mut Option<u64>,
         pending_server_group_hint: &mut Option<ServerBatchHintTask>,
+        allow_server_recommendation: bool,
     ) -> Result<(u64, u64)> {
         let mut target_bytes = batch_tuning
             .target_bytes
@@ -5911,8 +6050,7 @@ impl SyncEngine {
         }
         let mut max_batch_blocks = batch_tuning
             .max_batch_blocks
-            .max(self.config.min_batch_size)
-            .min(self.config.max_batch_size);
+            .max(self.config.min_batch_size);
         let mut min_batch_blocks = self.config.min_batch_size.max(1).min(max_batch_blocks);
         if let Some(max_memory) = self.config.max_batch_memory_bytes {
             let memory_safe_blocks = (max_memory / estimated_block_bytes).max(1);
@@ -5935,7 +6073,7 @@ impl SyncEngine {
             desired_end = std::cmp::min(desired_end, cap_end);
         }
 
-        if !self.config.use_server_batch_recommendations {
+        if !self.config.use_server_batch_recommendations || !allow_server_recommendation {
             return Ok((desired_end, desired_blocks));
         }
 
@@ -5944,13 +6082,7 @@ impl SyncEngine {
             _ => {
                 if let Some(task) = pending_server_group_hint.take() {
                     if task.start == current_height {
-                        match self
-                            .resolve_server_batch_hint_task(
-                                task,
-                                Duration::from_millis(SERVER_BATCH_HINT_WAIT_MS),
-                            )
-                            .await?
-                        {
+                        match self.resolve_server_batch_hint_task(task).await? {
                             (Some(value), None) => {
                                 *server_group_end_hint = Some(value);
                                 value
@@ -5982,30 +6114,8 @@ impl SyncEngine {
                     }
                 } else {
                     let task = self.spawn_server_batch_hint_prefetch(current_height);
-                    match self
-                        .resolve_server_batch_hint_task(
-                            task,
-                            Duration::from_millis(SERVER_BATCH_HINT_WAIT_MS),
-                        )
-                        .await?
-                    {
-                        (Some(value), None) => {
-                            *server_group_end_hint = Some(value);
-                            value
-                        }
-                        (None, Some(task)) => {
-                            *pending_server_group_hint = Some(task);
-                            return Ok((desired_end, desired_blocks));
-                        }
-                        (None, None) => {
-                            return Ok((desired_end, desired_blocks));
-                        }
-                        (Some(_), Some(_)) => {
-                            unreachable!(
-                                "server batch hint resolver cannot return both a value and a pending task"
-                            )
-                        }
-                    }
+                    *pending_server_group_hint = Some(task);
+                    return Ok((desired_end, desired_blocks));
                 }
             }
         };
@@ -6015,8 +6125,9 @@ impl SyncEngine {
                 let optimal_end = std::cmp::min(server_end, end);
                 let server_batch_size =
                     optimal_end.saturating_sub(current_height).saturating_add(1);
-                let server_group_multiplier = (target_bytes / SERVER_BATCH_GROUP_TARGET_BYTES)
-                    .clamp(1, MAX_SERVER_BATCH_GROUP_MULTIPLIER);
+                let server_group_multiplier = target_bytes
+                    .div_ceil(SERVER_BATCH_GROUP_TARGET_BYTES)
+                    .max(1);
                 let server_profile_cap_blocks = server_batch_size
                     .saturating_mul(server_group_multiplier)
                     .max(server_batch_size)
@@ -6046,7 +6157,7 @@ impl SyncEngine {
                             server_batch_size,
                             server_group_multiplier,
                             desired_blocks,
-                            self.config.max_batch_size,
+                            max_batch_blocks,
                             batch_end - current_height + 1
                         );
                     });
