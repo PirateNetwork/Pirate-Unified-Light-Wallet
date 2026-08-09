@@ -1929,7 +1929,7 @@ impl SyncEngine {
             .await?;
         if remote_tip_block.hash == local_tip.hash {
             if metadata_gap {
-                self.rollback_to_checkpoint(local_tip.height).await?;
+                self.rollback_to_checkpoint(local_tip.height, None).await?;
                 self.invalidate_block_cache_above(local_tip.height);
                 return Ok(local_tip.height.saturating_add(1).max(1));
             }
@@ -1942,16 +1942,22 @@ impl SyncEngine {
             hex::encode(&local_tip.hash),
             hex::encode(&remote_tip_block.hash)
         );
-        self.rollback_to_common_ancestor(local_tip.height).await
+        self.rollback_to_common_ancestor(local_tip.height, None)
+            .await
     }
 
-    async fn rollback_to_common_ancestor(&mut self, divergent_height: u64) -> Result<u64> {
+    async fn rollback_to_common_ancestor(
+        &mut self,
+        divergent_height: u64,
+        persistence_worker: Option<&PersistenceWorker>,
+    ) -> Result<u64> {
         let rollback_height = self
             .find_common_ancestor(divergent_height)
             .await?
             .unwrap_or_else(|| (self.birthday_height as u64).saturating_sub(1));
 
-        self.rollback_to_checkpoint(rollback_height).await?;
+        self.rollback_to_checkpoint(rollback_height, persistence_worker)
+            .await?;
         self.invalidate_block_cache_above(rollback_height);
 
         Ok(rollback_height.saturating_add(1).max(1))
@@ -2005,16 +2011,12 @@ impl SyncEngine {
         &self,
         batch_start: u64,
         blocks: &[CompactBlockData],
+        db_session: Option<&Database>,
+        previous_processed_hash: Option<&[u8]>,
     ) -> Result<bool> {
         if batch_start <= 1 || blocks.is_empty() {
             return Ok(true);
         }
-        let Some(sink) = self.storage.as_ref() else {
-            return Ok(true);
-        };
-        let Some(previous) = sink.load_chain_block(batch_start.saturating_sub(1))? else {
-            return Ok(true);
-        };
         let first = &blocks[0];
         if first.prev_hash.len() != 32 {
             return Err(Error::Sync(format!(
@@ -2023,6 +2025,20 @@ impl SyncEngine {
                 first.prev_hash.len()
             )));
         }
+        if let Some(expected_hash) = previous_processed_hash {
+            return Ok(first.prev_hash == expected_hash);
+        }
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(true);
+        };
+        let previous_height = batch_start.saturating_sub(1);
+        let previous = match db_session {
+            Some(db) => sink.load_chain_block_with_db(db, previous_height)?,
+            None => sink.load_chain_block(previous_height)?,
+        };
+        let Some(previous) = previous else {
+            return Ok(true);
+        };
         Ok(first.prev_hash == previous.hash)
     }
 
@@ -2072,6 +2088,22 @@ impl SyncEngine {
 
     /// Sync specific range
     pub async fn sync_range(&mut self, start_height: u64, end_height: Option<u64>) -> Result<()> {
+        let follow_tip = end_height.is_none();
+        self.sync_range_with_mode(start_height, end_height, follow_tip)
+            .await
+    }
+
+    /// Sync through one validated snapshot of the server tip, then return.
+    pub async fn sync_range_to_latest(&mut self, start_height: u64) -> Result<()> {
+        self.sync_range_with_mode(start_height, None, false).await
+    }
+
+    async fn sync_range_with_mode(
+        &mut self,
+        start_height: u64,
+        end_height: Option<u64>,
+        follow_tip: bool,
+    ) -> Result<()> {
         tracing::info!(
             "sync_range called: start={}, end_height={:?}",
             start_height,
