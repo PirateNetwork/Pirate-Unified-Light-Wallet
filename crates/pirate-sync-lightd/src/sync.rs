@@ -1441,8 +1441,7 @@ impl SyncEngine {
         }
     }
 
-    async fn require_server_consensus_branch(&self) -> Result<()> {
-        let info = self.client.get_lightd_info().await?;
+    fn validate_server_consensus_branch(&self, info: &LightdInfo) -> Result<()> {
         let check = crate::consensus::check_consensus_branch(
             self.network_type,
             info.block_height,
@@ -1455,6 +1454,29 @@ impl SyncEngine {
             check.height
         );
         Ok(())
+    }
+
+    async fn validated_server_info(&self) -> Result<LightdInfo> {
+        let timeout = match self.client.transport_mode() {
+            TransportMode::Direct => Duration::from_secs(5),
+            TransportMode::Tor | TransportMode::I2p | TransportMode::Socks5 => {
+                Duration::from_secs(15)
+            }
+        };
+        let info = tokio::time::timeout(timeout, self.client.get_lightd_info())
+            .await
+            .map_err(|_| {
+                Error::Network(format!(
+                    "Timed out after {:?} while validating the server consensus branch",
+                    timeout
+                ))
+            })??;
+        self.validate_server_consensus_branch(&info)?;
+        Ok(info)
+    }
+
+    async fn require_server_consensus_branch(&self) -> Result<()> {
+        self.validated_server_info().await.map(|_| ())
     }
 
     /// Create new sync engine
@@ -1477,6 +1499,7 @@ impl SyncEngine {
             wallet_id: None,
             storage: None,
             keys: Vec::new(),
+            trial_decrypt_keys: TrialDecryptKeys::default(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             tracked_wallet_txids: HashSet::new(),
@@ -1487,6 +1510,8 @@ impl SyncEngine {
             cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
             last_witness_check_height: Arc::new(RwLock::new(0)),
+            historical_sapling_mark_subtrees: HashSet::new(),
+            historical_ironwood_mark_subtrees: HashSet::new(),
         }
     }
 
@@ -1573,6 +1598,7 @@ impl SyncEngine {
             wallet_id: None,
             storage: None,
             keys: Vec::new(),
+            trial_decrypt_keys: TrialDecryptKeys::default(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             tracked_wallet_txids: HashSet::new(),
@@ -1583,6 +1609,8 @@ impl SyncEngine {
             cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
             last_witness_check_height: Arc::new(RwLock::new(0)),
+            historical_sapling_mark_subtrees: HashSet::new(),
+            historical_ironwood_mark_subtrees: HashSet::new(),
         }
     }
 
@@ -1609,6 +1637,7 @@ impl SyncEngine {
             wallet_id: None,
             storage: None,
             keys: Vec::new(),
+            trial_decrypt_keys: TrialDecryptKeys::default(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             tracked_wallet_txids: HashSet::new(),
@@ -1619,7 +1648,30 @@ impl SyncEngine {
             cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
             last_witness_check_height: Arc::new(RwLock::new(0)),
+            historical_sapling_mark_subtrees: HashSet::new(),
+            historical_ironwood_mark_subtrees: HashSet::new(),
         }
+    }
+
+    /// Preserve conservative note-position hints across explicit rescan
+    /// truncation. These hints never establish ownership or chain validity;
+    /// they only disable subtree-root grafting where a mark was seen before.
+    pub fn with_historical_mark_positions(
+        mut self,
+        sapling_positions: impl IntoIterator<Item = u64>,
+        ironwood_positions: impl IntoIterator<Item = u64>,
+    ) -> Self {
+        self.historical_sapling_mark_subtrees.extend(
+            sapling_positions
+                .into_iter()
+                .map(|position| position >> SAPLING_SHARD_HEIGHT),
+        );
+        self.historical_ironwood_mark_subtrees.extend(
+            ironwood_positions
+                .into_iter()
+                .map(|position| position >> ORCHARD_SHARD_HEIGHT),
+        );
+        self
     }
 
     /// Get performance counters reference
@@ -1755,6 +1807,7 @@ impl SyncEngine {
             address_network_type,
         };
         self.storage = Some(sink);
+        self.trial_decrypt_keys = TrialDecryptKeys::from_key_groups(&key_groups);
         self.keys = key_groups;
         if let Ok(mut last) = self.last_witness_check_height.try_write() {
             *last = 0;
@@ -1785,15 +1838,14 @@ impl SyncEngine {
     /// refreshing the remote target height immediately before the sync starts.
     pub async fn prepare_background_sync(&self) -> Result<(u64, u64)> {
         let start_height = self.background_resume_height()?;
+        let info = self.validated_server_info().await?;
         {
             let progress = self.progress.write().await;
             progress.set_current(start_height.saturating_sub(1));
-            progress.set_stage(SyncStage::Headers);
+            progress.set_target(info.block_height);
+            progress.set_stage(SyncStage::Preparing);
         }
-        self.update_target_height().await?;
-        self.require_server_consensus_branch().await?;
-        let target_height = self.progress.read().await.target_height();
-        Ok((start_height, target_height))
+        Ok((start_height, info.block_height))
     }
 
     /// Start sync from birthday height.
