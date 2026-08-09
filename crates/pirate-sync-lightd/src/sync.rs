@@ -5288,65 +5288,14 @@ impl SyncEngine {
         }
     }
 
-    async fn trial_decrypt_batch(
-        &mut self,
+    fn trial_decrypt_batch_sync(
+        &self,
         blocks: &[CompactBlockData],
     ) -> Result<(Vec<DecryptedNote>, TrialDecryptTelemetry)> {
-        // Build IVK bundles from all key groups.
-        let mut sapling_ivks = Vec::new();
-        let mut sapling_key_ids = Vec::new();
-        let mut sapling_scopes = Vec::new();
-        let mut orchard_ivks = Vec::new();
-        let mut orchard_key_ids = Vec::new();
-        let mut orchard_scopes = Vec::new();
-        let mut orchard_fvks = Vec::new();
+        let decrypt_keys = &self.trial_decrypt_keys;
 
-        for key in &self.keys {
-            if let Some(ivk_bytes) = key.sapling_ivk {
-                if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&ivk_bytes)) {
-                    let sapling_ivk = SaplingIvk(ivk_fr);
-                    sapling_ivks.push(PreparedIncomingViewingKey::new(&sapling_ivk));
-                    sapling_key_ids.push(key.key_id);
-                    sapling_scopes.push(AddressScope::External);
-                }
-            }
-
-            if let Some(dfvk) = key.sapling_dfvk.as_ref() {
-                let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
-                if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes)) {
-                    let sapling_ivk = SaplingIvk(ivk_fr);
-                    sapling_ivks.push(PreparedIncomingViewingKey::new(&sapling_ivk));
-                    sapling_key_ids.push(key.key_id);
-                    sapling_scopes.push(AddressScope::Internal);
-                }
-            }
-
-            if let (Some(ivk_bytes), Some(fvk)) = (key.orchard_ivk, key.orchard_fvk.as_ref()) {
-                let ivk_ct = IronwoodIncomingViewingKey::from_bytes(&ivk_bytes);
-                if bool::from(ivk_ct.is_some()) {
-                    let ivk = ivk_ct.unwrap();
-                    orchard_ivks.push(OrchardPreparedIncomingViewingKey::new(&ivk));
-                    orchard_key_ids.push(key.key_id);
-                    orchard_scopes.push(AddressScope::External);
-                    orchard_fvks.push(fvk.inner.clone());
-                }
-            }
-
-            if let Some(fvk) = key.orchard_fvk.as_ref() {
-                let internal_ivk_bytes = fvk.to_internal_ivk_bytes();
-                let ivk_ct = IronwoodIncomingViewingKey::from_bytes(&internal_ivk_bytes);
-                if bool::from(ivk_ct.is_some()) {
-                    let ivk = ivk_ct.unwrap();
-                    orchard_ivks.push(OrchardPreparedIncomingViewingKey::new(&ivk));
-                    orchard_key_ids.push(key.key_id);
-                    orchard_scopes.push(AddressScope::Internal);
-                    orchard_fvks.push(fvk.inner.clone());
-                }
-            }
-        }
-
-        let has_sapling_ivk = !sapling_ivks.is_empty();
-        let has_orchard_ivk = !orchard_ivks.is_empty();
+        let has_sapling_ivk = !decrypt_keys.sapling_ivks.is_empty();
+        let has_orchard_ivk = !decrypt_keys.orchard_ivks.is_empty();
         if verbose_sync_batch_logging_enabled() {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -5379,15 +5328,16 @@ impl SyncEngine {
         }
         let decrypt_result = trial_decrypt_batch_impl(TrialDecryptBatchInputs {
             blocks,
-            sapling_ivks: &sapling_ivks,
-            sapling_key_ids: &sapling_key_ids,
-            sapling_scopes: &sapling_scopes,
-            orchard_ivks: &orchard_ivks,
-            orchard_key_ids: &orchard_key_ids,
-            orchard_scopes: &orchard_scopes,
-            orchard_fvks: &orchard_fvks,
+            sapling_ivks: &decrypt_keys.sapling_ivks,
+            sapling_key_ids: &decrypt_keys.sapling_key_ids,
+            sapling_scopes: &decrypt_keys.sapling_scopes,
+            orchard_ivks: &decrypt_keys.orchard_ivks,
+            orchard_key_ids: &decrypt_keys.orchard_key_ids,
+            orchard_scopes: &decrypt_keys.orchard_scopes,
+            orchard_fvks: &decrypt_keys.orchard_fvks,
             decrypt_pool: self.decrypt_pool.as_ref(),
             max_parallel: self.config.max_parallel_decrypt,
+            task_multiplier: 1,
         })?;
         let all_notes = decrypt_result.notes;
 
@@ -5406,7 +5356,7 @@ impl SyncEngine {
                 .filter(|note| note.note_type == crate::pipeline::NoteType::Sapling)
                 .count();
             append_debug_log_line(&format!(
-                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:trial_decrypt_batch","message":"trial_decrypt batch summary","data":{{"start":{},"end":{},"blocks":{},"sapling_outputs":{},"orchard_actions":{},"sapling_notes":{},"orchard_notes":{},"decrypt_cpu_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:trial_decrypt_batch","message":"trial_decrypt batch summary","data":{{"start":{},"end":{},"blocks":{},"sapling_outputs":{},"orchard_actions":{},"sapling_notes":{},"orchard_notes":{},"decrypt_pool_wall_ms":{},"decrypt_worker_active_ms":{},"decrypt_worker_tasks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                 id,
                 ts,
                 min_height.unwrap_or(0),
@@ -5416,14 +5366,386 @@ impl SyncEngine {
                 orchard_actions_total,
                 sapling_notes,
                 orchard_notes,
-                decrypt_result.telemetry.cpu_ms
+                decrypt_result.telemetry.pool_wall.as_millis(),
+                decrypt_result.telemetry.worker_active.as_millis(),
+                decrypt_result.telemetry.task_count,
             ));
         }
 
         Ok((all_notes, decrypt_result.telemetry))
     }
 
-    fn spawn_prefetch(&self, start: u64, end: u64, estimated_bytes: u64) -> PrefetchTask {
+    #[cfg(test)]
+    async fn trial_decrypt_batch(
+        &self,
+        blocks: &[CompactBlockData],
+    ) -> Result<(Vec<DecryptedNote>, TrialDecryptTelemetry)> {
+        self.trial_decrypt_batch_sync(blocks)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn produce_prefetched_batches(
+        client: LightClient,
+        start: u64,
+        end: u64,
+        cancel: CancelToken,
+        wallet_id: Option<String>,
+        validated_cache_range: Option<ValidatedCacheRange>,
+        max_chunk_bytes: u64,
+        flow: Arc<PrefetchFlowControl>,
+        sender: &mpsc::Sender<Result<FetchedBlockBatch>>,
+    ) -> Result<()> {
+        if start > end {
+            return Ok(());
+        }
+        let max_chunk_bytes = max_chunk_bytes.max(1);
+        let mut current = start;
+
+        while current <= end {
+            if cancel.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+
+            if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
+                let target_blocks = flow.target_blocks.load(Ordering::Acquire).max(1);
+                let target_bytes = flow
+                    .target_bytes
+                    .load(Ordering::Acquire)
+                    .clamp(1, max_chunk_bytes);
+                let local_end = end.min(current.saturating_add(target_blocks.saturating_sub(1)));
+                match cache.load_bounded_range_for_upgrade(current, local_end, target_bytes) {
+                    Ok(cached) if !cached.blocks.is_empty() => {
+                        let chunk_end =
+                            cached
+                                .blocks
+                                .last()
+                                .map(|block| block.height)
+                                .ok_or_else(|| {
+                                    Error::Sync("bounded cache chunk had no end height".to_string())
+                                })?;
+                        Self::validate_compact_block_range(current, chunk_end, &cached.blocks)?;
+                        if Self::cached_blocks_are_canonical(
+                            &client,
+                            &cache,
+                            current,
+                            chunk_end,
+                            &cached.blocks,
+                            validated_cache_range,
+                        )
+                        .await?
+                        {
+                            if !cached.legacy_heights.is_empty() {
+                                cache
+                                    .upgrade_legacy_rows(&cached.blocks, &cached.legacy_heights)?;
+                            }
+                            let reservation = flow
+                                .watermarks
+                                .reserve(cached.encoded_bytes, &cancel)
+                                .await?;
+                            let batch = FetchedBlockBatch {
+                                blocks: cached.blocks,
+                                encoded_bytes: cached.encoded_bytes,
+                                requested_blocks: target_blocks,
+                                requested_bytes: target_bytes,
+                                source: BlockFetchSource::Cache,
+                                elapsed: Duration::ZERO,
+                                network_elapsed: Duration::ZERO,
+                                cache_write_elapsed: Duration::ZERO,
+                                spool_reservations: vec![reservation],
+                            };
+                            Self::send_prefetched_batch(sender, batch, &cancel).await?;
+                            current = chunk_end.saturating_add(1);
+                            continue;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(error) => tracing::debug!(
+                        "Bounded block cache read failed for {}-{}: {}",
+                        current,
+                        end,
+                        error
+                    ),
+                }
+            }
+
+            match acquire_inflight(client.endpoint(), current, end) {
+                InflightLease::Follower(waiter) => {
+                    tokio::select! {
+                        _ = waiter.wait() => {}
+                        _ = cancel.cancelled() => return Err(Error::Cancelled),
+                    }
+                    continue;
+                }
+                InflightLease::Leader(token) => {
+                    let (segment_sender, mut segment_receiver) =
+                        mpsc::channel(DURABLE_SEGMENT_CHANNEL_CAPACITY);
+                    let segment_handle = tokio::spawn(Self::produce_durable_network_segments(
+                        client.clone(),
+                        current,
+                        end,
+                        cancel.clone(),
+                        wallet_id.clone(),
+                        max_chunk_bytes,
+                        Arc::clone(&flow),
+                        token,
+                        segment_sender,
+                    ));
+                    let _segment_abort = AbortTaskOnDrop(segment_handle.abort_handle());
+                    let mut pending = NetworkBatchAccumulator::default();
+                    while let Some(segment) = tokio::select! {
+                        segment = segment_receiver.recv() => segment,
+                        _ = cancel.cancelled() => return Err(Error::Cancelled),
+                    } {
+                        let DurableBlockSegment {
+                            blocks: mut segment_blocks,
+                            encoded_block_bytes: mut segment_block_bytes,
+                            encoded_bytes: segment_bytes,
+                            network_elapsed,
+                            cache_write_elapsed,
+                            reservation,
+                        } = segment;
+                        let segment_start = segment_blocks
+                            .first()
+                            .map(|block| block.height)
+                            .ok_or_else(|| {
+                                Error::Sync("durable compact block segment was empty".to_string())
+                            })?;
+                        let segment_end = segment_blocks
+                            .last()
+                            .map(|block| block.height)
+                            .ok_or_else(|| {
+                                Error::Sync("durable compact block segment was empty".to_string())
+                            })?;
+                        if segment_start != current {
+                            return Err(Error::Sync(format!(
+                                "durable compact block router expected {}, received {}",
+                                current, segment_start
+                            )));
+                        }
+                        debug_assert_eq!(
+                            segment_block_bytes.iter().copied().sum::<u64>(),
+                            segment_bytes
+                        );
+                        let mut attribute_network = Some(network_elapsed);
+                        let mut attribute_cache_write = Some(cache_write_elapsed);
+                        while !segment_blocks.is_empty() {
+                            let target = (
+                                flow.target_blocks.load(Ordering::Acquire).max(1),
+                                flow.target_bytes
+                                    .load(Ordering::Acquire)
+                                    .clamp(1, max_chunk_bytes),
+                            );
+                            let take = local_batch_prefix_len(
+                                &segment_block_bytes,
+                                pending.blocks.len() as u64,
+                                pending.encoded_bytes,
+                                target.0,
+                                target.1,
+                            );
+                            if take == 0 {
+                                let batch = pending.take_batch(target.0, target.1);
+                                Self::send_prefetched_batch(sender, batch, &cancel).await?;
+                                continue;
+                            }
+
+                            let remaining_blocks = segment_blocks.split_off(take);
+                            let piece_blocks =
+                                std::mem::replace(&mut segment_blocks, remaining_blocks);
+                            let remaining_sizes = segment_block_bytes.split_off(take);
+                            let piece_sizes =
+                                std::mem::replace(&mut segment_block_bytes, remaining_sizes);
+                            let piece_bytes = piece_sizes.iter().copied().sum::<u64>();
+                            pending.push(
+                                piece_blocks,
+                                piece_bytes,
+                                attribute_network.take().unwrap_or_default(),
+                                attribute_cache_write.take().unwrap_or_default(),
+                                reservation.clone(),
+                            );
+                            if pending.reached(target) {
+                                let batch = pending.take_batch(target.0, target.1);
+                                Self::send_prefetched_batch(sender, batch, &cancel).await?;
+                            }
+                        }
+                        current = segment_end.saturating_add(1);
+                    }
+                    if !pending.is_empty() {
+                        let batch = pending.take_batch(
+                            flow.target_blocks.load(Ordering::Acquire).max(1),
+                            flow.target_bytes
+                                .load(Ordering::Acquire)
+                                .clamp(1, max_chunk_bytes),
+                        );
+                        Self::send_prefetched_batch(sender, batch, &cancel).await?;
+                    }
+                    segment_handle.await.map_err(|error| {
+                        Error::Sync(format!("durable block spool task failed: {}", error))
+                    })??;
+                    if current <= end {
+                        return Err(Error::Network(format!(
+                            "durable compact block router ended at {}, expected {}",
+                            current,
+                            end.saturating_add(1)
+                        )));
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn produce_durable_network_segments(
+        client: LightClient,
+        start: u64,
+        end: u64,
+        cancel: CancelToken,
+        wallet_id: Option<String>,
+        max_segment_bytes: u64,
+        flow: Arc<PrefetchFlowControl>,
+        token: InflightToken,
+        sender: mpsc::Sender<DurableBlockSegment>,
+    ) -> Result<()> {
+        let mut current = start;
+        let mut segment_controller = AdaptiveDurableSegmentController::new(max_segment_bytes);
+        flow.durable_segment_blocks
+            .store(segment_controller.target_blocks(), Ordering::Release);
+        let mut receiver = client.compact_block_adaptive_segment_stream(
+            height_to_u32(start)?..height_to_u32(end.saturating_add(1))?,
+            max_segment_bytes,
+            Arc::clone(&flow.durable_segment_blocks),
+            1,
+            wallet_id,
+        );
+
+        while current <= end {
+            let network_wait_start = Instant::now();
+            let received = tokio::select! {
+                chunk = receiver.recv() => chunk,
+                _ = cancel.cancelled() => return Err(Error::Cancelled),
+            };
+            let network_elapsed = network_wait_start.elapsed();
+            let Some(received) = received else {
+                break;
+            };
+            let chunk = received?;
+            if chunk.blocks.len() != chunk.encoded_block_bytes.len()
+                || chunk.encoded_block_bytes.iter().copied().sum::<u64>() != chunk.encoded_bytes
+            {
+                return Err(Error::Sync(
+                    "compact block segment byte accounting mismatch".to_string(),
+                ));
+            }
+            let chunk_start = chunk.start_height().ok_or_else(|| {
+                Error::Sync("network compact block chunk had no start".to_string())
+            })?;
+            let chunk_end = chunk
+                .end_height()
+                .ok_or_else(|| Error::Sync("network compact block chunk had no end".to_string()))?;
+            if chunk_start != current {
+                return Err(Error::Sync(format!(
+                    "network compact block chunk expected {}, received {}",
+                    current, chunk_start
+                )));
+            }
+            Self::validate_compact_block_range(chunk_start, chunk_end, &chunk.blocks)?;
+
+            let cache_write_start = Instant::now();
+            let endpoint = client.endpoint().to_string();
+            let encoded_bytes = chunk.encoded_bytes;
+            let encoded_block_bytes = chunk.encoded_block_bytes;
+            let chunk_blocks = chunk.blocks;
+            let (blocks, cache_result) = tokio::task::spawn_blocking(move || {
+                let result = BlockCache::for_endpoint(&endpoint)
+                    .and_then(|cache| cache.store_blocks(&chunk_blocks));
+                (chunk_blocks, result)
+            })
+            .await
+            .map_err(|error| {
+                Error::Sync(format!(
+                    "compact block cache worker failed for {}-{}: {}",
+                    chunk_start, chunk_end, error
+                ))
+            })?;
+            let cache_write_elapsed = cache_write_start.elapsed();
+            if let Err(error) = cache_result {
+                tracing::warn!(
+                    "Durable block spool store failed for {}-{}; continuing with the bounded in-memory segment: {}",
+                    chunk_start,
+                    chunk_end,
+                    error
+                );
+            }
+
+            let reservation = flow.watermarks.reserve(encoded_bytes, &cancel).await?;
+            let previous_segment_blocks = segment_controller.target_blocks();
+            let next_segment_blocks = segment_controller.observe(DurableSegmentObservation {
+                blocks: blocks.len() as u64,
+                encoded_bytes,
+                network_wait: network_elapsed,
+                cache_write: cache_write_elapsed,
+                queued_bytes: flow.watermarks.queued_bytes(),
+                high_water_bytes: flow.watermarks.high_bytes(),
+                stream_tail: chunk_end == end,
+            });
+            flow.durable_segment_blocks
+                .store(next_segment_blocks, Ordering::Release);
+            if next_segment_blocks != previous_segment_blocks {
+                tracing::debug!(
+                    previous_segment_blocks,
+                    next_segment_blocks,
+                    network_wait_ms = network_elapsed.as_millis(),
+                    cache_write_ms = cache_write_elapsed.as_millis(),
+                    queued_bytes = flow.watermarks.queued_bytes(),
+                    "Adjusted durable compact-block segment ceiling"
+                );
+            }
+            let segment = DurableBlockSegment {
+                blocks,
+                encoded_block_bytes,
+                encoded_bytes,
+                network_elapsed,
+                cache_write_elapsed,
+                reservation,
+            };
+            tokio::select! {
+                result = sender.send(segment) => result.map_err(|_| Error::Cancelled)?,
+                _ = cancel.cancelled() => return Err(Error::Cancelled),
+            }
+            current = chunk_end.saturating_add(1);
+        }
+
+        if current <= end {
+            return Err(Error::Network(format!(
+                "durable compact block spool ended at {}, expected {}",
+                current,
+                end.saturating_add(1)
+            )));
+        }
+        token.complete();
+        Ok(())
+    }
+
+    async fn send_prefetched_batch(
+        sender: &mpsc::Sender<Result<FetchedBlockBatch>>,
+        batch: FetchedBlockBatch,
+        cancel: &CancelToken,
+    ) -> Result<()> {
+        tokio::select! {
+            result = sender.send(Ok(batch)) => result.map_err(|_| Error::Cancelled),
+            _ = cancel.cancelled() => Err(Error::Cancelled),
+        }
+    }
+
+    fn spawn_prefetch(
+        &self,
+        start: u64,
+        end: u64,
+        validated_cache_range: Option<ValidatedCacheRange>,
+        flow: Arc<PrefetchFlowControl>,
+    ) -> PrefetchTask {
         let client = self.client.clone();
         let cancel = self.cancel.clone();
         let wallet_id = self.wallet_id.clone();
