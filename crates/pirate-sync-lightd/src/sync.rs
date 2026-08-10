@@ -4108,47 +4108,38 @@ impl SyncEngine {
                 // Check for cancellation
                 if self.is_cancelled().await {
                     tracing::warn!("Sync cancelled at height {}", current_height);
-                    Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                    Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                    Self::abort_prefetch_queue(&mut prefetch_queue);
                     return Err(Error::Cancelled);
                 }
 
                 let batch_start_time = Instant::now();
                 let mut persist_ms: u128 = 0;
                 let mut apply_spends_ms: u128 = 0;
+                let mut chain_blocks_ms: u128 = 0;
                 let mut tx_meta_prepare_ms: u128 = 0;
                 let mut checkpoint_ms: u128 = 0;
                 let mut checkpoint_written_this_batch = false;
                 let mut emergency_checkpoint_requested = false;
 
                 let prefetch_plan_start = Instant::now();
+                let prefetch_end =
+                    tree_replay_prefetch_end(tree_replay_target, current_height, end);
                 self.fill_prefetch_queue(
                     &mut prefetch_queue,
-                    &mut queued_prefetch_bytes,
-                    (current_height, end),
-                    BatchTuning {
-                        target_bytes: current_target_bytes,
-                        avg_block_size_estimate,
-                        max_batch_blocks: current_max_batch_blocks,
-                    },
-                    (&mut server_group_end_hint, &mut pending_server_group_hint),
-                )
-                .await?;
+                    (current_height, prefetch_end),
+                    validated_cache_range,
+                    Arc::clone(&prefetch_flow),
+                );
                 let prefetch_plan_ms = prefetch_plan_start.elapsed().as_millis();
 
-                let PrefetchTask {
-                    start: batch_start,
-                    end: batch_end,
-                    estimated_bytes,
-                    handle,
-                } = prefetch_queue.pop_front().ok_or_else(|| {
+                let mut prefetch_task = prefetch_queue.pop_front().ok_or_else(|| {
                     Error::Sync(format!(
                         "Prefetch queue unexpectedly empty at height {}",
                         current_height
                     ))
                 })?;
-                queued_prefetch_bytes = queued_prefetch_bytes.saturating_sub(estimated_bytes);
-
+                let planned_batch_start = prefetch_task.start;
+                let planned_batch_end = prefetch_task.end;
                 // Stage 1: Fetch blocks (with retry logic)
                 self.progress.write().await.set_stage(SyncStage::Headers);
                 // #region agent log
@@ -4162,214 +4153,149 @@ impl SyncEngine {
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:505","message":"fetch_blocks_with_retry start","data":{{"current_height":{},"batch_end":{},"batch_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                         id,
                         ts,
-                        batch_start,
-                        batch_end,
-                        batch_end - batch_start + 1
+                        planned_batch_start,
+                        planned_batch_end,
+                        planned_batch_end - planned_batch_start + 1
                     ));
                 }
                 // #endregion
 
-                let (blocks, fetch_wait_ms) = {
-                    let mut backoff = Duration::from_secs(2);
-                    let max_backoff = Duration::from_secs(10);
-                    let mut prefetch_handle = Some(handle);
+                let fetch_wait_start = Instant::now();
+                let fetched_result = self.receive_prefetch_batch(&mut prefetch_task).await;
+                let fetch_wait_ms = fetch_wait_start.elapsed().as_millis();
 
-                    loop {
-                        let (blocks_res, wait_ms): (Result<Vec<CompactBlockData>>, u128) =
-                            if let Some(handle) = prefetch_handle.take() {
-                                let fetch_wait_start = Instant::now();
-                                let mut handle = handle;
-                                let res = tokio::select! {
-                                    joined = &mut handle => {
-                                        match joined {
-                                            Ok(inner) => inner,
-                                            Err(e) => Err(Error::Sync(e.to_string())),
-                                        }
-                                    }
-                                    _ = self.cancel.cancelled() => {
-                                        handle.abort();
-                                        Self::abort_prefetch_queue(
-                                            &mut prefetch_queue,
-                                            &mut queued_prefetch_bytes,
+                let received_batch = match fetched_result {
+                    Ok(batch) => batch,
+                    Err(Error::Cancelled) => {
+                        Self::abort_prefetch_task(&mut prefetch_task);
+                        Self::abort_prefetch_queue(&mut prefetch_queue);
+                        return Err(Error::Cancelled);
+                    }
+                    Err(error) => {
+                        Self::abort_prefetch_task(&mut prefetch_task);
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        append_debug_log_line(&format!(
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_blocks","message":"fetch batch error","data":{{"start":{},"end":{},"error":"{}","non_retryable":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                            id,
+                            ts,
+                            planned_batch_start,
+                            planned_batch_end,
+                            format!("{}", error).replace('"', "'"),
+                            Self::is_non_retryable_fetch_error(&error)
+                        ));
+
+                        if Self::is_non_retryable_fetch_error(&error) {
+                            if planned_batch_start <= LOW_HEIGHT_BATCH_CAP_HEIGHT {
+                                if let Some(floor) = self.server_compact_floor_hint().await {
+                                    if floor > planned_batch_start && floor <= end {
+                                        tracing::warn!(
+                                            "Non-retryable block-range failure at {}-{}; jumping to server compact floor {}",
+                                            planned_batch_start,
+                                            planned_batch_end,
+                                            floor
                                         );
-                                        Self::abort_pending_server_batch_hint(
-                                            &mut pending_server_group_hint,
-                                        );
-                                        return Err(Error::Cancelled);
-                                    }
-                                };
-                                let wait_ms = fetch_wait_start.elapsed().as_millis();
-                                (res, wait_ms)
-                            } else {
-                                let fetch_wait_start = Instant::now();
-                                let res = SyncEngine::fetch_blocks_with_retry_inner(
-                                    self.client.clone(),
-                                    batch_start,
-                                    batch_end,
-                                    self.cancel.clone(),
-                                    self.wallet_id.clone(),
-                                )
-                                .await;
-                                let wait_ms = fetch_wait_start.elapsed().as_millis();
-                                (res, wait_ms)
-                            };
-
-                        match blocks_res {
-                            Ok(blocks) => break (blocks, wait_ms),
-                            Err(Error::Cancelled) => {
-                                Self::abort_prefetch_queue(
-                                    &mut prefetch_queue,
-                                    &mut queued_prefetch_bytes,
-                                );
-                                Self::abort_pending_server_batch_hint(
-                                    &mut pending_server_group_hint,
-                                );
-                                return Err(Error::Cancelled);
-                            }
-                            Err(e) => {
-                                let ts = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis();
-                                let id = format!("{:08x}", ts);
-                                append_debug_log_line(&format!(
-                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_blocks","message":"fetch batch error","data":{{"start":{},"end":{},"error":"{}","non_retryable":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                    id,
-                                    ts,
-                                    batch_start,
-                                    batch_end,
-                                    format!("{}", e).replace('"', "'"),
-                                    Self::is_non_retryable_fetch_error(&e)
-                                ));
-
-                                if Self::is_non_retryable_fetch_error(&e) {
-                                    if batch_start <= LOW_HEIGHT_BATCH_CAP_HEIGHT {
-                                        if let Some(floor) = self.server_compact_floor_hint().await
+                                        Self::abort_prefetch_queue(&mut prefetch_queue);
+                                        current_height = floor;
                                         {
-                                            if floor > batch_start && floor <= end {
-                                                tracing::warn!(
-                                                    "Non-retryable block-range failure at {}-{}; jumping to server compact floor {}",
-                                                    batch_start,
-                                                    batch_end,
-                                                    floor
-                                                );
-                                                let ts = std::time::SystemTime::now()
-                                                    .duration_since(std::time::UNIX_EPOCH)
-                                                    .unwrap_or_default()
-                                                    .as_millis();
-                                                let id = format!("{:08x}", ts);
-                                                append_debug_log_line(&format!(
-                                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_blocks","message":"apply compact floor fallback","data":{{"start":{},"end":{},"floor":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                                    id, ts, batch_start, batch_end, floor
-                                                ));
-
-                                                Self::abort_prefetch_queue(
-                                                    &mut prefetch_queue,
-                                                    &mut queued_prefetch_bytes,
-                                                );
-                                                Self::abort_pending_server_batch_hint(
-                                                    &mut pending_server_group_hint,
-                                                );
-                                                server_group_end_hint = None;
-                                                current_height = floor;
-                                                {
-                                                    let progress = self.progress.write().await;
-                                                    progress.set_stage(SyncStage::Headers);
-                                                    progress.set_current(
-                                                        current_height.saturating_sub(1),
-                                                    );
-                                                }
-                                                continue 'sync_main;
-                                            }
+                                            let progress = self.progress.write().await;
+                                            progress.set_stage(SyncStage::Headers);
+                                            progress.set_current(current_height.saturating_sub(1));
                                         }
+                                        continue 'sync_main;
                                     }
-
-                                    return Err(Error::Sync(format!(
-                                        "NON_RETRYABLE: block fetch failed for {}-{}: {}",
-                                        batch_start, batch_end, e
-                                    )));
                                 }
-
-                                let batch_blocks =
-                                    batch_end.saturating_sub(batch_start).saturating_add(1);
-                                if batch_blocks > self.config.min_batch_size {
-                                    consecutive_fetch_failures =
-                                        consecutive_fetch_failures.saturating_add(1);
-                                    let reduced_blocks = std::cmp::max(
-                                        self.config.min_batch_size,
-                                        batch_blocks.saturating_add(1) / 2,
-                                    );
-                                    current_max_batch_blocks =
-                                        current_max_batch_blocks.min(reduced_blocks);
-                                    current_target_bytes = current_target_bytes.min(
-                                        avg_block_size_estimate
-                                            .saturating_mul(reduced_blocks)
-                                            .max(1),
-                                    );
-                                    tracing::warn!(
-                                        "Reducing sync batch size after retryable fetch failure for {}-{}: max_blocks={}, target_bytes={}, consecutive_failures={}",
-                                        batch_start,
-                                        batch_end,
-                                        current_max_batch_blocks,
-                                        current_target_bytes,
-                                        consecutive_fetch_failures
-                                    );
-                                    append_debug_log_line(&format!(
-                                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_blocks","message":"adaptive batch reduction","data":{{"start":{},"end":{},"old_blocks":{},"new_max_blocks":{},"target_bytes":{},"consecutive_failures":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                        id,
-                                        ts,
-                                        batch_start,
-                                        batch_end,
-                                        batch_blocks,
-                                        current_max_batch_blocks,
-                                        current_target_bytes,
-                                        consecutive_fetch_failures,
-                                        format!("{}", e).replace('"', "'")
-                                    ));
-                                    self.client.disconnect().await;
-                                    let _ = self.client.connect().await;
-                                    Self::abort_prefetch_queue(
-                                        &mut prefetch_queue,
-                                        &mut queued_prefetch_bytes,
-                                    );
-                                    Self::abort_pending_server_batch_hint(
-                                        &mut pending_server_group_hint,
-                                    );
-                                    server_group_end_hint = None;
-                                    continue 'sync_main;
-                                }
-
-                                tracing::warn!(
-                                    "Block fetch failed for {}-{}: {}. Reconnecting and retrying in {:?}...",
-                                    batch_start,
-                                    batch_end,
-                                    e,
-                                    backoff
-                                );
-                                self.client.disconnect().await;
-                                if let Err(conn_err) = self.client.connect().await {
-                                    tracing::warn!("Reconnect failed: {}", conn_err);
-                                }
-                                tokio::select! {
-                                    _ = tokio::time::sleep(backoff) => {},
-                                    _ = self.cancel.cancelled() => {
-                                        Self::abort_prefetch_queue(
-                                            &mut prefetch_queue,
-                                            &mut queued_prefetch_bytes,
-                                        );
-                                        Self::abort_pending_server_batch_hint(
-                                            &mut pending_server_group_hint,
-                                        );
-                                        return Err(Error::Cancelled);
-                                    },
-                                }
-                                backoff = std::cmp::min(backoff.saturating_mul(2), max_backoff);
-                                // Retry using a direct fetch (no prefetch).
-                                continue;
                             }
+
+                            return Err(Error::Sync(format!(
+                                "NON_RETRYABLE: block fetch failed for {}-{}: {}",
+                                planned_batch_start, planned_batch_end, error
+                            )));
                         }
+
+                        consecutive_fetch_failures = consecutive_fetch_failures.saturating_add(1);
+                        let batch_blocks = planned_batch_end
+                            .saturating_sub(planned_batch_start)
+                            .saturating_add(1);
+                        let reduced_blocks = std::cmp::max(
+                            self.config.min_batch_size,
+                            batch_blocks.saturating_add(1) / 2,
+                        );
+                        network_max_batch_blocks = network_max_batch_blocks.min(reduced_blocks);
+                        prefetch_flow
+                            .target_blocks
+                            .store(network_max_batch_blocks, Ordering::Release);
+                        current_target_bytes = current_target_bytes.min(
+                            avg_block_size_estimate
+                                .saturating_mul(reduced_blocks)
+                                .max(1),
+                        );
+                        tracing::warn!(
+                            "Block fetch failed for {}-{}: {}; retrying from {} with max_blocks={} and target_bytes={}",
+                            planned_batch_start,
+                            planned_batch_end,
+                            error,
+                            current_height,
+                            network_max_batch_blocks,
+                            current_target_bytes
+                        );
+                        self.client.disconnect().await;
+                        let _ = self.client.connect().await;
+                        Self::abort_prefetch_queue(&mut prefetch_queue);
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_secs(2)) => {},
+                            _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                        }
+                        continue 'sync_main;
                     }
                 };
+                let prepared_notes = received_batch.prepared_notes;
+                let prepared_commitments = received_batch.prepared_commitments;
+                let fetched_batch = received_batch.fetched;
+
+                let batch_start = fetched_batch
+                    .blocks
+                    .first()
+                    .map(|block| block.height)
+                    .ok_or_else(|| {
+                        Error::Sync("bounded compact block batch was empty".to_string())
+                    })?;
+                let batch_end = fetched_batch
+                    .blocks
+                    .last()
+                    .map(|block| block.height)
+                    .ok_or_else(|| {
+                        Error::Sync("bounded compact block batch was empty".to_string())
+                    })?;
+                if batch_start != planned_batch_start || batch_end > planned_batch_end {
+                    Self::abort_prefetch_task(&mut prefetch_task);
+                    return Err(Error::Sync(format!(
+                        "bounded compact block producer returned {}-{} for planned range {}-{}",
+                        batch_start, batch_end, planned_batch_start, planned_batch_end
+                    )));
+                }
+                if batch_end < planned_batch_end {
+                    prefetch_task.start = batch_end.saturating_add(1);
+                    prefetch_queue.push_front(prefetch_task);
+                } else {
+                    Self::abort_prefetch_task(&mut prefetch_task);
+                }
+
+                let FetchedBlockBatch {
+                    blocks,
+                    encoded_bytes,
+                    requested_blocks,
+                    requested_bytes,
+                    source: fetch_source,
+                    elapsed: fetch_elapsed,
+                    network_elapsed: network_fetch_elapsed,
+                    cache_write_elapsed,
+                    spool_reservations,
+                } = fetched_batch;
+                let _spool_reservations = spool_reservations;
 
                 // #region agent log
                 if verbose_sync_batch_logging_enabled() {
@@ -4379,13 +4305,16 @@ impl SyncEngine {
                         .as_millis();
                     let id = format!("{:08x}", ts);
                     append_debug_log_line(&format!(
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:506","message":"fetch_blocks_with_retry result","data":{{"current_height":{},"batch_end":{},"blocks_count":{},"wait_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:506","message":"fetch_blocks_with_retry result","data":{{"current_height":{},"batch_end":{},"blocks_count":{},"wait_ms":{},"fetch_ms":{},"network_ms":{},"cache_write_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                         id,
                         ts,
                         batch_start,
                         batch_end,
                         blocks.len(),
-                        fetch_wait_ms
+                        fetch_wait_ms,
+                        fetch_elapsed.as_millis(),
+                        network_fetch_elapsed.as_millis(),
+                        cache_write_elapsed.as_millis()
                     ));
                 }
                 // #endregion
@@ -4397,81 +4326,53 @@ impl SyncEngine {
                     )));
                 }
 
-                if !self.validate_batch_boundary(batch_start, &blocks)? {
+                let boundary_validation_start = Instant::now();
+                let boundary_is_valid = self.validate_batch_boundary(
+                    batch_start,
+                    &blocks,
+                    run_db.as_ref(),
+                    previous_processed_hash.as_deref(),
+                )?;
+                let boundary_validation_ms = boundary_validation_start.elapsed().as_millis();
+                if !boundary_is_valid {
                     tracing::warn!(
                         "Reorg detected at batch boundary before height {}; rolling back to common ancestor",
                         batch_start
                     );
                     let resume_height = self
-                        .rollback_to_common_ancestor(batch_start.saturating_sub(1))
+                        .rollback_to_common_ancestor(
+                            batch_start.saturating_sub(1),
+                            persistence_worker.as_deref(),
+                        )
                         .await?;
                     current_height = resume_height;
                     last_checkpoint_height = resume_height.saturating_sub(1);
                     last_major_checkpoint_height = resume_height.saturating_sub(1);
                     batches_since_mini_checkpoint = 0;
                     batches_since_sync_state_flush = 0;
-                    Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                    Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
-                    server_group_end_hint = None;
+                    Self::abort_prefetch_queue(&mut prefetch_queue);
+                    validated_cache_range = None;
+                    previous_processed_hash = None;
                     continue 'sync_main;
                 }
                 consecutive_fetch_failures = 0;
 
-                // Detect heavy/spam blocks and adapt batch size
-                // Count actual bytes in outputs and actions
+                // Detect heavy/spam blocks and adapt batch size using the exact
+                // protobuf bytes admitted by the bounded stream.
                 let batch_sizing_start = Instant::now();
-                let total_block_size: u64 = blocks
-                    .iter()
-                    .map(|b| {
-                        // Count actual bytes in Sapling outputs
-                        let sapling_bytes: u64 = b
-                            .transactions
-                            .iter()
-                            .map(|tx| {
-                                tx.outputs
-                                    .iter()
-                                    .map(|out| {
-                                        // Each Sapling output: cmu (32) + ephemeral_key (32) + ciphertext
-                                        // Compact ciphertext is 52 bytes minimum
-                                        32 + 32 + out.ciphertext.len().max(52) as u64
-                                    })
-                                    .sum::<u64>()
-                            })
-                            .sum();
-
-                        // Count actual bytes in Orchard actions
-                        let orchard_bytes: u64 = b
-                            .transactions
-                            .iter()
-                            .map(|tx| {
-                                tx.actions
-                                    .iter()
-                                    .map(|action| {
-                                        // Each Orchard action: nullifier (32) + cmx (32) + ephemeral_key (32) +
-                                        // enc_ciphertext (52+ minimum) + out_ciphertext (52+ minimum)
-                                        32 + 32
-                                            + 32
-                                            + action.enc_ciphertext.len().max(52) as u64
-                                            + action.out_ciphertext.len().max(52) as u64
-                                    })
-                                    .sum::<u64>()
-                            })
-                            .sum();
-
-                        // Transaction overhead (hash, etc.) - estimate ~100 bytes per tx
-                        let tx_overhead = b.transactions.len() as u64 * 100;
-                        tx_overhead + sapling_bytes + orchard_bytes
-                    })
-                    .sum();
+                let total_block_size = encoded_bytes.max(1);
                 let avg_block_size = total_block_size / blocks.len().max(1) as u64;
                 avg_block_size_estimate = avg_block_size.max(1);
                 let is_heavy_batch = avg_block_size > self.config.heavy_block_threshold_bytes;
-
                 if is_heavy_batch {
                     consecutive_heavy_batches += 1;
                     // Reduce target bytes significantly for spam blocks.
                     current_target_bytes =
                         std::cmp::max(self.config.min_batch_bytes, current_target_bytes / 4);
+                    prefetch_flow.target_bytes.store(
+                        current_target_bytes.min(prefetched_batch_encoded_byte_cap(&self.config)),
+                        Ordering::Release,
+                    );
                     tracing::warn!(
                     "Heavy block detected at height {} (avg {} bytes/block), reducing target bytes to {} (consecutive: {})",
                     current_height,
@@ -4486,16 +4387,9 @@ impl SyncEngine {
                         emergency_checkpoint_requested = true;
                     }
                 } else {
-                    // Reset counter and gradually increase batch size back to normal
+                    // Byte density remains a local safety input. Server latency
+                    // no longer changes server-visible range boundaries.
                     consecutive_heavy_batches = 0;
-                    if current_max_batch_blocks < self.config.max_batch_size {
-                        let bump =
-                            std::cmp::max(self.config.min_batch_size, current_max_batch_blocks / 4);
-                        current_max_batch_blocks = std::cmp::min(
-                            self.config.max_batch_size,
-                            current_max_batch_blocks.saturating_add(bump),
-                        );
-                    }
                     if current_target_bytes < self.config.target_batch_bytes {
                         let bump = std::cmp::max(1, self.config.target_batch_bytes / 4);
                         current_target_bytes = std::cmp::min(
@@ -4506,24 +4400,26 @@ impl SyncEngine {
                             "Normal blocks detected, increasing target bytes to {}",
                             current_target_bytes
                         );
+                        prefetch_flow.target_bytes.store(
+                            current_target_bytes
+                                .min(prefetched_batch_encoded_byte_cap(&self.config)),
+                            Ordering::Release,
+                        );
                     }
                 }
                 let batch_sizing_ms = batch_sizing_start.elapsed().as_millis();
 
                 // Prefetch next batch while we process this one.
                 let next_prefetch_start = Instant::now();
+                let next_height = batch_end.saturating_add(1);
+                let next_prefetch_end =
+                    tree_replay_prefetch_end(tree_replay_target, next_height, end);
                 self.fill_prefetch_queue(
                     &mut prefetch_queue,
-                    &mut queued_prefetch_bytes,
-                    (batch_end.saturating_add(1), end),
-                    BatchTuning {
-                        target_bytes: current_target_bytes,
-                        avg_block_size_estimate,
-                        max_batch_blocks: current_max_batch_blocks,
-                    },
-                    (&mut server_group_end_hint, &mut pending_server_group_hint),
-                )
-                .await?;
+                    (next_height, next_prefetch_end),
+                    validated_cache_range,
+                    Arc::clone(&prefetch_flow),
+                );
                 let next_prefetch_ms = next_prefetch_start.elapsed().as_millis();
 
                 // Stage 2: Trial decryption (batched with parallelism)
