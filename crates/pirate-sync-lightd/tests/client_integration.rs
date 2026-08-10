@@ -248,6 +248,28 @@ mod live_tests {
         assert!(!client.is_connected());
     }
 
+    /// Test a public-CA TLS lightwalletd endpoint.
+    #[tokio::test]
+    #[ignore = "Requires PIRATE_TEST_TLS_LIGHTD_URL and live network"]
+    async fn test_live_tls_connect() {
+        let endpoint = std::env::var("PIRATE_TEST_TLS_LIGHTD_URL")
+            .expect("set PIRATE_TEST_TLS_LIGHTD_URL to an https:// lightwalletd endpoint");
+        assert!(endpoint.starts_with("https://"));
+
+        let mut config = LightClientConfig::direct(&endpoint);
+        if let Ok(pin) = std::env::var("PIRATE_TEST_TLS_SPKI_PIN") {
+            config = config.with_spki_pin(&pin);
+        }
+        let client = LightClient::with_config(config);
+        client.connect().await.expect("Failed to establish TLS");
+        let height = client
+            .get_latest_block()
+            .await
+            .expect("Failed to query TLS lightwalletd");
+
+        assert!(height > 0);
+    }
+
     /// Test getting latest block from live server
     #[tokio::test]
     #[ignore = "Requires live network"]
