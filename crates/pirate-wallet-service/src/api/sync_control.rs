@@ -611,12 +611,17 @@ struct SyncSession {
     cancelled: Option<CancelToken>,
     progress: Option<Arc<tokio::sync::RwLock<SyncProgress>>>,
     perf: Option<Arc<PerfCounters>>,
+    profile_session: Option<SyncProfileSession>,
     last_status: SyncStatus,
     is_running: bool,
     startup_in_progress: bool,
     task: Option<tokio::task::JoinHandle<()>>,
-    last_target_height_update: Option<std::time::Instant>,
-    last_recovery_attempt: Option<std::time::Instant>,
+}
+
+impl SyncSession {
+    fn has_active_work(&self) -> bool {
+        self.startup_in_progress || self.task.as_ref().is_some_and(|task| !task.is_finished())
+    }
 }
 
 impl Default for SyncSession {
@@ -626,6 +631,7 @@ impl Default for SyncSession {
             cancelled: None,
             progress: None,
             perf: None,
+            profile_session: None,
             last_status: SyncStatus {
                 local_height: 0,
                 target_height: 0,
@@ -640,8 +646,6 @@ impl Default for SyncSession {
             is_running: false,
             startup_in_progress: false,
             task: None,
-            last_target_height_update: None,
-            last_recovery_attempt: None,
         }
     }
 }
