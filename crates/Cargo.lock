@@ -4052,6 +4052,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "liblzma-sys",
  "native-tls",
  "once_cell",
  "parking_lot",

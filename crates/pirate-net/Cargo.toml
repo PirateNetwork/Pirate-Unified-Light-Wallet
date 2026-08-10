@@ -41,5 +41,10 @@ tokio-native-tls = "0.3"
 webpki = { package = "rustls-webpki", version = "0.103", default-features = false, features = ["alloc"] }
 rustls-pki-types = { version = "1.12", default-features = false, features = ["alloc"] }
 
+# Arti accepts XZ-compressed directory responses. Build liblzma from its
+# bundled source on macOS so distributed binaries never depend on Homebrew.
+[target.'cfg(target_os = "macos")'.dependencies]
+liblzma-sys = { version = "0.4.6", default-features = false, features = ["static"] }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
