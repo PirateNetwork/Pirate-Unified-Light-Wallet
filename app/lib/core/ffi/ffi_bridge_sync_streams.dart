@@ -6,8 +6,6 @@ class _SyncProgressPollState {
   int idleCount = 0;
   int lastHeight = 0;
   int lastTargetHeight = 0;
-  DateTime? lastRestartAttempt;
-  DateTime? lastStartAttempt;
 
   void recordProgress(SyncStatus status) {
     final currentHeight = status.localHeight.toInt();
@@ -19,24 +17,6 @@ class _SyncProgressPollState {
       return;
     }
     idleCount++;
-  }
-
-  bool shouldRestart(DateTime now) {
-    return lastRestartAttempt == null ||
-        now.difference(lastRestartAttempt!) > const Duration(seconds: 8);
-  }
-
-  bool shouldStart(DateTime now) {
-    return lastStartAttempt == null ||
-        now.difference(lastStartAttempt!) > const Duration(seconds: 3);
-  }
-
-  void markRestartAttempt(DateTime now) {
-    lastRestartAttempt = now;
-  }
-
-  void markStartAttempt(DateTime now) {
-    lastStartAttempt = now;
   }
 
   Duration nextInterval({required SyncStatus status, required bool isRunning}) {
@@ -102,12 +82,6 @@ class _FfiBridgeSyncStreamHelper {
 
         final isRunning = await FfiBridge.isSyncRunning(id);
         final status = await FfiBridge.syncStatus(id);
-        await _ensureSyncLoopRunning(
-          id: id,
-          status: status,
-          isRunning: isRunning,
-          state: state,
-        );
 
         yield status;
         state.recordProgress(status);
@@ -160,43 +134,6 @@ class _FfiBridgeSyncStreamHelper {
           debugPrint('Failed to get transactions for wallet $id: $e');
         }
         await Future<void>.delayed(const Duration(seconds: 5));
-      }
-    }
-  }
-
-  static Future<void> _ensureSyncLoopRunning({
-    required WalletId id,
-    required SyncStatus status,
-    required bool isRunning,
-    required _SyncProgressPollState state,
-  }) async {
-    // Auto-restart sync whenever it stops after initial height discovery.
-    // Even when local == target, the running sync loop is what keeps the
-    // wallet tracking new blocks as they arrive.
-    if (!isRunning && status.targetHeight > BigInt.zero) {
-      final now = DateTime.now();
-      if (state.shouldRestart(now)) {
-        state.markRestartAttempt(now);
-        try {
-          await FfiBridge.startSync(id, SyncMode.compact);
-        } catch (_) {
-          // Ignore restart failures; stream will retry later.
-        }
-      }
-      return;
-    }
-
-    if (status.targetHeight == BigInt.zero) {
-      // Recover from stale or cleared session states (for example after
-      // transport-mode toggles) even when localHeight is non-zero.
-      final now = DateTime.now();
-      if (state.shouldStart(now)) {
-        state.markStartAttempt(now);
-        try {
-          await FfiBridge.startSync(id, SyncMode.compact);
-        } catch (_) {
-          // Ignore start failures; stream will retry later.
-        }
       }
     }
   }
