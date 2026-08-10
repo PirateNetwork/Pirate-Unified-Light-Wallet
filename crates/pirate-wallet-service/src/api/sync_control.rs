@@ -2239,49 +2239,27 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     Ok(())
 }
 
-pub(super) async fn cancel_sync_internal(
-    wallet_id: WalletId,
-    clear_engine_handle: bool,
-) -> Result<()> {
+async fn cancel_sync_session(wallet_id: WalletId, clear_engine_handle: bool) -> Result<()> {
     let session_arc_opt = {
         let sessions = SYNC_SESSIONS.read();
         sessions.get(&wallet_id).cloned()
     };
 
     if let Some(session_arc) = session_arc_opt {
-        let (cancel_opt, sync_opt, task_opt, previous_status) = {
-            let mut session = session_arc.lock().await;
+        let (cancel_opt, sync_opt, has_task, startup_in_progress, previous_status) = {
+            let session = session_arc.lock().await;
             (
                 session.cancelled.clone(),
                 session.sync.clone(),
-                session.task.take(),
+                session.task.is_some(),
+                session.startup_in_progress,
                 session.last_status.clone(),
             )
         };
-        let had_profile_session = task_opt.is_some() || cancel_opt.is_some() || sync_opt.is_some();
-        let sync_for_cancel = sync_opt.clone();
-
-        if let Some(task) = task_opt {
-            task.abort();
-            tracing::info!("Sync task aborted for wallet {}", wallet_id);
-            {
-                pirate_core::debug_log::with_locked_file(|file| {
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_cancel_sync","timestamp":{},"location":"api.rs:cancel_sync","message":"cancel sync","data":{{"wallet_id":"{}","path":"task_abort"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                        ts, wallet_id
-                    );
-                });
-            }
-        }
 
         if let Some(cancelled) = cancel_opt {
             cancelled.cancel();
-            tracing::info!("Sync cancelled for wallet {}", wallet_id);
+            tracing::info!("Sync cancellation requested for wallet {}", wallet_id);
             {
                 pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
@@ -2296,49 +2274,17 @@ pub(super) async fn cancel_sync_internal(
                 });
             }
         }
-        if had_profile_session {
-            record_sync_profile_failure();
-        }
 
-        if let Some(sync) = sync_for_cancel {
-            let result = tokio::time::timeout(
-                CANCEL_SYNC_ENGINE_REQUEST_TIMEOUT,
-                run_sync_engine_task(sync.clone(), |engine| {
-                    Box::pin(async move {
-                        engine.cancel().await;
-                        Ok(())
-                    })
-                }),
-            )
-            .await;
-            match result {
-                Ok(Ok(())) => {
-                    tracing::info!("Sync engine cancel requested for wallet {}", wallet_id);
-                }
-                Ok(Err(e)) => {
-                    tracing::warn!("Failed to cancel sync for wallet {}: {}", wallet_id, e);
-                }
-                Err(_) => {
-                    tracing::warn!(
-                        "Timed out requesting sync engine cancel for wallet {} after {:?}",
-                        wallet_id,
-                        CANCEL_SYNC_ENGINE_REQUEST_TIMEOUT
-                    );
-                }
-            }
-
-            {
-                pirate_core::debug_log::with_locked_file(|file| {
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_cancel_sync","timestamp":{},"location":"api.rs:3696","message":"cancel sync","data":{{"wallet_id":"{}","path":"engine"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                        ts, wallet_id
-                    );
-                });
+        if has_task {
+            wait_for_sync_stop(&wallet_id, CANCEL_SYNC_TASK_TIMEOUT).await?;
+        } else if startup_in_progress {
+            // Lifecycle operations are serialized, so a session with no task cannot
+            // still be constructing an engine while this cancellation owns the lock.
+            let mut session = session_arc.lock().await;
+            session.is_running = false;
+            session.startup_in_progress = false;
+            if let Some(profile_session) = session.profile_session.take() {
+                profile_session.record_failure();
             }
         }
 
@@ -2385,8 +2331,6 @@ pub(super) async fn cancel_sync_internal(
             session.progress = None;
             session.perf = None;
             session.last_status = recovered_status.clone();
-            session.last_target_height_update = None;
-            session.last_recovery_attempt = None;
             session.task = None;
         }
         cache_sync_status(&wallet_id, &recovered_status);
@@ -2397,7 +2341,18 @@ pub(super) async fn cancel_sync_internal(
     Ok(())
 }
 
+pub(super) async fn cancel_sync_internal(
+    wallet_id: WalletId,
+    clear_engine_handle: bool,
+) -> Result<()> {
+    let operation_lock = sync_operation_lock(&wallet_id);
+    let _operation_guard = operation_lock.lock().await;
+    cancel_sync_session(wallet_id, clear_engine_handle).await
+}
+
 pub(super) async fn cancel_sync_for_wallet_switch(wallet_id: WalletId) -> Result<()> {
+    let operation_lock = sync_operation_lock(&wallet_id);
+    let _operation_guard = operation_lock.lock().await;
     if RESCAN_IN_FLIGHT.read().contains(&wallet_id) || is_rescan_active(&wallet_id) {
         tracing::info!(
             "Preserving active rescan for wallet {} during wallet switch",
@@ -2406,7 +2361,7 @@ pub(super) async fn cancel_sync_for_wallet_switch(wallet_id: WalletId) -> Result
         return Ok(());
     }
 
-    cancel_sync_internal(wallet_id, true).await
+    cancel_sync_session(wallet_id, true).await
 }
 
 pub(super) async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
@@ -2425,7 +2380,7 @@ pub(super) fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
 
     if let Some(session_arc) = session_arc_opt {
         if let Ok(session) = session_arc.try_lock() {
-            return Ok(session.is_running || session.task.is_some() || session.startup_in_progress);
+            return Ok(session.has_active_work());
         }
         return Ok(true);
     }
@@ -2457,4 +2412,61 @@ pub(super) fn clear_all_runtime_state() {
 
 pub(super) fn clear_passphrase_change_sync_state() {
     clear_all_runtime_state();
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn sync_stop_waits_for_cooperative_task_completion() {
+        let wallet_id = format!("test-sync-stop-{}", uuid::Uuid::new_v4());
+        let session = Arc::new(Mutex::new(SyncSession::default()));
+        let session_for_task = Arc::clone(&session);
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _ = finish_rx.await;
+            let mut session = session_for_task.lock().await;
+            session.is_running = false;
+            session.task = None;
+        });
+        {
+            let mut state = session.lock().await;
+            state.is_running = true;
+            state.task = Some(task);
+        }
+        SYNC_SESSIONS
+            .write()
+            .insert(wallet_id.clone(), Arc::clone(&session));
+
+        finish_tx.send(()).unwrap();
+        wait_for_sync_stop(&wallet_id, Duration::from_secs(1))
+            .await
+            .unwrap();
+
+        assert!(!session.lock().await.has_active_work());
+        SYNC_SESSIONS.write().remove(&wallet_id);
+    }
+
+    #[tokio::test]
+    async fn sync_stop_timeout_keeps_active_task_registered() {
+        let wallet_id = format!("test-sync-timeout-{}", uuid::Uuid::new_v4());
+        let session = Arc::new(Mutex::new(SyncSession::default()));
+        let task = tokio::spawn(std::future::pending::<()>());
+        {
+            let mut state = session.lock().await;
+            state.is_running = true;
+            state.task = Some(task);
+        }
+        SYNC_SESSIONS
+            .write()
+            .insert(wallet_id.clone(), Arc::clone(&session));
+
+        let result = wait_for_sync_stop(&wallet_id, Duration::from_millis(10)).await;
+
+        assert!(result.is_err());
+        let task = session.lock().await.task.take().unwrap();
+        task.abort();
+        SYNC_SESSIONS.write().remove(&wallet_id);
+    }
 }
