@@ -11588,6 +11588,274 @@ mod tests {
         assert!(config.lazy_memo_decode);
     }
 
+    #[test]
+    fn wallet_scan_omits_blocks_before_birthday() {
+        let blocks = (98..=102).map(empty_compact_block).collect::<Vec<_>>();
+
+        let relevant = wallet_relevant_blocks(&blocks, 100);
+
+        assert_eq!(
+            relevant
+                .iter()
+                .map(|block| block.height)
+                .collect::<Vec<_>>(),
+            vec![100, 101, 102]
+        );
+    }
+
+    #[test]
+    fn wallet_scan_can_skip_an_entire_replay_batch() {
+        let blocks = (98..=102).map(empty_compact_block).collect::<Vec<_>>();
+
+        assert!(wallet_relevant_blocks(&blocks, 200).is_empty());
+    }
+
+    #[test]
+    fn direct_tree_state_fetch_uses_one_long_initial_request() {
+        let client = crate::client::LightClient::with_config(crate::client::LightClientConfig {
+            endpoint: "http://127.0.0.1:9067".to_string(),
+            transport: TransportMode::Direct,
+            ..crate::client::LightClientConfig::default()
+        });
+        let engine = SyncEngine::with_client_and_config(client, 3_500_000, SyncConfig::default());
+        let profile = engine.tree_state_retry_profile();
+
+        assert_eq!(profile.max_attempts, 1);
+        assert_eq!(profile.base_timeout, Duration::from_secs(120));
+        assert_eq!(profile.max_timeout, Duration::from_secs(120));
+        assert!(!profile.enable_hash_fallback);
+    }
+
+    #[tokio::test]
+    async fn birthday_seed_rejects_a_tree_state_for_another_height() {
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 3_500_000);
+        let result = engine
+            .seed_shardtrees_from_tree_state(
+                3_499_999,
+                TreeState {
+                    network: "main".to_string(),
+                    height: 3_499_998,
+                    hash: String::new(),
+                    time: 0,
+                    sapling_tree: String::new(),
+                    sapling_frontier: String::new(),
+                    ironwood_tree: String::new(),
+                },
+            )
+            .await;
+
+        assert!(result.unwrap_err().to_string().contains("expected 3499999"));
+    }
+
+    #[tokio::test]
+    async fn pre_activation_ironwood_root_is_not_treated_as_a_frontier() {
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 101);
+        let result = engine
+            .seed_shardtrees_from_tree_state(
+                100,
+                TreeState {
+                    network: "main".to_string(),
+                    height: 100,
+                    hash: String::new(),
+                    time: 0,
+                    sapling_tree: String::new(),
+                    sapling_frontier: String::new(),
+                    ironwood_tree: "00".repeat(32),
+                },
+            )
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn fetch_latency_prevents_an_unmeasured_jump_to_the_maximum_batch() {
+        let cap = batch_cap_for_target_latency(100, 64, Duration::from_millis(669), 100, 4_000);
+
+        assert_eq!(cap, 200);
+    }
+
+    #[test]
+    fn fetch_latency_reduces_slow_batches_to_the_configured_floor() {
+        let cap =
+            batch_cap_for_target_latency(4_000, 4_000, Duration::from_millis(240_857), 100, 4_000);
+
+        assert_eq!(cap, 100);
+    }
+
+    #[test]
+    fn fetch_latency_doubles_fast_batches_until_the_configured_ceiling() {
+        assert_eq!(
+            batch_cap_for_target_latency(500, 500, Duration::from_millis(100), 100, 4_000,),
+            1_000
+        );
+        assert_eq!(
+            batch_cap_for_target_latency(3_000, 3_000, Duration::from_millis(100), 100, 4_000,),
+            4_000
+        );
+    }
+
+    #[test]
+    fn cache_hits_do_not_inflate_the_network_batch_cap() {
+        assert_eq!(
+            network_batch_cap_after_fetch(
+                100,
+                BlockFetchSource::Cache,
+                4_000,
+                Duration::from_millis(10),
+                100,
+                4_000,
+            ),
+            100
+        );
+    }
+
+    #[test]
+    fn initial_network_cap_uses_the_heavy_block_byte_budget() {
+        let config = SyncConfig {
+            min_batch_size: 100,
+            max_batch_size: 6_000,
+            target_batch_bytes: 96_000_000,
+            max_batch_bytes: 128_000_000,
+            max_batch_memory_bytes: Some(500_000_000),
+            heavy_block_threshold_bytes: 500_000,
+            ..SyncConfig::default()
+        };
+
+        assert_eq!(initial_network_batch_cap(&config), 192);
+    }
+
+    #[test]
+    fn initial_network_cap_preserves_the_mobile_floor() {
+        let config = SyncConfig {
+            min_batch_size: 25,
+            max_batch_size: 2_000,
+            target_batch_bytes: 8_000_000,
+            max_batch_bytes: 16_000_000,
+            max_batch_memory_bytes: Some(96_000_000),
+            heavy_block_threshold_bytes: 500_000,
+            ..SyncConfig::default()
+        };
+
+        assert_eq!(initial_network_batch_cap(&config), 25);
+    }
+
+    #[test]
+    fn initial_network_cap_respects_memory_and_block_limits() {
+        let memory_limited = SyncConfig {
+            min_batch_size: 10,
+            max_batch_size: 10_000,
+            target_batch_bytes: 100_000_000,
+            max_batch_bytes: 100_000_000,
+            max_batch_memory_bytes: Some(20_000_000),
+            heavy_block_threshold_bytes: 500_000,
+            ..SyncConfig::default()
+        };
+        let block_limited = SyncConfig {
+            max_batch_size: 30,
+            ..memory_limited.clone()
+        };
+
+        assert_eq!(initial_network_batch_cap(&memory_limited), 40);
+        assert_eq!(initial_network_batch_cap(&block_limited), 30);
+    }
+
+    #[test]
+    fn cached_rescan_planning_is_independent_of_the_device_profile_block_cap() {
+        let constrained_profile = SyncConfig {
+            max_batch_size: 2_000,
+            batch_size: 2_000,
+            max_parallel_decrypt: 2,
+            max_batch_memory_bytes: Some(48_000_000),
+            ..SyncConfig::default()
+        };
+
+        assert_eq!(cached_batch_block_cap(), 16_000);
+        assert_eq!(
+            prefetched_batch_encoded_byte_cap(&constrained_profile),
+            48_000_000
+        );
+    }
+
+    #[test]
+    fn cached_rescan_decoder_uses_the_smallest_exact_byte_budget() {
+        let config = SyncConfig {
+            max_batch_bytes: 128_000_000,
+            max_batch_memory_bytes: Some(96_000_000),
+            prefetch_queue_max_bytes: 64_000_000,
+            ..SyncConfig::default()
+        };
+
+        assert_eq!(prefetched_batch_encoded_byte_cap(&config), 64_000_000);
+    }
+
+    #[test]
+    fn interrupted_tree_replay_resumes_below_the_wallet_birthday() {
+        assert_eq!(
+            resumable_tree_replay_checkpoint(152_854, 3_499_999, 152_855, Some(152_854)),
+            Some(152_854)
+        );
+        assert_eq!(
+            resumable_tree_replay_checkpoint(170_118, 3_499_999, 152_855, Some(170_118)),
+            Some(170_118)
+        );
+        assert_eq!(
+            resumable_tree_replay_checkpoint(170_118, 3_499_999, 152_855, Some(160_918)),
+            Some(160_918)
+        );
+    }
+
+    #[test]
+    fn normal_wallet_cursor_is_not_mistaken_for_a_partial_tree_replay() {
+        assert_eq!(
+            resumable_tree_replay_checkpoint(4_000_000, 3_499_999, 152_855, Some(3_499_999)),
+            None
+        );
+        assert_eq!(
+            resumable_tree_replay_checkpoint(0, 3_499_999, 152_855, None),
+            None
+        );
+    }
+
+    #[test]
+    fn tree_replay_stops_prefetch_at_the_requested_frontier() {
+        assert_eq!(
+            tree_replay_prefetch_end(Some(3_499_999), 3_498_000, 4_100_000),
+            3_499_999
+        );
+        assert_eq!(
+            tree_replay_prefetch_end(Some(3_499_999), 3_500_000, 4_100_000),
+            4_100_000
+        );
+        assert_eq!(
+            tree_replay_prefetch_end(None, 152_855, 4_100_000),
+            4_100_000
+        );
+    }
+
+    #[test]
+    fn tree_replay_checkpoints_periodically_and_at_the_requested_frontier() {
+        assert!(tree_replay_checkpoint_due(
+            Some(3_499_999),
+            200_000,
+            true,
+            false
+        ));
+        assert!(tree_replay_checkpoint_due(
+            Some(3_499_999),
+            3_499_999,
+            false,
+            false
+        ));
+        assert!(!tree_replay_checkpoint_due(
+            Some(3_499_999),
+            3_499_999,
+            true,
+            true
+        ));
+        assert!(!tree_replay_checkpoint_due(None, 200_000, true, false));
+    }
+
     #[tokio::test]
     async fn test_sync_engine_creation() {
         let engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
@@ -11612,12 +11880,13 @@ mod tests {
                 tuning,
                 &mut server_group_end_hint,
                 &mut pending_server_group_hint,
+                true,
             )
             .await
             .unwrap();
 
         assert_eq!(desired_blocks, 4_000);
-        assert_eq!(batch_end, 101_591);
+        assert_eq!(batch_end, 103_999);
     }
 
     #[tokio::test]
@@ -11638,12 +11907,33 @@ mod tests {
                 tuning,
                 &mut server_group_end_hint,
                 &mut pending_server_group_hint,
+                true,
             )
             .await
             .unwrap();
 
         assert_eq!(desired_blocks, 500);
         assert_eq!(batch_end, 100_499);
+    }
+
+    #[tokio::test]
+    async fn pending_server_batch_hint_does_not_block_batch_planning() {
+        let engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
+        let task = ServerBatchHintTask {
+            start: 100_000,
+            handle: tokio::spawn(async {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                Some(100_199)
+            }),
+        };
+        let started = Instant::now();
+
+        let (value, pending) = engine.resolve_server_batch_hint_task(task).await.unwrap();
+
+        assert_eq!(value, None);
+        assert!(started.elapsed() < Duration::from_millis(100));
+        let pending = pending.expect("unfinished hint must remain pending");
+        pending.handle.abort();
     }
 
     #[tokio::test]
@@ -11675,6 +11965,7 @@ mod tests {
                 tuning,
                 &mut server_group_end_hint,
                 &mut pending_server_group_hint,
+                true,
             )
             .await
             .unwrap();
@@ -11689,6 +11980,20 @@ mod tests {
             SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
         engine.set_birthday_height(4_000_000);
         assert_eq!(engine.birthday_height(), 4_000_000);
+    }
+
+    #[tokio::test]
+    async fn optional_subtree_root_task_never_waits_for_an_unfinished_request() {
+        let mut task = HistoricalPrefillTask {
+            handle: Some(tokio::spawn(async {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                Ok(RemoteHistoricalSubtreeRoots::default())
+            })),
+        };
+
+        let started = Instant::now();
+        assert!(task.take_ready().await.is_none());
+        assert!(started.elapsed() < Duration::from_millis(100));
     }
 
     #[test]
