@@ -1,8 +1,8 @@
 use super::tunnel::tunnel_transport_config;
 use super::*;
 use pirate_sync_lightd::{
-    begin_sync_profile_session, record_sync_profile_failure, record_sync_profile_success,
-    BackgroundSyncConfig, BackgroundSyncMode, BackgroundSyncOrchestrator, SyncEngine, SyncWorkload,
+    begin_guarded_sync_profile_session, BackgroundSyncConfig, BackgroundSyncMode,
+    BackgroundSyncOrchestrator, SyncEngine, SyncWorkload,
 };
 use tokio::sync::Mutex as TokioMutex;
 
@@ -65,7 +65,7 @@ async fn start_background_sync_inner(
     let address_network_type = address_prefix_network_type(&wallet_id)?;
     let db_path = wallet_db_path_for(&wallet_id)?;
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
-    let selection = begin_sync_profile_session(workload);
+    let (selection, profile_session) = begin_guarded_sync_profile_session(workload);
     let sync_profile = selection.profile;
     let config = selection.config;
     tracing::info!(
@@ -94,7 +94,7 @@ async fn start_background_sync_inner(
         ) {
         Ok(sync_engine) => sync_engine,
         Err(e) => {
-            record_sync_profile_failure();
+            profile_session.record_failure();
             return Err(anyhow!(
                 "Failed to initialize background sync engine: {}",
                 e
@@ -115,14 +115,14 @@ async fn start_background_sync_inner(
     let result = match orchestrator.execute_sync(sync_mode).await {
         Ok(result) => {
             if result.errors.is_empty() {
-                record_sync_profile_success();
+                profile_session.record_success();
             } else {
-                record_sync_profile_failure();
+                profile_session.record_failure();
             }
             result
         }
         Err(e) => {
-            record_sync_profile_failure();
+            profile_session.record_failure();
             return Err(anyhow!("Background sync failed: {}", e));
         }
     };
