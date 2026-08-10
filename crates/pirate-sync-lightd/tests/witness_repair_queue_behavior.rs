@@ -64,9 +64,7 @@ fn forbids_inline_activation_side_effects_in_check_witnesses_pass() {
 #[test]
 fn has_single_queue_activation_site_in_sync_loop() {
     let src = sync_rs();
-    let activation_calls = src
-        .matches("activate_queued_found_note_range().await?")
-        .count();
+    let activation_calls = src.matches(".activate_queued_found_note_range(").count();
     assert_eq!(
         activation_calls, 1,
         "sync loop should have a single queue-activation site (regular queue worker path)"
@@ -153,8 +151,8 @@ fn shardtree_persistence_uses_batched_insertion_not_leaf_append() {
     let sync_src = sync_rs();
     let support_src = shardtree_support_rs();
     let persist_start = sync_src
-        .find("fn persist_shardtree_batches(")
-        .expect("persist_shardtree_batches exists");
+        .find("fn persist_shardtree_batches_for_storage(")
+        .expect("persist_shardtree_batches_for_storage exists");
     let persist_end = sync_src[persist_start..]
         .find("async fn apply_positions(")
         .map(|idx| persist_start + idx)
