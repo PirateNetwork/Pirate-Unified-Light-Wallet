@@ -270,6 +270,24 @@ mod live_tests {
         assert!(height > 0);
     }
 
+    /// Ensure a valid public certificate cannot bypass an incorrect SPKI pin.
+    #[tokio::test]
+    #[ignore = "Requires PIRATE_TEST_TLS_LIGHTD_URL and live network"]
+    async fn test_live_tls_rejects_wrong_spki_pin() {
+        let endpoint = std::env::var("PIRATE_TEST_TLS_LIGHTD_URL")
+            .expect("set PIRATE_TEST_TLS_LIGHTD_URL to an https:// lightwalletd endpoint");
+        let mut config = LightClientConfig::direct(&endpoint)
+            .with_spki_pin("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        config.retry.max_attempts = 1;
+
+        let error = LightClient::with_config(config)
+            .connect()
+            .await
+            .expect_err("an incorrect SPKI pin must reject the endpoint");
+
+        assert!(error.to_string().contains("SPKI pin mismatch"));
+    }
+
     /// Test getting latest block from live server
     #[tokio::test]
     #[ignore = "Requires live network"]
