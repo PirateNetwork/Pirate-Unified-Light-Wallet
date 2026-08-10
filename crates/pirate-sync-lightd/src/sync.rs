@@ -4015,18 +4015,47 @@ impl SyncEngine {
 
         // Outer loop: Keep syncing until we're fully caught up with no new blocks
         'sync_outer: loop {
-            if let Some((repair_start, repair_end_exclusive)) =
-                self.activate_queued_found_note_range().await?
+            if let Some((repair_start, repair_end_exclusive)) = self
+                .activate_queued_found_note_range(persistence_worker.as_deref())
+                .await?
             {
+                let attempts = repair_attempts
+                    .entry((repair_start, repair_end_exclusive))
+                    .or_default();
+                *attempts = attempts.saturating_add(1);
+                if *attempts > 1 {
+                    append_debug_log_line(&format!(
+                        r#"{{"id":"log_repair_repeat_guard","timestamp":{},"location":"sync.rs:sync_range_internal","message":"stopped repeated witness repair loop","data":{{"repair_start":{},"repair_end_exclusive":{},"attempts":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis(),
+                        repair_start,
+                        repair_end_exclusive,
+                        attempts
+                    ));
+                    return Err(Error::Sync(format!(
+                        "Witness repair range {}..{} remained unresolved after a complete replay",
+                        repair_start, repair_end_exclusive
+                    )));
+                }
                 let repair_end_height = repair_end_exclusive.saturating_sub(1).max(repair_start);
                 let rollback_target = repair_start.saturating_sub(1);
-                let rollback_height = self.rollback_to_checkpoint(rollback_target).await?;
+                let rollback_height = self
+                    .rollback_to_checkpoint(rollback_target, persistence_worker.as_deref())
+                    .await?;
                 // IMPORTANT:
                 // Repairs must replay deterministically from the rollback point, regardless
                 // of wallet birthday / resume height heuristics. Skipping blocks here will
                 // corrupt shardtree state (missing commitments) and can lead to
                 // "unknown-anchor" rejections at broadcast time.
                 let replay_start = rollback_height.saturating_add(1).max(1);
+
+                // A FoundNote repair must expand compact subtree roots into
+                // their underlying leaves so the owned position is marked and
+                // witnessable. Reusing the historical graft/skip state would
+                // skip the same subtree again and queue the same repair forever.
+                historical_prefill_state = None;
 
                 tracing::info!(
                     "Activating queued FoundNote repair range {}..{} with rollback_target={} rollback_height={} replay_start={}",
@@ -4056,12 +4085,26 @@ impl SyncEngine {
                 batches_since_mini_checkpoint = 0;
                 batches_since_sync_state_flush = 0;
                 last_sync_state_flush = Instant::now();
-                Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                previous_processed_hash = None;
+                {
+                    let progress = self.progress.write().await;
+                    progress.set_current(rollback_height);
+                    progress.set_checkpoint(rollback_height);
+                    progress.set_stage(SyncStage::Headers);
+                }
+                Self::abort_prefetch_queue(&mut prefetch_queue);
             }
 
             // Main sync loop: sync from current_height to end
             'sync_main: while current_height <= end {
+                // Remote roots are optional and may arrive after scanning starts.
+                // Merge only between committed batches so leaf/root ordering is unchanged.
+                merge_ready_historical_prefill(
+                    &mut historical_prefill_task,
+                    &mut historical_prefill_state,
+                )
+                .await;
+
                 // Check for cancellation
                 if self.is_cancelled().await {
                     tracing::warn!("Sync cancelled at height {}", current_height);
