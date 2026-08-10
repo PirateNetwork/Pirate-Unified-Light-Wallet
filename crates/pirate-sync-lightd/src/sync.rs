@@ -4833,11 +4833,16 @@ impl SyncEngine {
                 }
                 // #endregion
 
-                if emergency_checkpoint_requested {
+                if emergency_checkpoint_requested && common_checkpoint_safe {
                     if !checkpoint_written_this_batch {
                         let emergency_checkpoint_start = Instant::now();
-                        self.create_checkpoint(batch_end, warm_trees.as_mut())
-                            .await?;
+                        self.create_checkpoint(
+                            batch_end,
+                            warm_trees.as_mut(),
+                            run_db.as_ref(),
+                            persistence_worker.as_deref(),
+                        )
+                        .await?;
                         checkpoint_ms += emergency_checkpoint_start.elapsed().as_millis();
                         checkpoint_written_this_batch = true;
                     }
@@ -4866,11 +4871,17 @@ impl SyncEngine {
                     && (wallet_activity
                         || blocks_since_last_checkpoint
                             >= self.config.mini_checkpoint_max_block_gap)
+                    && common_checkpoint_safe
                 {
                     if !checkpoint_written_this_batch {
                         let mini_checkpoint_start = Instant::now();
-                        self.create_checkpoint(batch_end, warm_trees.as_mut())
-                            .await?;
+                        self.create_checkpoint(
+                            batch_end,
+                            warm_trees.as_mut(),
+                            run_db.as_ref(),
+                            persistence_worker.as_deref(),
+                        )
+                        .await?;
                         checkpoint_ms += mini_checkpoint_start.elapsed().as_millis();
                         checkpoint_written_this_batch = true;
                     }
@@ -4898,14 +4909,32 @@ impl SyncEngine {
                 } else {
                     self.config.checkpoint_interval as u64
                 };
-                if blocks_since_major_checkpoint >= major_checkpoint_interval {
+                if blocks_since_major_checkpoint >= major_checkpoint_interval
+                    && common_checkpoint_safe
+                {
                     if !checkpoint_written_this_batch {
                         let major_checkpoint_start = Instant::now();
-                        self.create_checkpoint(batch_end, warm_trees.as_mut())
-                            .await?;
+                        self.create_checkpoint(
+                            batch_end,
+                            warm_trees.as_mut(),
+                            run_db.as_ref(),
+                            persistence_worker.as_deref(),
+                        )
+                        .await?;
                         checkpoint_ms += major_checkpoint_start.elapsed().as_millis();
                         checkpoint_written_this_batch = true;
                     }
+                    // Sparse historical checkpoints are recovery anchors, not
+                    // merely progress markers. Pin them so the dense tip
+                    // checkpoint window cannot prune every rollback point and
+                    // turn a local witness repair into a birthday-wide replay.
+                    self.retain_checkpoint(
+                        batch_end,
+                        warm_trees.as_mut(),
+                        run_db.as_ref(),
+                        persistence_worker.as_deref(),
+                    )
+                    .await?;
                     last_checkpoint_height = batch_end;
                     last_major_checkpoint_height = batch_end;
                     batches_since_mini_checkpoint = 0;
@@ -4922,12 +4951,47 @@ impl SyncEngine {
                     );
                 }
 
-                // Save sync state periodically
-                let should_flush_sync_state = checkpoint_written_this_batch
-                    || batch_end >= end
+                // Keep the persisted cursor aligned with a durable tree checkpoint
+                // while a one-time historical frontier replay is in progress. The
+                // exact requested frontier is also checkpointed at a forced batch
+                // boundary so later starts can reuse it directly.
+                let periodic_sync_state_flush_due = batch_end >= end
                     || batches_since_sync_state_flush >= self.config.sync_state_flush_every_batches
                     || last_sync_state_flush.elapsed().as_millis()
                         >= self.config.sync_state_flush_interval_ms as u128;
+                if tree_replay_checkpoint_due(
+                    tree_replay_target,
+                    batch_end,
+                    periodic_sync_state_flush_due,
+                    checkpoint_written_this_batch,
+                ) && common_checkpoint_safe
+                {
+                    self.create_checkpoint(
+                        batch_end,
+                        warm_trees.as_mut(),
+                        run_db.as_ref(),
+                        persistence_worker.as_deref(),
+                    )
+                    .await?;
+                    checkpoint_written_this_batch = true;
+                    last_checkpoint_height = batch_end;
+                    self.progress.write().await.set_checkpoint(batch_end);
+                }
+
+                if tree_replay_target.is_some_and(|target| batch_end >= target) {
+                    self.retain_checkpoint(
+                        batch_end,
+                        warm_trees.as_mut(),
+                        run_db.as_ref(),
+                        persistence_worker.as_deref(),
+                    )
+                    .await?;
+                    tree_replay_target = None;
+                }
+
+                // Save sync state periodically
+                let should_flush_sync_state =
+                    checkpoint_written_this_batch || periodic_sync_state_flush_due;
                 let sync_state_ms = if should_flush_sync_state {
                     if let (Some(db), Some(trees)) = (run_db.as_ref(), warm_trees.take()) {
                         warm_trees = Some(trees.flush_and_reload(db.conn())?);
