@@ -5325,8 +5325,7 @@ impl SyncEngine {
 
             if self.is_cancelled().await {
                 tracing::warn!("Sync cancelled while monitoring at height {}", current);
-                Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                Self::abort_prefetch_queue(&mut prefetch_queue);
                 return Err(Error::Cancelled);
             }
 
@@ -5343,7 +5342,15 @@ impl SyncEngine {
             // Without this, checks can repeatedly flag false "missing witness" notes
             // when the latest persisted checkpoint is behind the current tip.
             if current > last_checkpoint_height {
-                match self.create_checkpoint(current, warm_trees.as_mut()).await {
+                match self
+                    .create_checkpoint(
+                        current,
+                        warm_trees.as_mut(),
+                        run_db.as_ref(),
+                        persistence_worker.as_deref(),
+                    )
+                    .await
+                {
                     Ok(()) => {
                         if let (Some(db), Some(trees)) = (run_db.as_ref(), warm_trees.take()) {
                             warm_trees = Some(trees.flush_and_reload(db.conn())?);
@@ -5363,7 +5370,11 @@ impl SyncEngine {
             }
 
             match self
-                .check_witnesses_and_queue_rescans(current, run_db.as_ref())
+                .check_witnesses_and_queue_rescans(
+                    current,
+                    run_db.as_ref(),
+                    persistence_worker.as_deref(),
+                )
                 .await
             {
                 Ok(Some((repair_from_height, repair_end_exclusive))) => {
@@ -5398,9 +5409,7 @@ impl SyncEngine {
                         last_major_checkpoint_height = validated_start.saturating_sub(1);
                         batches_since_mini_checkpoint = 0;
                         batches_since_sync_state_flush = 0;
-                        Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                        Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
-                        server_group_end_hint = None;
+                        Self::abort_prefetch_queue(&mut prefetch_queue);
                         continue 'sync_outer;
                     }
 
@@ -5452,8 +5461,7 @@ impl SyncEngine {
                     tokio::select! {
                         _ = tokio::time::sleep(Duration::from_secs(10)) => {}
                         _ = self.cancel.cancelled() => {
-                            Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                            Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                            Self::abort_prefetch_queue(&mut prefetch_queue);
                             return Err(Error::Cancelled);
                         },
                     }
@@ -5473,8 +5481,7 @@ impl SyncEngine {
                     tokio::select! {
                         _ = tokio::time::sleep(Duration::from_secs(5)) => {}
                         _ = self.cancel.cancelled() => {
-                            Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                            Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                            Self::abort_prefetch_queue(&mut prefetch_queue);
                             return Err(Error::Cancelled);
                         },
                     }
