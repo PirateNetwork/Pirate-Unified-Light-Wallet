@@ -3241,61 +3241,64 @@ impl SyncEngine {
     fn tree_state_retry_profile(&self) -> TreeStateRetryProfile {
         match self.client.transport_mode() {
             // Tor and I2P are privacy-preserving but can have higher latency and
-            // occasional circuit/bootstrap jitter. Keep retries bounded so rescan
-            // startup doesn't sit in Headers for multiple minutes.
+            // occasional circuit/bootstrap jitter. Historical tree-state requests
+            // are infrequent but can be expensive on the backing full node, so do
+            // not create a queue of short-lived duplicate requests.
             TransportMode::Tor => TreeStateRetryProfile {
-                max_attempts: 3,
-                base_timeout: Duration::from_secs(8),
-                timeout_step: Duration::from_secs(8),
-                max_timeout: Duration::from_secs(32),
+                max_attempts: 1,
+                base_timeout: Duration::from_secs(150),
+                timeout_step: Duration::ZERO,
+                max_timeout: Duration::from_secs(150),
                 initial_backoff: Duration::from_millis(500),
                 max_backoff: Duration::from_secs(2),
-                bridge_timeout_cap: Duration::from_secs(24),
-                hash_timeout_cap: Duration::from_secs(12),
-                enable_hash_fallback: true,
-                extended_timeout: Duration::from_secs(75),
-                extended_hash_timeout: Duration::from_secs(45),
+                bridge_timeout_cap: Duration::from_secs(150),
+                hash_timeout_cap: Duration::from_secs(30),
+                enable_hash_fallback: false,
+                extended_timeout: Duration::from_secs(170),
+                extended_hash_timeout: Duration::from_secs(60),
             },
             TransportMode::I2p => TreeStateRetryProfile {
-                max_attempts: 3,
-                base_timeout: Duration::from_secs(8),
-                timeout_step: Duration::from_secs(8),
-                max_timeout: Duration::from_secs(32),
+                max_attempts: 1,
+                base_timeout: Duration::from_secs(150),
+                timeout_step: Duration::ZERO,
+                max_timeout: Duration::from_secs(150),
                 initial_backoff: Duration::from_millis(500),
                 max_backoff: Duration::from_secs(2),
-                bridge_timeout_cap: Duration::from_secs(24),
-                hash_timeout_cap: Duration::from_secs(12),
-                enable_hash_fallback: true,
-                extended_timeout: Duration::from_secs(75),
-                extended_hash_timeout: Duration::from_secs(45),
+                bridge_timeout_cap: Duration::from_secs(150),
+                hash_timeout_cap: Duration::from_secs(30),
+                enable_hash_fallback: false,
+                extended_timeout: Duration::from_secs(170),
+                extended_hash_timeout: Duration::from_secs(60),
             },
             TransportMode::Socks5 => TreeStateRetryProfile {
-                max_attempts: 3,
-                base_timeout: Duration::from_secs(8),
-                timeout_step: Duration::from_secs(8),
-                max_timeout: Duration::from_secs(32),
+                max_attempts: 1,
+                base_timeout: Duration::from_secs(150),
+                timeout_step: Duration::ZERO,
+                max_timeout: Duration::from_secs(150),
                 initial_backoff: Duration::from_millis(500),
                 max_backoff: Duration::from_secs(2),
-                bridge_timeout_cap: Duration::from_secs(24),
-                hash_timeout_cap: Duration::from_secs(12),
-                enable_hash_fallback: true,
-                extended_timeout: Duration::from_secs(75),
-                extended_hash_timeout: Duration::from_secs(45),
+                bridge_timeout_cap: Duration::from_secs(150),
+                hash_timeout_cap: Duration::from_secs(30),
+                enable_hash_fallback: false,
+                extended_timeout: Duration::from_secs(170),
+                extended_hash_timeout: Duration::from_secs(60),
             },
-            // Direct mode should remain responsive while retaining enough margin
-            // for transient lightwalletd load.
+            // A mainnet historical state on the configured server currently takes
+            // around one minute. One appropriately-bounded request is cheaper and
+            // more reliable than several requests that time out while the server
+            // continues processing them.
             TransportMode::Direct => TreeStateRetryProfile {
-                max_attempts: 3,
-                base_timeout: Duration::from_secs(6),
-                timeout_step: Duration::from_secs(6),
-                max_timeout: Duration::from_secs(24),
+                max_attempts: 1,
+                base_timeout: Duration::from_secs(120),
+                timeout_step: Duration::ZERO,
+                max_timeout: Duration::from_secs(120),
                 initial_backoff: Duration::from_millis(250),
                 max_backoff: Duration::from_secs(1),
-                bridge_timeout_cap: Duration::from_secs(14),
-                hash_timeout_cap: Duration::from_secs(8),
-                enable_hash_fallback: true,
-                extended_timeout: Duration::from_secs(60),
-                extended_hash_timeout: Duration::from_secs(30),
+                bridge_timeout_cap: Duration::from_secs(120),
+                hash_timeout_cap: Duration::from_secs(30),
+                enable_hash_fallback: false,
+                extended_timeout: Duration::from_secs(170),
+                extended_hash_timeout: Duration::from_secs(60),
             },
         }
     }
