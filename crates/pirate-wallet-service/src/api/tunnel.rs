@@ -419,25 +419,23 @@ async fn test_node_inner(
     let host = endpoint_config.host.clone();
     let port = endpoint_config.port;
     let tls_enabled = endpoint_config.use_tls;
-    let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
     let endpoint = endpoint_config.url();
 
     tracing::info!(
-        "test_node: Parsed endpoint URL: {} (TLS: {}, host: {}, port: {}, is_ip: {})",
+        "test_node: Parsed endpoint URL: {} (TLS: {}, host: {}, port: {})",
         endpoint,
         tls_enabled,
         host,
-        port,
-        is_ip_address
+        port
     );
 
-    // Create client config (all data is Send-safe now)
-    // For TLS SNI: If connecting via IP address, we need to use the hostname from the certificate
-    // The certificate is likely issued for lightd1.piratechain.com, not the IP
-    // So we should use the hostname for SNI even when connecting via IP
     let tls_server_name = endpoint::tls_server_name(&endpoint_config);
-    if tls_enabled && is_ip_address {
-        tracing::info!("test_node: Connecting via IP {}, using hostname 'lightd1.piratechain.com' for TLS SNI to match certificate", host);
+    if let Some(server_name) = tls_server_name.as_deref() {
+        tracing::info!(
+            "test_node: Using TLS certificate identity '{}' for {}",
+            server_name,
+            host
+        );
     }
 
     let actual_pin = if tls_enabled {

@@ -234,7 +234,7 @@ pub(super) fn tls_server_name(endpoint: &LightdEndpoint) -> Option<String> {
     if !endpoint.use_tls {
         return None;
     }
-    if endpoint.host.parse::<IpAddr>().is_ok() {
+    if endpoint.host == DEFAULT_LIGHTD_HOST && endpoint.host.parse::<IpAddr>().is_ok() {
         return Some(IP_TLS_SERVER_NAME.to_string());
     }
     Some(endpoint.host.clone())
