@@ -1480,11 +1480,25 @@ pub(super) fn get_last_checkpoint(wallet_id: WalletId) -> Result<Option<Checkpoi
 
 struct RescanGuard {
     wallet_id: WalletId,
+    clear_phase_status_on_drop: bool,
+}
+
+impl RescanGuard {
+    fn mark_phase_published(&mut self) {
+        self.clear_phase_status_on_drop = true;
+    }
+
+    fn transfer_status_to_session(&mut self) {
+        self.clear_phase_status_on_drop = false;
+    }
 }
 
 impl Drop for RescanGuard {
     fn drop(&mut self) {
         RESCAN_IN_FLIGHT.write().remove(&self.wallet_id);
+        if self.clear_phase_status_on_drop {
+            SYNC_STATUS_SNAPSHOT_CACHE.write().remove(&self.wallet_id);
+        }
     }
 }
 
@@ -1508,7 +1522,37 @@ fn acquire_rescan_guard(wallet_id: &WalletId) -> Result<RescanGuard> {
     in_flight.insert(wallet_id.clone());
     Ok(RescanGuard {
         wallet_id: wallet_id.clone(),
+        clear_phase_status_on_drop: false,
     })
+}
+
+fn rescan_phase_status(
+    from_height: u32,
+    prior_target_height: u64,
+    stage: crate::models::SyncStage,
+) -> SyncStatus {
+    let local_height = u64::from(from_height.saturating_sub(1));
+    let target_height = prior_target_height
+        .checked_sub(u64::from(from_height))
+        .map(|_| prior_target_height)
+        .unwrap_or(0);
+    let percent = if target_height > 0 {
+        ((local_height as f64 / target_height as f64) * 100.0).clamp(0.0, 99.9)
+    } else {
+        0.0
+    };
+
+    SyncStatus {
+        local_height,
+        target_height,
+        percent,
+        eta: None,
+        stage,
+        last_checkpoint: None,
+        blocks_per_second: 0.0,
+        notes_decrypted: 0,
+        last_batch_ms: 0,
+    }
 }
 
 fn mark_rescan_active(wallet_id: &WalletId) -> RescanActiveGuard {
@@ -1575,7 +1619,10 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     if from_height == 0 {
         return Err(anyhow!("Invalid rescan height: must be > 0"));
     }
-    let _rescan_guard = acquire_rescan_guard(&wallet_id)?;
+    let prior_target_height = get_cached_sync_status(&wallet_id)
+        .map(|status| status.target_height)
+        .unwrap_or(0);
+    let mut rescan_guard = acquire_rescan_guard(&wallet_id)?;
     mark_spendability_rescan_required(&wallet_id, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED);
     let mut effective_from_height = from_height;
     let truncate_height: u64;
@@ -1700,6 +1747,13 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         }
     }
     clear_sync_runtime_cache(&wallet_id);
+    let preparing_status = rescan_phase_status(
+        effective_from_height,
+        prior_target_height,
+        crate::models::SyncStage::Preparing,
+    );
+    cache_sync_status(&wallet_id, &preparing_status);
+    rescan_guard.mark_phase_published();
     {
         pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
@@ -1964,7 +2018,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         &endpoint_config,
         RetryConfig::default(),
         std::time::Duration::from_secs(30),
-        std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(180),
     );
 
     tracing::info!(
@@ -1977,7 +2031,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     let network_type = wallet_network_type(&wallet_id)?;
     let address_network_type = address_prefix_network_type(&wallet_id)?;
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
-    let selection = begin_sync_profile_session(SyncWorkload::Rescan);
+    let (selection, profile_session) = begin_guarded_sync_profile_session(SyncWorkload::Rescan);
     let sync_profile = selection.profile;
     let config = selection.config;
     tracing::info!(
@@ -2004,7 +2058,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         ) {
         Ok(sync) => sync,
         Err(e) => {
-            record_sync_profile_failure();
+            profile_session.record_failure();
             return Err(anyhow!("Failed to initialize sync engine: {}", e));
         }
     };
@@ -2019,17 +2073,22 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     };
     let progress_handle = Arc::clone(&progress);
     let perf_handle = Arc::clone(&perf);
-    let initial_status = SyncStatus {
-        local_height: effective_from_height as u64,
-        target_height: 0,
-        percent: 0.0,
-        eta: None,
-        stage: crate::models::SyncStage::Headers,
-        last_checkpoint: None,
-        blocks_per_second: 0.0,
-        notes_decrypted: 0,
-        last_batch_ms: 0,
-    };
+    let initial_status = rescan_phase_status(
+        effective_from_height,
+        prior_target_height,
+        crate::models::SyncStage::Preparing,
+    );
+    {
+        let progress = progress.write().await;
+        progress.set_current(initial_status.local_height);
+        progress.set_target(initial_status.target_height);
+        progress.set_stage(pirate_sync_lightd::SyncStage::Preparing);
+        progress.start();
+    }
+    tokio::spawn(monitor_sync_profile_initial_tip(
+        profile_session.clone(),
+        Arc::clone(&progress),
+    ));
 
     let rescan_session_arc = {
         let mut sessions = SYNC_SESSIONS.write();
@@ -2038,6 +2097,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
             cancelled: Some(cancel_flag),
             progress: Some(progress),
             perf: Some(perf),
+            profile_session: Some(profile_session.clone()),
             last_status: initial_status.clone(),
             is_running: true,
             startup_in_progress: true,
@@ -2077,6 +2137,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
 
     let wallet_id_for_task = wallet_id.clone();
     let session_arc_for_task = Arc::clone(&rescan_session_arc);
+    let profile_session_for_task = profile_session.clone();
     let task_handle = tokio::spawn(async move {
         let rescan_active_guard = rescan_active_guard;
         let sync_opt = { session_arc_for_task.lock().await.sync.clone() };
@@ -2084,13 +2145,8 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         if let Some(sync) = sync_opt {
             let result = run_sync_engine_task(sync.clone(), move |engine| {
                 Box::pin(async move {
-                    let tip_height = engine
-                        .latest_block_height()
-                        .await
-                        .map_err(anyhow::Error::from)?;
-                    let end_height = tip_height.max(effective_from_height as u64);
                     engine
-                        .sync_range(effective_from_height as u64, Some(end_height))
+                        .sync_range_to_latest(effective_from_height as u64)
                         .await
                         .map_err(anyhow::Error::from)
                 })
@@ -2116,9 +2172,9 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 })
             };
             if result.is_ok() {
-                record_sync_profile_success();
+                profile_session_for_task.record_success();
             } else {
-                record_sync_profile_failure();
+                profile_session_for_task.record_failure();
             }
 
             let mut session = session_arc_for_task.lock().await;
@@ -2152,6 +2208,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
             }
             session.is_running = false;
             session.startup_in_progress = false;
+            session.profile_session = None;
             session.task = None;
             drop(session);
             clear_sync_runtime_cache(&wallet_id_for_task);
@@ -2161,10 +2218,11 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 maybe_trigger_compact_sync(wallet_id_for_task.clone());
             }
         } else {
-            record_sync_profile_failure();
+            profile_session_for_task.record_failure();
             let mut session = session_arc_for_task.lock().await;
             session.is_running = false;
             session.startup_in_progress = false;
+            session.profile_session = None;
             session.task = None;
             clear_sync_runtime_cache(&wallet_id_for_task);
             drop(rescan_active_guard);
@@ -2175,6 +2233,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         session.task = Some(task_handle);
         session.startup_in_progress = false;
     }
+    rescan_guard.transfer_status_to_session();
     Ok(())
 }
 
