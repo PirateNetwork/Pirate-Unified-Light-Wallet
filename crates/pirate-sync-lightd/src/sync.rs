@@ -12014,6 +12014,371 @@ mod tests {
         assert_eq!(notes.len(), 0);
     }
 
+    fn sapling_benchmark_output(recipient_scalar: u64, seed: u8) -> SaplingBatchOutput {
+        let recipient_ivk = SaplingIvk(jubjub::Fr::from(recipient_scalar));
+        let address = recipient_ivk
+            .to_payment_address(sapling::Diversifier([0; 11]))
+            .expect("zero diversifier is valid");
+        let note = address.create_note(
+            sapling::value::NoteValue::from_raw(1),
+            Rseed::AfterZip212([seed; 32]),
+        );
+        let cmu = note.cmu().to_bytes();
+        let mut rng = StdRng::seed_from_u64(u64::from(seed));
+        let encryption =
+            sapling::note_encryption::sapling_note_encryption(None, note, [0; 512], &mut rng);
+        let epk = <SaplingDomain as zcash_note_encryption::Domain>::epk_bytes(encryption.epk()).0;
+        let ciphertext = encryption.encrypt_note_plaintext()[..COMPACT_NOTE_SIZE]
+            .try_into()
+            .unwrap();
+        SaplingBatchOutput {
+            epk,
+            cmu,
+            ciphertext,
+        }
+    }
+
+    fn sapling_decrypt_with_chunk_floor(
+        pool: &rayon::ThreadPool,
+        ivks: &[PreparedIncomingViewingKey],
+        outputs: &[(SaplingDomain, SaplingBatchOutput)],
+        max_parallel: usize,
+        chunk_floor: usize,
+    ) -> Vec<CompactDecryptResult<SaplingDomain>> {
+        let chunk_size = outputs.len().div_ceil(max_parallel).max(chunk_floor);
+        if chunk_size >= outputs.len() {
+            return note_batch::try_compact_note_decryption(ivks, outputs);
+        }
+        pool.install(|| {
+            outputs
+                .par_chunks(chunk_size)
+                .map(|chunk| note_batch::try_compact_note_decryption(ivks, chunk))
+                .collect::<Vec<_>>()
+                .into_iter()
+                .flatten()
+                .collect()
+        })
+    }
+
+    fn best_sapling_decrypt_sample(
+        mut run: impl FnMut() -> Vec<CompactDecryptResult<SaplingDomain>>,
+    ) -> (Duration, Vec<bool>) {
+        (0..3)
+            .map(|_| {
+                let started = Instant::now();
+                let results = run();
+                (
+                    started.elapsed(),
+                    results.iter().map(Option::is_some).collect::<Vec<_>>(),
+                )
+            })
+            .min_by_key(|(elapsed, _)| *elapsed)
+            .expect("three benchmark samples")
+    }
+
+    fn sapling_decrypt_signatures(
+        results: Vec<CompactDecryptResult<SaplingDomain>>,
+    ) -> Vec<Option<(u64, [u8; 11], usize)>> {
+        results
+            .into_iter()
+            .map(|result| {
+                result.map(|((note, address), ivk_index)| {
+                    (note.value().inner(), address.diversifier().0, ivk_index)
+                })
+            })
+            .collect()
+    }
+
+    fn stage_scheduler_tree_pressure(pool: &rayon::ThreadPool, work_items: usize) -> Duration {
+        let started = Instant::now();
+        pool.install(|| {
+            (0..work_items).into_par_iter().for_each(|_| {
+                let mut node = SaplingNode::empty_leaf();
+                for level in 0..8 {
+                    node = SaplingNode::combine(
+                        incrementalmerkletree::Level::new(level),
+                        &node,
+                        &node,
+                    );
+                }
+                std::hint::black_box(node);
+            });
+        });
+        started.elapsed()
+    }
+
+    fn stage_scheduler_contention_sample(
+        pool: &rayon::ThreadPool,
+        ivks: &[PreparedIncomingViewingKey],
+        outputs: &[(SaplingDomain, SaplingBatchOutput)],
+        max_parallel: usize,
+        task_multiplier: usize,
+        tree_work_items: usize,
+    ) -> (Duration, Duration, Duration, u64, Vec<bool>) {
+        let overall_started = Instant::now();
+        let ((decrypt_elapsed, decrypt), tree_elapsed) = std::thread::scope(|scope| {
+            let barrier = Arc::new(std::sync::Barrier::new(2));
+            let decrypt_barrier = Arc::clone(&barrier);
+            let decrypt = scope.spawn(move || {
+                decrypt_barrier.wait();
+                let started = Instant::now();
+                let result = try_compact_note_decryption_parallel_measured(
+                    pool,
+                    ivks,
+                    outputs,
+                    max_parallel,
+                    task_multiplier,
+                );
+                (started.elapsed(), result)
+            });
+            let tree = scope.spawn(move || {
+                barrier.wait();
+                // Current-batch persistence becomes runnable shortly after
+                // lookahead decryption has occupied the shared pool.
+                std::thread::sleep(Duration::from_millis(1));
+                stage_scheduler_tree_pressure(pool, tree_work_items)
+            });
+            (decrypt.join().unwrap(), tree.join().unwrap())
+        });
+        (
+            overall_started.elapsed(),
+            decrypt_elapsed,
+            tree_elapsed,
+            decrypt.task_count,
+            decrypt.value.iter().map(Option::is_some).collect(),
+        )
+    }
+
+    #[test]
+    fn parallel_sapling_decryption_matches_sequential_across_chunk_boundaries() {
+        let miss = sapling_benchmark_output(11, 7);
+        let hit = sapling_benchmark_output(2, 9);
+        let mut outputs = (0..513)
+            .map(|_| {
+                (
+                    SaplingDomain::new(sapling::note_encryption::Zip212Enforcement::On),
+                    miss.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for index in [0usize, 16, 63, 64, 95, 96, 255, 256, 512] {
+            outputs[index].1 = hit.clone();
+        }
+        let ivks = [
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::from(2u64))),
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::from(3u64))),
+        ];
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap();
+
+        for output_count in [1usize, 63, 64, 95, 96, 97, 127, 128, 255, 256, 257, 513] {
+            let sample = &outputs[..output_count];
+            let expected =
+                sapling_decrypt_signatures(note_batch::try_compact_note_decryption(&ivks, sample));
+            let actual = sapling_decrypt_signatures(try_compact_note_decryption_parallel(
+                &pool, &ivks, sample, 32,
+            ));
+            assert_eq!(actual, expected, "output_count={output_count}");
+        }
+    }
+
+    #[test]
+    fn stage_aware_decryption_preserves_order_and_note_results() {
+        let miss = sapling_benchmark_output(11, 7);
+        let hit = sapling_benchmark_output(2, 9);
+        let mut outputs = (0..513)
+            .map(|_| {
+                (
+                    SaplingDomain::new(sapling::note_encryption::Zip212Enforcement::On),
+                    miss.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for index in [0usize, 63, 64, 255, 256, 512] {
+            outputs[index].1 = hit.clone();
+        }
+        let ivks = [
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::from(2u64))),
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::from(3u64))),
+        ];
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap();
+
+        let baseline = try_compact_note_decryption_parallel_measured(&pool, &ivks, &outputs, 4, 1);
+        let stage_aware = try_compact_note_decryption_parallel_measured(
+            &pool,
+            &ivks,
+            &outputs,
+            4,
+            LOOKAHEAD_DECRYPT_TASK_MULTIPLIER,
+        );
+
+        assert!(stage_aware.task_count > baseline.task_count);
+        assert_eq!(
+            sapling_decrypt_signatures(stage_aware.value),
+            sapling_decrypt_signatures(baseline.value)
+        );
+    }
+
+    /// Manual release-mode benchmark for the Sapling trial-decryption miss path.
+    ///
+    /// Run with:
+    /// `cargo test -p pirate-sync-lightd --lib benchmark_sapling_trial_decrypt_chunking --release -- --ignored --nocapture`
+    #[test]
+    #[ignore = "manual performance harness"]
+    fn benchmark_sapling_trial_decrypt_chunking() {
+        let representative_output_count = 2_413;
+        let max_output_count = 6_000;
+        let miss = sapling_benchmark_output(11, 7);
+        let hit = sapling_benchmark_output(2, 9);
+        let mut outputs = (0..max_output_count)
+            .map(|_| {
+                (
+                    SaplingDomain::new(sapling::note_encryption::Zip212Enforcement::On),
+                    miss.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        outputs[16].1 = hit;
+        let ivks = [
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::from(2u64))),
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::from(3u64))),
+        ];
+        let representative_outputs = &outputs[..representative_output_count];
+
+        for threads in [4usize, 8, 16] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            let (sequential, expected_hits) = best_sapling_decrypt_sample(|| {
+                note_batch::try_compact_note_decryption(&ivks, representative_outputs)
+            });
+            assert_eq!(expected_hits.iter().filter(|hit| **hit).count(), 1);
+            eprintln!(
+                "sapling trial-decrypt benchmark: threads={threads}, ivks={}, outputs={representative_output_count}, sequential={:.3} ms",
+                ivks.len(),
+                sequential.as_secs_f64() * 1_000.0,
+            );
+            for chunk_floor in [64usize, 128, 192, 256, 384, 512, 1_024] {
+                let (elapsed, actual_hits) = best_sapling_decrypt_sample(|| {
+                    sapling_decrypt_with_chunk_floor(
+                        &pool,
+                        &ivks,
+                        representative_outputs,
+                        32,
+                        chunk_floor,
+                    )
+                });
+                assert_eq!(actual_hits, expected_hits);
+                eprintln!(
+                    "parallel chunk_floor={chunk_floor:>4}: {:>8.3} ms ({:.2}x sequential)",
+                    elapsed.as_secs_f64() * 1_000.0,
+                    sequential.as_secs_f64() / elapsed.as_secs_f64(),
+                );
+            }
+
+            eprintln!("sapling trial-decrypt crossover: threads={threads}");
+            for output_count in [
+                32usize, 64, 96, 128, 192, 256, 384, 512, 1_024, 2_413, 6_000,
+            ] {
+                let sample = &outputs[..output_count];
+                let (sequential, sequential_hits) = best_sapling_decrypt_sample(|| {
+                    note_batch::try_compact_note_decryption(&ivks, sample)
+                });
+                let (current, current_hits) = best_sapling_decrypt_sample(|| {
+                    sapling_decrypt_with_chunk_floor(&pool, &ivks, sample, 32, 256)
+                });
+                let (candidate, candidate_hits) = best_sapling_decrypt_sample(|| {
+                    sapling_decrypt_with_chunk_floor(&pool, &ivks, sample, 32, 64)
+                });
+                assert_eq!(current_hits, sequential_hits);
+                assert_eq!(candidate_hits, sequential_hits);
+                eprintln!(
+                    "outputs={output_count:>4}: sequential={:>7.3} ms, current256={:>7.3} ms, candidate64={:>7.3} ms, candidate/current={:.3}",
+                    sequential.as_secs_f64() * 1_000.0,
+                    current.as_secs_f64() * 1_000.0,
+                    candidate.as_secs_f64() * 1_000.0,
+                    candidate.as_secs_f64() / current.as_secs_f64(),
+                );
+            }
+        }
+    }
+
+    /// Manual release-mode A/B benchmark for shared-pool scheduling.
+    ///
+    /// Run with:
+    /// `cargo test -p pirate-sync-lightd --lib benchmark_stage_aware_cpu_scheduler --release -- --ignored --nocapture`
+    #[test]
+    #[ignore = "manual performance harness"]
+    fn benchmark_stage_aware_cpu_scheduler() {
+        let output_count = 2_413;
+        let miss = sapling_benchmark_output(11, 7);
+        let hit = sapling_benchmark_output(2, 9);
+        let mut outputs = (0..output_count)
+            .map(|_| {
+                (
+                    SaplingDomain::new(sapling::note_encryption::Zip212Enforcement::On),
+                    miss.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        outputs[16].1 = hit;
+        let ivks = [
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::from(2u64))),
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::from(3u64))),
+        ];
+        let threads = num_cpus::get().clamp(2, 16);
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+        let expected = note_batch::try_compact_note_decryption(&ivks, &outputs)
+            .iter()
+            .map(Option::is_some)
+            .collect::<Vec<_>>();
+
+        let cases = [
+            ("baseline", threads, 1usize),
+            ("reserve_1", threads.saturating_sub(1).max(1), 1),
+            ("reserve_2", threads.saturating_sub(2).max(1), 1),
+            ("reserve_4", threads.saturating_sub(4).max(1), 1),
+            ("sliced_2x", threads, 2),
+            ("sliced_4x", threads, LOOKAHEAD_DECRYPT_TASK_MULTIPLIER),
+        ];
+        for (label, max_parallel, multiplier) in cases {
+            let best = (0..3)
+                .map(|_| {
+                    stage_scheduler_contention_sample(
+                        &pool,
+                        &ivks,
+                        &outputs,
+                        max_parallel,
+                        multiplier,
+                        2_048,
+                    )
+                })
+                .min_by_key(|sample| sample.0)
+                .unwrap();
+            assert_eq!(best.4, expected);
+            eprintln!(
+                "stage scheduler: case={}, threads={}, decrypt_parallel={}, multiplier={}, tasks={}, pipeline_ms={:.3}, decrypt_ms={:.3}, tree_ready_ms={:.3}",
+                label,
+                threads,
+                max_parallel,
+                multiplier,
+                best.3,
+                best.0.as_secs_f64() * 1_000.0,
+                best.1.as_secs_f64() * 1_000.0,
+                best.2.as_secs_f64() * 1_000.0,
+            );
+        }
+    }
+
     #[tokio::test]
     async fn test_cancel_flag_reflects_engine_cancellation() {
         let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 3_800_000);
@@ -12029,7 +12394,10 @@ mod tests {
         let cancel = CancelToken::new();
         cancel.cancel();
 
-        let result = SyncEngine::fetch_blocks_with_retry_inner(client, 10, 20, cancel, None).await;
+        let result = SyncEngine::fetch_blocks_with_retry_inner(
+            client, 10, 20, cancel, None, None, 1_000_000,
+        )
+        .await;
         assert!(matches!(result, Err(Error::Cancelled)));
     }
 
