@@ -4545,15 +4545,26 @@ impl SyncEngine {
                 } else {
                     FrontierCheckpointMode::OwnedOnly
                 };
-                let (commitments_applied, position_mappings, frontier_checkpointed_batch_end) =
-                    self.update_commitment_trees(
+                let (
+                    commitments_applied,
+                    position_mappings,
+                    frontier_checkpointed_batch_end,
+                    shardtree_work,
+                ) = self
+                    .update_commitment_trees(
                         &blocks,
+                        prepared_commitments,
                         &notes,
                         checkpoint_mode,
                         warm_trees.as_mut(),
                         historical_prefill_state.as_mut(),
+                        run_db.as_ref(),
+                        persistence_worker.as_deref(),
                     )
                     .await?;
+                let common_checkpoint_safe = historical_prefill_state
+                    .as_ref()
+                    .is_none_or(HistoricalPrefillState::common_checkpoint_safe);
                 let frontier_ms = frontier_start.elapsed().as_millis();
                 // #region agent log
                 if verbose_sync_batch_logging_enabled() {
@@ -4577,8 +4588,12 @@ impl SyncEngine {
 
                 let require_memos = !self.config.lazy_memo_decode;
                 if !notes.is_empty() && !self.config.defer_full_tx_fetch {
-                    self.fetch_and_enrich_notes(&mut notes, require_memos)
-                        .await?;
+                    self.fetch_and_enrich_notes(
+                        &mut notes,
+                        require_memos,
+                        persistence_worker.clone(),
+                    )
+                    .await?;
                 }
 
                 if !notes.is_empty() {
@@ -4670,7 +4685,22 @@ impl SyncEngine {
                         }
                         tx_meta_prepare_ms = tx_meta_prepare_start.elapsed().as_millis();
 
-                        let persist_result = if let Some(db) = run_db.as_ref() {
+                        let persist_result = if let Some(worker) = persistence_worker.as_ref() {
+                            let sink = sink.clone();
+                            let persisted_notes = notes.clone();
+                            let persisted_positions = position_mappings.clone();
+                            worker
+                                .execute(move |db| {
+                                    sink.persist_notes_with_db(
+                                        db,
+                                        &persisted_notes,
+                                        &tx_times,
+                                        &tx_fees,
+                                        &persisted_positions,
+                                    )
+                                })
+                                .await?
+                        } else if let Some(db) = run_db.as_ref() {
                             sink.persist_notes_with_db(
                                 db,
                                 &notes,
@@ -4712,7 +4742,7 @@ impl SyncEngine {
                     }
                 }
 
-                if !(blocks.is_empty()
+                if !(wallet_blocks.is_empty()
                     || (self.nullifier_cache.is_empty() && self.tracked_wallet_txids.is_empty()))
                 {
                     // #region agent log
@@ -4729,7 +4759,12 @@ impl SyncEngine {
                     }
                     // #endregion
                     let apply_start = Instant::now();
-                    self.apply_spends(&blocks, run_db.as_ref()).await?;
+                    self.apply_spends(
+                        wallet_blocks,
+                        run_db.as_ref(),
+                        persistence_worker.as_deref(),
+                    )
+                    .await?;
                     apply_spends_ms = apply_start.elapsed().as_millis();
                     // #region agent log
                     if verbose_sync_batch_logging_enabled() {
@@ -4746,12 +4781,12 @@ impl SyncEngine {
                     // #endregion
                 }
 
-                if let (Some(sink), Some(db)) = (self.storage.as_ref(), run_db.as_ref()) {
-                    sink.save_chain_blocks_with_db(db, &blocks)?;
-                }
-
                 if self.config.defer_full_tx_fetch && !notes.is_empty() {
-                    self.spawn_background_enrich(notes.clone(), require_memos);
+                    self.spawn_background_enrich(
+                        notes.clone(),
+                        require_memos,
+                        persistence_worker.clone(),
+                    );
                 }
 
                 // Record processing-only duration up to this point (legacy batch_total basis).
