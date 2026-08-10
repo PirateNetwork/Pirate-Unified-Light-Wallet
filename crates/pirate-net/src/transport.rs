@@ -480,7 +480,12 @@ impl TransportManager {
         endpoint
             .connect_with_connector(connector)
             .await
-            .map_err(|e| Error::Network(format!("gRPC connection failed: {}", e)))
+            .map_err(|e| {
+                Error::Network(format!(
+                    "gRPC connection failed: {}",
+                    format_error_chain(&e)
+                ))
+            })
     }
 
     /// Open a raw stream using the configured transport mode.
@@ -638,6 +643,20 @@ impl TransportManager {
         }
         *self.i2p_client.lock().await = None;
     }
+}
+
+fn format_error_chain(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut message = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        let cause = cause.to_string();
+        if !cause.is_empty() && !message.contains(&cause) {
+            message.push_str(": ");
+            message.push_str(&cause);
+        }
+        source = source.and_then(std::error::Error::source);
+    }
+    message
 }
 
 async fn fetch_url_bytes_with_client(
