@@ -12406,9 +12406,891 @@ mod tests {
         let client = LightClient::new("http://127.0.0.1:1".to_string());
         let cancel = CancelToken::new();
 
-        let blocks = SyncEngine::fetch_blocks_with_retry_inner(client, 20, 10, cancel, None)
+        let blocks = SyncEngine::fetch_blocks_with_retry_inner(
+            client, 20, 10, cancel, None, None, 1_000_000,
+        )
+        .await
+        .unwrap();
+        assert!(blocks.blocks.is_empty());
+    }
+
+    fn fetched_test_batch(blocks: Vec<CompactBlockData>) -> FetchedBlockBatch {
+        FetchedBlockBatch {
+            encoded_bytes: blocks.len() as u64,
+            requested_blocks: blocks.len() as u64,
+            requested_bytes: u64::MAX,
+            blocks,
+            source: BlockFetchSource::Cache,
+            elapsed: Duration::ZERO,
+            network_elapsed: Duration::ZERO,
+            cache_write_elapsed: Duration::ZERO,
+            spool_reservations: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn one_batch_lookahead_matches_sequential_trial_decryption() {
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 1);
+        let blocks = linked_compact_blocks(42, 45);
+        let sequential = engine.trial_decrypt_batch(&blocks).await.unwrap().0;
+        let (sender, receiver) = mpsc::channel(1);
+        sender
+            .send(Ok(fetched_test_batch(blocks.clone())))
             .await
             .unwrap();
-        assert!(blocks.is_empty());
+        drop(sender);
+        let producer = tokio::spawn(async {});
+        let mut queue = VecDeque::from([PrefetchTask {
+            start: 42,
+            end: 45,
+            payload: Some(PrefetchPayload::Fetch {
+                receiver,
+                handle: producer,
+            }),
+        }]);
+
+        engine.start_one_batch_decrypt_lookahead(&mut queue);
+        let mut task = queue.pop_front().unwrap();
+        let received = engine.receive_prefetch_batch(&mut task).await.unwrap();
+        received
+            .prepared_commitments
+            .as_ref()
+            .expect("prepared commitments")
+            .validate_source(&received.fetched.blocks)
+            .unwrap();
+        let prepared = received.prepared_notes.expect("prepared notes").0;
+
+        assert_eq!(
+            sequential
+                .iter()
+                .map(|note| (&note.tx_hash, note.output_index, note.value))
+                .collect::<Vec<_>>(),
+            prepared
+                .iter()
+                .map(|note| (&note.tx_hash, note.output_index, note.value))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(received.fetched.blocks.len(), blocks.len());
+        SyncEngine::abort_prefetch_task(&mut task);
+    }
+
+    #[tokio::test]
+    async fn cancelling_lookahead_releases_its_bounded_batch() {
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 1);
+        let watermarks = PrefetchWatermarks::new(64, 32);
+        let reservation = watermarks.reserve(32, &CancelToken::new()).await.unwrap();
+        let mut fetched = fetched_test_batch(linked_compact_blocks(42, 42));
+        fetched.spool_reservations.push(reservation);
+        let (sender, receiver) = mpsc::channel(1);
+        sender.send(Ok(fetched)).await.unwrap();
+        let producer = tokio::spawn(async move {
+            let _sender = sender;
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        let mut queue = VecDeque::from([PrefetchTask {
+            start: 42,
+            end: 42,
+            payload: Some(PrefetchPayload::Fetch {
+                receiver,
+                handle: producer,
+            }),
+        }]);
+
+        engine.start_one_batch_decrypt_lookahead(&mut queue);
+        let mut task = queue.pop_front().unwrap();
+        SyncEngine::abort_prefetch_task(&mut task);
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while watermarks.queued_bytes() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("lookahead byte reservation should be released");
+    }
+
+    #[tokio::test]
+    async fn prepared_lookahead_still_requires_reorg_boundary_validation() {
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 1);
+        let blocks = linked_compact_blocks(42, 45);
+        let (sender, receiver) = mpsc::channel(1);
+        sender.send(Ok(fetched_test_batch(blocks))).await.unwrap();
+        drop(sender);
+        let mut queue = VecDeque::from([PrefetchTask {
+            start: 42,
+            end: 45,
+            payload: Some(PrefetchPayload::Fetch {
+                receiver,
+                handle: tokio::spawn(async {}),
+            }),
+        }]);
+        engine.start_one_batch_decrypt_lookahead(&mut queue);
+        let mut task = queue.pop_front().unwrap();
+        let received = engine.receive_prefetch_batch(&mut task).await.unwrap();
+
+        received
+            .prepared_commitments
+            .as_ref()
+            .expect("prepared commitments")
+            .validate_source(&received.fetched.blocks)
+            .unwrap();
+        assert!(!engine
+            .validate_batch_boundary(42, &received.fetched.blocks, None, Some(&[0xff; 32]),)
+            .unwrap());
+        SyncEngine::abort_prefetch_task(&mut task);
+    }
+
+    #[test]
+    fn rescanning_a_spent_note_reuses_its_raw_storage_row() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let key = EncryptionKey::from_passphrase("note-upsert-test", &[4u8; 32]).unwrap();
+        let master_key =
+            MasterKey::generate(pirate_storage_sqlite::EncryptionAlgorithm::ChaCha20Poly1305);
+        let db = Database::open(file.path(), &key, master_key.clone()).unwrap();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&pirate_storage_sqlite::Account {
+                id: None,
+                name: "Rescan persistence".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let sink = StorageSink {
+            db_path: file.path().to_path_buf(),
+            key: EncryptionKey::from_bytes(*key.as_bytes()),
+            master_key,
+            account_id,
+            address_network_type: NetworkType::Mainnet,
+        };
+        let nullifier = [0x31; 32];
+        let spending_txid = [0x52; 32];
+        let txid = vec![0x73; 32];
+        let mut note =
+            DecryptedNote::new(500, 0, 2, 100_000_000, [0x24; 32], nullifier, Vec::new());
+        note.set_tx_hash(txid.clone());
+        note.position = Some(10);
+
+        sink.persist_notes_with_db(
+            &db,
+            std::slice::from_ref(&note),
+            &HashMap::new(),
+            &HashMap::new(),
+            &PositionMaps::default(),
+        )
+        .unwrap();
+        assert!(repo
+            .mark_note_spent_by_nullifier_with_txid(account_id, &nullifier, &spending_txid)
+            .unwrap());
+
+        sink.persist_notes_with_db(
+            &db,
+            std::slice::from_ref(&note),
+            &HashMap::new(),
+            &HashMap::new(),
+            &PositionMaps::default(),
+        )
+        .unwrap();
+
+        let raw_rows: i64 = db
+            .conn()
+            .query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))
+            .unwrap();
+        let stored = repo
+            .get_note_by_txid_and_index_with_type(
+                account_id,
+                &txid,
+                2,
+                Some(StorageNoteType::Sapling),
+            )
+            .unwrap()
+            .expect("rescanned note");
+        assert_eq!(raw_rows, 1);
+        assert!(stored.spent);
+        assert_eq!(stored.spent_txid, Some(spending_txid.to_vec()));
+        assert!(repo.get_unspent_notes(account_id).unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn persistence_worker_applies_immutable_jobs_in_submission_order() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let key = EncryptionKey::from_passphrase("writer-test", &[9u8; 32]).unwrap();
+        let master_key =
+            MasterKey::generate(pirate_storage_sqlite::EncryptionAlgorithm::ChaCha20Poly1305);
+        let db = Database::open(file.path(), &key, master_key.clone()).unwrap();
+        drop(db);
+        let sink = StorageSink {
+            db_path: file.path().to_path_buf(),
+            key: EncryptionKey::from_bytes(*key.as_bytes()),
+            master_key,
+            account_id: 1,
+            address_network_type: NetworkType::Mainnet,
+        };
+        let worker =
+            PersistenceWorker::start(sink, DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES).unwrap();
+
+        worker
+            .execute(move |db| {
+                db.conn().execute(
+                    "INSERT INTO migration_state (key, value, updated_at) VALUES ('writer_order', 'first', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                    [],
+                ).map_err(|error| Error::Storage(error.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        worker
+            .execute(|db| {
+                db.conn().execute(
+                    "UPDATE migration_state SET value = 'second', updated_at = '2' WHERE key = 'writer_order'",
+                    [],
+                ).map_err(|error| Error::Storage(error.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let value = worker
+            .execute(|db| {
+                db.conn()
+                    .query_row(
+                        "SELECT value FROM migration_state WHERE key = 'writer_order'",
+                        [],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(|error| Error::Storage(error.to_string()))
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(value, "second");
+    }
+
+    #[tokio::test]
+    async fn verified_roots_bridge_sparse_cache_subtree_boundaries_atomically() {
+        let (_file, db, sink) = shardtree_test_database("verified-root-boundary", 20);
+        let first_root_index = 249u64;
+        let pending_root_index = 253u64;
+        let local_shard_index = 254u64;
+        let existing_sapling = (0..4u32)
+            .map(|offset| {
+                PersistedSubtreeRoot::new(
+                    BlockHeight::from(1_900 + offset),
+                    SaplingNode::empty_root(incrementalmerkletree::Level::new((offset + 1) as u8)),
+                )
+            })
+            .collect::<Vec<_>>();
+        let existing_ironwood = (0..4u32)
+            .map(|offset| {
+                PersistedSubtreeRoot::new(
+                    BlockHeight::from(1_900 + offset),
+                    MerkleHashOrchard::empty_root(incrementalmerkletree::Level::new(
+                        (offset + 1) as u8,
+                    )),
+                )
+            })
+            .collect::<Vec<_>>();
+        let tx = db.unchecked_immediate_transaction().unwrap();
+        put_shard_roots::<SaplingNode, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT>(
+            &tx,
+            SAPLING_TABLE_PREFIX,
+            first_root_index,
+            &existing_sapling,
+        )
+        .unwrap();
+        put_shard_roots::<MerkleHashOrchard, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT>(
+            &tx,
+            ORCHARD_TABLE_PREFIX,
+            first_root_index,
+            &existing_ironwood,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        drop(db);
+
+        let verified_roots = VerifiedSubtreeRoots {
+            sapling: vec![shardtree_support::VerifiedSubtreeRoot {
+                index: pending_root_index,
+                end_height: 1_999,
+                root: SaplingNode::empty_root(incrementalmerkletree::Level::new(5)),
+            }],
+            ironwood: vec![shardtree_support::VerifiedSubtreeRoot {
+                index: pending_root_index,
+                end_height: 1_999,
+                root: MerkleHashOrchard::empty_root(incrementalmerkletree::Level::new(5)),
+            }],
+        };
+        let checkpoint_id = BlockHeight::from(2_000u32);
+        let mut batch = ShardtreeBatch::new(2_000);
+        batch.checkpoint_id = Some(checkpoint_id);
+        shardtree_support::append_sapling_leaf(
+            &mut batch,
+            local_shard_index << SAPLING_SHARD_HEIGHT,
+            SaplingNode::empty_leaf(),
+            Retention::Checkpoint {
+                id: checkpoint_id,
+                marking: Marking::None,
+            },
+        );
+        shardtree_support::append_orchard_leaf(
+            &mut batch,
+            local_shard_index << ORCHARD_SHARD_HEIGHT,
+            MerkleHashOrchard::empty_leaf(),
+            Retention::Checkpoint {
+                id: checkpoint_id,
+                marking: Marking::None,
+            },
+        );
+
+        let worker =
+            PersistenceWorker::start(sink, DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES).unwrap();
+        worker
+            .persist_shardtree_batches_with_roots(vec![batch], Some(2_000), verified_roots)
+            .await
+            .unwrap();
+
+        let ranges = worker
+            .execute(move |db| {
+                let read_range = |table_prefix: &str| {
+                    db.conn().query_row(
+                        &format!(
+                            "SELECT MIN(shard_index), MAX(shard_index), COUNT(*) FROM {}_tree_shards",
+                            table_prefix
+                        ),
+                        [],
+                        |row| {
+                            Ok((
+                                row.get::<_, Option<i64>>(0)?,
+                                row.get::<_, Option<i64>>(1)?,
+                                row.get::<_, i64>(2)?,
+                            ))
+                        },
+                    )
+                };
+                let sapling = read_range(SAPLING_TABLE_PREFIX)
+                    .map_err(|error| Error::Storage(error.to_string()))?;
+                let ironwood = read_range(ORCHARD_TABLE_PREFIX)
+                    .map_err(|error| Error::Storage(error.to_string()))?;
+                let sapling_root_height = db
+                    .conn()
+                    .query_row(
+                        "SELECT subtree_end_height FROM sapling_tree_shards WHERE shard_index = ?1",
+                        [pending_root_index as i64],
+                        |row| row.get::<_, Option<i64>>(0),
+                    )
+                    .map_err(|error| Error::Storage(error.to_string()))?;
+                let ironwood_root_height = db
+                    .conn()
+                    .query_row(
+                        "SELECT subtree_end_height FROM orchard_tree_shards WHERE shard_index = ?1",
+                        [pending_root_index as i64],
+                        |row| row.get::<_, Option<i64>>(0),
+                    )
+                    .map_err(|error| Error::Storage(error.to_string()))?;
+                Ok((sapling, ironwood, sapling_root_height, ironwood_root_height))
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(ranges.0, (Some(249), Some(254), 6));
+        assert_eq!(ranges.1, (Some(249), Some(254), 6));
+        assert_eq!(ranges.2, Some(1_999));
+        assert_eq!(ranges.3, Some(1_999));
+    }
+
+    #[tokio::test]
+    async fn marked_leaf_survives_grafted_roots_and_dense_tip_checkpoints() {
+        let (_file, db, sink) = shardtree_test_database("grafted-root-mark", 21);
+        let pending_root_index = 4u64;
+        let local_shard_index = 5u64;
+        let existing_sapling = (0..4u32)
+            .map(|offset| {
+                PersistedSubtreeRoot::new(
+                    BlockHeight::from(1_900 + offset),
+                    SaplingNode::empty_root(incrementalmerkletree::Level::new((offset + 1) as u8)),
+                )
+            })
+            .collect::<Vec<_>>();
+        let existing_ironwood = (0..4u32)
+            .map(|offset| {
+                PersistedSubtreeRoot::new(
+                    BlockHeight::from(1_900 + offset),
+                    MerkleHashOrchard::empty_root(incrementalmerkletree::Level::new(
+                        (offset + 1) as u8,
+                    )),
+                )
+            })
+            .collect::<Vec<_>>();
+        let tx = db.unchecked_immediate_transaction().unwrap();
+        put_shard_roots::<SaplingNode, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT>(
+            &tx,
+            SAPLING_TABLE_PREFIX,
+            0,
+            &existing_sapling,
+        )
+        .unwrap();
+        put_shard_roots::<MerkleHashOrchard, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT>(
+            &tx,
+            ORCHARD_TABLE_PREFIX,
+            0,
+            &existing_ironwood,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+        drop(db);
+
+        let verified_roots = VerifiedSubtreeRoots {
+            sapling: vec![shardtree_support::VerifiedSubtreeRoot {
+                index: pending_root_index,
+                end_height: 1_999,
+                root: SaplingNode::empty_root(incrementalmerkletree::Level::new(5)),
+            }],
+            ironwood: vec![shardtree_support::VerifiedSubtreeRoot {
+                index: pending_root_index,
+                end_height: 1_999,
+                root: MerkleHashOrchard::empty_root(incrementalmerkletree::Level::new(5)),
+            }],
+        };
+        let checkpoint_id = BlockHeight::from(2_000u32);
+        let mut marked_batch = ShardtreeBatch::new(2_000);
+        marked_batch.checkpoint_id = Some(checkpoint_id);
+        shardtree_support::append_sapling_leaf(
+            &mut marked_batch,
+            local_shard_index << SAPLING_SHARD_HEIGHT,
+            SaplingNode::empty_leaf(),
+            Retention::Checkpoint {
+                id: checkpoint_id,
+                marking: Marking::Marked,
+            },
+        );
+        shardtree_support::append_orchard_leaf(
+            &mut marked_batch,
+            local_shard_index << ORCHARD_SHARD_HEIGHT,
+            MerkleHashOrchard::empty_leaf(),
+            Retention::Checkpoint {
+                id: checkpoint_id,
+                marking: Marking::None,
+            },
+        );
+
+        let worker =
+            PersistenceWorker::start(sink, DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES).unwrap();
+        worker
+            .persist_shardtree_batches_with_roots(vec![marked_batch], Some(2_000), verified_roots)
+            .await
+            .unwrap();
+
+        let dense_tip_batches = (1..=1_005u32)
+            .map(|offset| {
+                let height = 2_000 + offset;
+                let retention = Retention::Checkpoint {
+                    id: BlockHeight::from(height),
+                    marking: Marking::None,
+                };
+                let mut batch = ShardtreeBatch::new(u64::from(height));
+                batch.checkpoint_id = Some(BlockHeight::from(height));
+                shardtree_support::append_sapling_leaf(
+                    &mut batch,
+                    (local_shard_index << SAPLING_SHARD_HEIGHT) + u64::from(offset),
+                    SaplingNode::empty_leaf(),
+                    retention,
+                );
+                shardtree_support::append_orchard_leaf(
+                    &mut batch,
+                    (local_shard_index << ORCHARD_SHARD_HEIGHT) + u64::from(offset),
+                    MerkleHashOrchard::empty_leaf(),
+                    retention,
+                );
+                batch
+            })
+            .collect::<Vec<_>>();
+        for chunk in dense_tip_batches.chunks(200) {
+            worker
+                .persist_shardtree_batches(chunk.to_vec(), chunk.last().map(|batch| batch.height))
+                .await
+                .unwrap();
+        }
+
+        let marked_position = Position::from(local_shard_index << SAPLING_SHARD_HEIGHT);
+        let witness_available = worker
+            .execute(move |db| {
+                let store =
+                    SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                        db.conn(),
+                        SAPLING_TABLE_PREFIX,
+                    )
+                    .map_err(|error| Error::Storage(error.to_string()))?;
+                let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
+                    ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+                tree.witness_at_checkpoint_depth_caching(marked_position, 0)
+                    .map(|witness| witness.is_some())
+                    .map_err(|error| Error::Storage(error.to_string()))
+            })
+            .await
+            .unwrap();
+
+        assert!(
+            witness_available,
+            "a marked leaf after a grafted root must remain witnessable after checkpoint pruning"
+        );
+    }
+
+    #[test]
+    fn worker_sparse_cache_matches_fresh_store_persistence_for_both_pools() {
+        let (_baseline_file, baseline_db, baseline_sink) =
+            shardtree_test_database("baseline-cache-test", 10);
+        let (_candidate_file, candidate_db, _candidate_sink) =
+            shardtree_test_database("candidate-cache-test", 11);
+        let batches = persistence_test_batches();
+
+        SyncEngine::persist_shardtree_batches_for_storage(
+            Some(&baseline_sink),
+            &batches[..2],
+            Some(101),
+            Some(&baseline_db),
+        )
+        .unwrap();
+        SyncEngine::persist_shardtree_batches_for_storage(
+            Some(&baseline_sink),
+            &batches[2..],
+            Some(103),
+            Some(&baseline_db),
+        )
+        .unwrap();
+
+        let mut cached = PersistenceShardTrees::load(
+            candidate_db.conn(),
+            DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES,
+        )
+        .unwrap();
+        let (_, first, evicted) = cached
+            .persist_batches(&candidate_db, &batches[..2], Some(101))
+            .unwrap();
+        assert!(!evicted);
+        assert!(!first.cache_reused);
+        assert!(first.sapling.preload_discovery > Duration::ZERO);
+        assert!(first.ironwood.preload_discovery > Duration::ZERO);
+
+        let (_, second, evicted) = cached
+            .persist_batches(&candidate_db, &batches[2..], Some(103))
+            .unwrap();
+        assert!(!evicted);
+        assert!(second.cache_reused);
+        assert_eq!(second.sapling.preload_discovery, Duration::ZERO);
+        assert_eq!(second.ironwood.preload_discovery, Duration::ZERO);
+        assert_eq!(second.sapling.commitment_count, 2);
+        assert_eq!(second.ironwood.commitment_count, 2);
+        assert!(second.sapling.dirty_shards > 0);
+        assert!(second.ironwood.dirty_shards > 0);
+        assert!(second.sapling.dirty_encoded_bytes > 0);
+        assert!(second.ironwood.dirty_encoded_bytes > 0);
+        assert!(second.sapling.peak_cache_bytes > 0);
+        assert!(second.ironwood.peak_cache_bytes > 0);
+
+        SyncEngine::create_checkpoint_with_db(&baseline_db, 103).unwrap();
+        SyncEngine::retain_checkpoint_with_db(&baseline_db, 103).unwrap();
+        let (checkpoint_telemetry, evicted) = cached
+            .checkpoint_tip(&candidate_db, BlockHeight::from(103u32))
+            .unwrap();
+        assert!(!evicted);
+        assert!(checkpoint_telemetry.cache_reused);
+        let (retain_telemetry, evicted) = cached
+            .retain_checkpoint(&candidate_db, BlockHeight::from(103u32))
+            .unwrap();
+        assert!(!evicted);
+        assert!(retain_telemetry.cache_reused);
+
+        let baseline =
+            pirate_storage_sqlite::SemanticOracleSnapshot::capture(&baseline_db, 1).unwrap();
+        let candidate =
+            pirate_storage_sqlite::SemanticOracleSnapshot::capture(&candidate_db, 1).unwrap();
+        baseline.ensure_equivalent(&candidate).unwrap();
+    }
+
+    #[test]
+    fn sparse_cache_memory_limit_evicts_only_after_a_successful_commit() {
+        let (_file, db, _sink) = shardtree_test_database("cache-memory-limit", 19);
+        let batches = persistence_test_batches();
+        let mut cached = PersistenceShardTrees::load(db.conn(), 1).unwrap();
+
+        let (_, telemetry, evict) = cached
+            .persist_batches(&db, &batches[..2], Some(101))
+            .unwrap();
+
+        assert!(evict);
+        assert!(telemetry.cache_evicted_after_commit);
+        assert!(telemetry.sapling.cache_evictions > 0);
+        assert!(telemetry.ironwood.cache_evictions > 0);
+        let max_checkpoint: Option<u32> = db
+            .conn()
+            .query_row(
+                "SELECT MAX(checkpoint_id) FROM sapling_tree_checkpoints",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(max_checkpoint, Some(101));
+    }
+
+    #[tokio::test]
+    async fn persistence_worker_reloads_cache_after_failed_commit() {
+        let (_file, db, sink) = shardtree_test_database("failed-commit-cache-test", 12);
+        db.conn()
+            .execute_batch(
+                r#"
+                PRAGMA foreign_keys = ON;
+                CREATE TABLE cache_commit_parent (id INTEGER PRIMARY KEY);
+                CREATE TABLE cache_commit_child (
+                    parent_id INTEGER NOT NULL,
+                    FOREIGN KEY(parent_id) REFERENCES cache_commit_parent(id)
+                        DEFERRABLE INITIALLY DEFERRED
+                );
+                CREATE TRIGGER fail_cached_shardtree_commit
+                AFTER INSERT ON sapling_tree_shards
+                BEGIN
+                    INSERT INTO cache_commit_child(parent_id) VALUES (1);
+                END;
+                "#,
+            )
+            .unwrap();
+        drop(db);
+        let worker =
+            PersistenceWorker::start(sink, DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES).unwrap();
+        worker
+            .execute(|db| {
+                db.conn()
+                    .execute_batch("PRAGMA foreign_keys = ON;")
+                    .map_err(|error| Error::Storage(error.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let batches = persistence_test_batches();
+
+        let failed = worker
+            .persist_shardtree_batches(batches[..2].to_vec(), Some(101))
+            .await;
+        assert!(failed.is_err());
+        worker
+            .execute(|db| {
+                db.conn()
+                    .execute_batch(
+                        "DROP TRIGGER fail_cached_shardtree_commit; DELETE FROM cache_commit_child;",
+                    )
+                    .map_err(|error| Error::Storage(error.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        worker
+            .persist_shardtree_batches(batches[..2].to_vec(), Some(101))
+            .await
+            .unwrap();
+        let max_checkpoint = worker
+            .execute(|db| {
+                db.conn()
+                    .query_row(
+                        "SELECT MAX(checkpoint_id) FROM sapling_tree_checkpoints",
+                        [],
+                        |row| row.get::<_, Option<u32>>(0),
+                    )
+                    .map_err(|error| Error::Storage(error.to_string()))
+            })
+            .await
+            .unwrap();
+        assert_eq!(max_checkpoint, Some(101));
+    }
+
+    #[tokio::test]
+    async fn rollback_invalidates_worker_cache_before_replay() {
+        let (_baseline_file, baseline_db, baseline_sink) =
+            shardtree_test_database("rollback-baseline", 13);
+        let (_candidate_file, candidate_db, candidate_sink) =
+            shardtree_test_database("rollback-candidate", 14);
+        let batches = persistence_test_batches();
+        SyncEngine::persist_shardtree_batches_for_storage(
+            Some(&baseline_sink),
+            &batches,
+            Some(103),
+            Some(&baseline_db),
+        )
+        .unwrap();
+        assert_eq!(truncate_above_height(&baseline_db, 102).unwrap(), 102);
+        SyncEngine::persist_shardtree_batches_for_storage(
+            Some(&baseline_sink),
+            &batches[3..],
+            Some(103),
+            Some(&baseline_db),
+        )
+        .unwrap();
+        drop(candidate_db);
+        let worker =
+            PersistenceWorker::start(candidate_sink, DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES)
+                .unwrap();
+        worker
+            .persist_shardtree_batches(batches.clone(), Some(103))
+            .await
+            .unwrap();
+        let replay_height = worker
+            .execute_invalidating_shardtrees(|db| {
+                truncate_above_height(db, 102).map_err(Into::into)
+            })
+            .await
+            .unwrap();
+        assert_eq!(replay_height, 102);
+        worker
+            .persist_shardtree_batches(batches[3..].to_vec(), Some(103))
+            .await
+            .unwrap();
+        let candidate = worker
+            .execute(|db| {
+                pirate_storage_sqlite::SemanticOracleSnapshot::capture(db, 1)
+                    .map_err(|error| Error::Storage(error.to_string()))
+            })
+            .await
+            .unwrap();
+        let baseline =
+            pirate_storage_sqlite::SemanticOracleSnapshot::capture(&baseline_db, 1).unwrap();
+        baseline.ensure_equivalent(&candidate).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancelled_persistence_response_discards_the_committed_cache() {
+        let (_baseline_file, baseline_db, baseline_sink) =
+            shardtree_test_database("cancel-baseline", 15);
+        let (_candidate_file, candidate_db, candidate_sink) =
+            shardtree_test_database("cancel-candidate", 16);
+        let batches = persistence_test_batches();
+        let mut replacement = batches[1].clone();
+        replacement.sapling[0].0 = SaplingNode::empty_root(incrementalmerkletree::Level::new(1));
+        replacement.orchard[0].0 =
+            MerkleHashOrchard::empty_root(incrementalmerkletree::Level::new(1));
+
+        SyncEngine::persist_shardtree_batches_for_storage(
+            Some(&baseline_sink),
+            &batches[..2],
+            Some(101),
+            Some(&baseline_db),
+        )
+        .unwrap();
+        assert_eq!(truncate_above_height(&baseline_db, 100).unwrap(), 100);
+        SyncEngine::persist_shardtree_batches_for_storage(
+            Some(&baseline_sink),
+            std::slice::from_ref(&replacement),
+            Some(101),
+            Some(&baseline_db),
+        )
+        .unwrap();
+
+        drop(candidate_db);
+        let worker = Arc::new(
+            PersistenceWorker::start(candidate_sink, DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES)
+                .unwrap(),
+        );
+        let (entered_sender, entered_receiver) = oneshot::channel();
+        let (release_sender, release_receiver) = std_mpsc::sync_channel(1);
+        let blocking_worker = Arc::clone(&worker);
+        let blocker = tokio::spawn(async move {
+            blocking_worker
+                .execute(move |_| {
+                    let _ = entered_sender.send(());
+                    let _ = release_receiver.recv();
+                    Ok(())
+                })
+                .await
+        });
+        entered_receiver.await.unwrap();
+
+        let cancelled_worker = Arc::clone(&worker);
+        let cancelled_batches = batches[..2].to_vec();
+        let cancelled = tokio::spawn(async move {
+            cancelled_worker
+                .persist_shardtree_batches(cancelled_batches, Some(101))
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        cancelled.abort();
+        let _ = cancelled.await;
+        release_sender.send(()).unwrap();
+        blocker.await.unwrap().unwrap();
+
+        let committed_height = worker
+            .execute(|db| {
+                db.conn()
+                    .query_row(
+                        "SELECT MAX(checkpoint_id) FROM sapling_tree_checkpoints",
+                        [],
+                        |row| row.get::<_, Option<u32>>(0),
+                    )
+                    .map_err(|error| Error::Storage(error.to_string()))
+            })
+            .await
+            .unwrap();
+        assert_eq!(committed_height, Some(101));
+        worker
+            .execute(|db| truncate_above_height(db, 100).map_err(Into::into))
+            .await
+            .unwrap();
+        worker
+            .persist_shardtree_batches(vec![replacement], Some(101))
+            .await
+            .unwrap();
+
+        let candidate = worker
+            .execute(|db| {
+                pirate_storage_sqlite::SemanticOracleSnapshot::capture(db, 1)
+                    .map_err(|error| Error::Storage(error.to_string()))
+            })
+            .await
+            .unwrap();
+        let baseline =
+            pirate_storage_sqlite::SemanticOracleSnapshot::capture(&baseline_db, 1).unwrap();
+        baseline.ensure_equivalent(&candidate).unwrap();
+    }
+
+    #[test]
+    #[ignore = "manual persistence microbenchmark"]
+    fn benchmark_long_lived_sparse_cache_against_per_batch_reload() {
+        let (_baseline_file, baseline_db, baseline_sink) =
+            shardtree_test_database("cache-benchmark-baseline", 17);
+        let (_candidate_file, candidate_db, _candidate_sink) =
+            shardtree_test_database("cache-benchmark-candidate", 18);
+        let batches = persistence_test_batches_with_count(20);
+
+        let baseline_start = Instant::now();
+        for chunk in batches.chunks(2) {
+            SyncEngine::persist_shardtree_batches_for_storage(
+                Some(&baseline_sink),
+                chunk,
+                chunk.last().map(|batch| batch.height),
+                Some(&baseline_db),
+            )
+            .unwrap();
+        }
+        let baseline_elapsed = baseline_start.elapsed();
+
+        let candidate_start = Instant::now();
+        let mut cached = PersistenceShardTrees::load(
+            candidate_db.conn(),
+            DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES,
+        )
+        .unwrap();
+        for chunk in batches.chunks(2) {
+            let (_, _, evicted) = cached
+                .persist_batches(&candidate_db, chunk, chunk.last().map(|batch| batch.height))
+                .unwrap();
+            assert!(!evicted);
+        }
+        let candidate_elapsed = candidate_start.elapsed();
+
+        let baseline =
+            pirate_storage_sqlite::SemanticOracleSnapshot::capture(&baseline_db, 1).unwrap();
+        let candidate =
+            pirate_storage_sqlite::SemanticOracleSnapshot::capture(&candidate_db, 1).unwrap();
+        baseline.ensure_equivalent(&candidate).unwrap();
+        eprintln!(
+            "fresh_per_batch_us={} long_lived_sparse_us={} speedup={:.2}x",
+            baseline_elapsed.as_micros(),
+            candidate_elapsed.as_micros(),
+            baseline_elapsed.as_secs_f64() / candidate_elapsed.as_secs_f64()
+        );
     }
 }
