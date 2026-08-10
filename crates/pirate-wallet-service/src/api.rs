@@ -966,6 +966,10 @@ pub fn set_wallet_birthday_height(wallet_id: WalletId, birthday_height: u32) -> 
 
 /// Delete wallet and its local database
 pub fn delete_wallet(wallet_id: WalletId) -> Result<()> {
+    let wallet_id_for_cancel = wallet_id.clone();
+    run_on_runtime_blocking(move || async move {
+        sync_control::cancel_sync_internal(wallet_id_for_cancel, true).await
+    })?;
     wallet_registry::delete_wallet(wallet_id)
 }
 
@@ -3033,6 +3037,10 @@ pub fn list_notes(wallet_id: WalletId, all_notes: bool) -> Result<Vec<crate::mod
 
 /// Clear wallet chain-derived state.
 pub fn clear_wallet_state(wallet_id: WalletId) -> Result<()> {
+    let wallet_id_for_cancel = wallet_id.clone();
+    run_on_runtime_blocking(move || async move {
+        sync_control::cancel_sync_internal(wallet_id_for_cancel, true).await
+    })?;
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     repo.clear_chain_state()?;
     sync_control::clear_wallet_sync_state(&wallet_id);
