@@ -1,15 +1,15 @@
 use super::*;
 use parking_lot::RwLock;
 use pirate_sync_lightd::{
-    begin_sync_profile_session, record_sync_profile_failure, record_sync_profile_success,
-    CancelToken, PerfCounters, SyncEngine, SyncProgress, SyncWorkload,
+    begin_guarded_sync_profile_session, monitor_sync_profile_initial_tip, CancelToken,
+    PerfCounters, SyncEngine, SyncProfileSession, SyncProgress, SyncWorkload,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
-const CANCEL_SYNC_ENGINE_REQUEST_TIMEOUT: Duration = Duration::from_millis(350);
+const CANCEL_SYNC_TASK_TIMEOUT: Duration = Duration::from_secs(30);
 
 lazy_static::lazy_static! {
     /// Active sync sessions per wallet
@@ -37,6 +37,21 @@ lazy_static::lazy_static! {
     /// Wallets currently running an active rescan task.
     static ref RESCAN_ACTIVE: Arc<RwLock<HashSet<WalletId>>> =
         Arc::new(RwLock::new(HashSet::new()));
+    /// Serializes sync startup, cancellation, and rescan setup for each wallet.
+    static ref SYNC_OPERATION_LOCKS: Arc<RwLock<HashMap<WalletId, Arc<Mutex<()>>>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+}
+
+fn sync_operation_lock(wallet_id: &WalletId) -> Arc<Mutex<()>> {
+    if let Some(lock) = SYNC_OPERATION_LOCKS.read().get(wallet_id).cloned() {
+        return lock;
+    }
+
+    SYNC_OPERATION_LOCKS
+        .write()
+        .entry(wallet_id.clone())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
 }
 
 #[derive(Clone)]
