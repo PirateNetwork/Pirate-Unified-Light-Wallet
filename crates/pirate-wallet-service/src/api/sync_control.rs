@@ -1454,11 +1454,25 @@ pub(super) fn get_last_checkpoint(wallet_id: WalletId) -> Result<Option<Checkpoi
 
 struct RescanGuard {
     wallet_id: WalletId,
+    clear_phase_status_on_drop: bool,
+}
+
+impl RescanGuard {
+    fn mark_phase_published(&mut self) {
+        self.clear_phase_status_on_drop = true;
+    }
+
+    fn transfer_status_to_session(&mut self) {
+        self.clear_phase_status_on_drop = false;
+    }
 }
 
 impl Drop for RescanGuard {
     fn drop(&mut self) {
         RESCAN_IN_FLIGHT.write().remove(&self.wallet_id);
+        if self.clear_phase_status_on_drop {
+            SYNC_STATUS_SNAPSHOT_CACHE.write().remove(&self.wallet_id);
+        }
     }
 }
 
@@ -1482,7 +1496,37 @@ fn acquire_rescan_guard(wallet_id: &WalletId) -> Result<RescanGuard> {
     in_flight.insert(wallet_id.clone());
     Ok(RescanGuard {
         wallet_id: wallet_id.clone(),
+        clear_phase_status_on_drop: false,
     })
+}
+
+fn rescan_phase_status(
+    local_height: u64,
+    prior_target_height: u64,
+    stage: crate::models::SyncStage,
+) -> SyncStatus {
+    let target_height = if prior_target_height > local_height {
+        prior_target_height
+    } else {
+        0
+    };
+    let percent = if target_height > 0 {
+        ((local_height as f64 / target_height as f64) * 100.0).clamp(0.0, 99.9)
+    } else {
+        0.0
+    };
+
+    SyncStatus {
+        local_height,
+        target_height,
+        percent,
+        eta: None,
+        stage,
+        last_checkpoint: None,
+        blocks_per_second: 0.0,
+        notes_decrypted: 0,
+        last_batch_ms: 0,
+    }
 }
 
 fn mark_rescan_active(wallet_id: &WalletId) -> RescanActiveGuard {
@@ -1496,7 +1540,7 @@ fn is_rescan_active(wallet_id: &WalletId) -> bool {
     RESCAN_ACTIVE.read().contains(wallet_id)
 }
 
-async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) -> bool {
+async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: Duration) -> Result<()> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
         let session_arc_opt = {
@@ -1505,23 +1549,23 @@ async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) 
         };
 
         let running = if let Some(session_arc) = session_arc_opt {
-            match session_arc.try_lock() {
-                Ok(session) => {
-                    session.is_running || session.task.is_some() || session.startup_in_progress
-                }
-                Err(_) => true,
-            }
+            let session = session_arc.lock().await;
+            session.has_active_work()
         } else {
             false
         };
 
         if !running {
-            return true;
+            return Ok(());
         }
         if std::time::Instant::now() >= deadline {
-            return false;
+            return Err(anyhow!(
+                "Timed out waiting {:?} for wallet {} sync to stop; rescan was not started",
+                timeout,
+                wallet_id
+            ));
         }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(25)).await;
     }
 }
 
