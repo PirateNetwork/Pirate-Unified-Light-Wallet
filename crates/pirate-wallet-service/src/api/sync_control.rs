@@ -1593,10 +1593,18 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     if from_height == 0 {
         return Err(anyhow!("Invalid rescan height: must be > 0"));
     }
-    let _rescan_guard = acquire_rescan_guard(&wallet_id)?;
+    let prior_target_height = get_cached_sync_status(&wallet_id)
+        .map(|status| status.target_height)
+        .unwrap_or(0);
+    let mut rescan_guard = acquire_rescan_guard(&wallet_id)?;
+    let operation_lock = sync_operation_lock(&wallet_id);
+    let _operation_guard = operation_lock.lock().await;
     mark_spendability_rescan_required(&wallet_id, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED);
     let mut effective_from_height = from_height;
     let truncate_height: u64;
+    let replay_from_height: u64;
+    let mut historical_sapling_mark_positions = Vec::new();
+    let mut historical_ironwood_mark_positions = Vec::new();
 
     {
         pirate_core::debug_log::with_locked_file(|file| {
@@ -1614,11 +1622,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
 
     let was_syncing = is_sync_running(wallet_id.clone()).unwrap_or(false);
     if was_syncing {
-        let cancel_result = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            cancel_sync(wallet_id.clone()),
-        )
-        .await;
+        let cancel_result = cancel_sync_session(wallet_id.clone(), true).await;
         {
             pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
@@ -1626,9 +1630,8 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                     .unwrap_or_default()
                     .as_millis();
                 let step = match &cancel_result {
-                    Ok(Ok(())) => "cancel_sync_done",
-                    Ok(Err(_)) => "cancel_sync_error",
-                    Err(_) => "cancel_sync_timeout",
+                    Ok(()) => "cancel_sync_done",
+                    Err(_) => "cancel_sync_error",
                 };
                 let _ = writeln!(
                     file,
@@ -1637,33 +1640,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 );
             });
         }
-
-        let wait_ok = wait_for_sync_stop(&wallet_id, std::time::Duration::from_millis(500)).await;
-        {
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let step = if wait_ok {
-                    "cancel_sync_wait_done"
-                } else {
-                    "cancel_sync_wait_timeout"
-                };
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"{}","attempt":1}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts, wallet_id, step
-                );
-            });
-        }
-
-        if !wait_ok {
-            tracing::warn!(
-                "Rescan proceeding after timed out sync-stop wait for wallet {}",
-                wallet_id
-            );
-        }
+        cancel_result?;
     } else {
         {
             pirate_core::debug_log::with_locked_file(|file| {
@@ -1699,7 +1676,6 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 notes_decrypted: 0,
                 last_batch_ms: 0,
             };
-            session.last_target_height_update = None;
         }
     }
     let removed_session = {
@@ -1708,16 +1684,20 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     };
     if let Some(session_arc) = removed_session {
         if let Ok(mut session) = session_arc.try_lock() {
-            if let Some(task) = session.task.take() {
-                task.abort();
-            }
-            if let Some(cancelled) = session.cancelled.as_ref() {
-                cancelled.cancel();
-            }
             session.is_running = false;
+            session.startup_in_progress = false;
+            session.profile_session = None;
+            session.task = None;
         }
     }
     clear_sync_runtime_cache(&wallet_id);
+    let preparing_status = rescan_phase_status(
+        u64::from(effective_from_height.saturating_sub(1)),
+        prior_target_height,
+        crate::models::SyncStage::Preparing,
+    );
+    cache_sync_status(&wallet_id, &preparing_status);
+    rescan_guard.mark_phase_published();
     {
         pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
@@ -1789,7 +1769,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 );
             });
         }
-        let (mut db, _key, _master_key) =
+        let (db, _key, _master_key) =
             open_wallet_db_with_passphrase(&wallet_id, &passphrase).map_err(|e| {
                 pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
