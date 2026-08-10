@@ -3659,6 +3659,22 @@ impl SyncEngine {
         mut end: u64,
         follow_tip: bool,
     ) -> Result<()> {
+        if self.client.has_failover_endpoints() {
+            let health = self.client.probe_endpoints().await;
+            for endpoint in health {
+                if endpoint.healthy {
+                    tracing::info!(
+                        "Validated lightwalletd failover endpoint at tip {}",
+                        endpoint.tip_height.unwrap_or(0)
+                    );
+                } else {
+                    tracing::warn!(
+                        "Rejected lightwalletd failover endpoint: {}",
+                        endpoint.reason.as_deref().unwrap_or("health check failed")
+                    );
+                }
+            }
+        }
         let run_db = match self.storage.as_ref() {
             Some(sink) => Some(Database::open_existing(
                 &sink.db_path,
@@ -3670,15 +3686,37 @@ impl SyncEngine {
         let mut warm_trees: Option<SyncWarmTrees<'_>> = None;
         let mut aux_state = Some(SyncAuxState::new(start));
         let mut historical_prefill_state: Option<HistoricalPrefillState> = None;
+        let mut historical_prefill_task: Option<HistoricalPrefillTask> = None;
         let mut current_height = start;
         let mut last_checkpoint_height = start.saturating_sub(1);
         let mut last_major_checkpoint_height = start.saturating_sub(1);
+        let mut tree_replay_target = None;
         let mut batches_since_mini_checkpoint = 0u32;
 
-        // Adaptive batch sizing for spam blocks (byte-based targets)
+        // Local scan batching is independent of the server-facing stream. The
+        // profile supplies safety bounds and an initial hint; sustained work
+        // measurements control the target inside those bounds.
         let mut current_target_bytes = self.config.target_batch_bytes;
-        let mut current_max_batch_blocks =
-            self.config.max_batch_size.max(self.config.min_batch_size);
+        let mut adaptive_scan_batcher = AdaptiveScanBatcher::with_parallelism(
+            self.config.batch_size,
+            self.config.min_batch_size,
+            self.config.max_batch_size,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            prefetched_batch_encoded_byte_cap(&self.config),
+            self.decrypt_pool.current_num_threads(),
+        );
+        let prefetch_flow = Arc::new(PrefetchFlowControl {
+            target_blocks: AtomicU64::new(adaptive_scan_batcher.target_blocks()),
+            target_bytes: AtomicU64::new(
+                current_target_bytes.min(prefetched_batch_encoded_byte_cap(&self.config)),
+            ),
+            durable_segment_blocks: Arc::new(AtomicU64::new(DEFAULT_DURABLE_SEGMENT_BLOCKS)),
+            watermarks: PrefetchWatermarks::new(
+                self.config.prefetch_queue_max_bytes,
+                self.config.prefetch_queue_max_bytes / 2,
+            ),
+        });
+        let mut network_max_batch_blocks = adaptive_scan_batcher.target_blocks();
         let mut consecutive_fetch_failures = 0u32;
         let mut consecutive_heavy_batches = 0u32;
         let initial_block_size_estimate =
@@ -3693,9 +3731,8 @@ impl SyncEngine {
             initial_block_size_estimate
         };
         let mut prefetch_queue: VecDeque<PrefetchTask> = VecDeque::new();
-        let mut queued_prefetch_bytes: u64 = 0;
-        let mut server_group_end_hint: Option<u64> = None;
-        let mut pending_server_group_hint: Option<ServerBatchHintTask> = None;
+        let mut validated_cache_range: Option<ValidatedCacheRange>;
+        let mut previous_processed_hash: Option<Vec<u8>> = None;
         let mut batches_since_sync_state_flush: u32 = 0;
         let mut last_sync_state_flush = Instant::now();
         // Resume deterministic FoundNote repairs queued by previous runs.
@@ -3731,28 +3768,92 @@ impl SyncEngine {
         self.cancel.reset();
 
         if start > 0 {
-            let init_source = self.initialize_shardtrees_for_sync(start).await?;
-            if matches!(init_source, FrontierInitSource::RemoteTreeState) {
-                tracing::info!(
-                    "ShardTrees seeded from remote tree state for sync start {}",
-                    start
-                );
+            self.progress.write().await.set_stage(SyncStage::TreeState);
+            match self.initialize_shardtrees_for_sync(start).await? {
+                FrontierInitSource::RemoteTreeState => {
+                    tracing::info!(
+                        "ShardTrees seeded from remote tree state for sync start {}",
+                        start
+                    );
+                }
+                FrontierInitSource::ReplayFrom(replay_start) => {
+                    current_height = replay_start;
+                    last_checkpoint_height = replay_start.saturating_sub(1);
+                    last_major_checkpoint_height = replay_start.saturating_sub(1);
+                    tree_replay_target = (replay_start < start).then_some(start.saturating_sub(1));
+                    aux_state = Some(SyncAuxState::new(replay_start));
+                    let progress = self.progress.write().await;
+                    progress.set_current(replay_start.saturating_sub(1));
+                    progress.set_stage(SyncStage::Headers);
+                    tracing::info!(
+                        "Rebuilding commitment trees from compact blocks at height {} before wallet scanning begins at {}",
+                        replay_start,
+                        self.birthday_height
+                    );
+                }
+                FrontierInitSource::LocalSnapshot => {}
             }
+            self.progress.write().await.set_stage(SyncStage::Headers);
         }
 
         if let Some(db) = run_db.as_ref() {
             let sapling_position = *self.sapling_tree_position.read().await;
             let orchard_position = *self.orchard_tree_position.read().await;
-            historical_prefill_state = Some(
-                prefill_historical_subtree_roots(
-                    &self.client,
-                    db.conn(),
-                    sapling_position,
-                    orchard_position,
-                    end,
+            let prefill_timeout = match self.client.transport_mode() {
+                TransportMode::Direct => Duration::from_secs(2),
+                TransportMode::Tor | TransportMode::I2p | TransportMode::Socks5 => {
+                    Duration::from_secs(8)
+                }
+            };
+            let network = PirateParamsNetwork::from_type(self.network_type);
+            let fetch_ironwood = network
+                .ironwood_activation_height
+                .is_some_and(|height| end >= u64::from(height));
+            let (local_prefill, remote_request) = prepare_historical_subtree_roots(
+                db.conn(),
+                sapling_position,
+                orchard_position,
+                end,
+                &self.historical_sapling_mark_subtrees,
+                &self.historical_ironwood_mark_subtrees,
+                fetch_ironwood,
+            )?;
+            historical_prefill_state = Some(local_prefill);
+            let remote_request = remote_request.and_then(|mut request| {
+                let (sapling_requested, ironwood_requested) = request.requested_pools();
+                let sapling_allowed = !sapling_requested
+                    || self
+                        .client
+                        .subtree_root_probe_allowed(crate::proto_types::ShieldedProtocol::Sapling);
+                let ironwood_allowed = !ironwood_requested
+                    || self
+                        .client
+                        .subtree_root_probe_allowed(crate::proto_types::ShieldedProtocol::Ironwood);
+                if (!sapling_allowed && sapling_requested)
+                    || (!ironwood_allowed && ironwood_requested)
+                {
+                    append_sync_decision_log(
+                        "sync.rs:sync_range_internal",
+                        "subtree-root probe suppressed by endpoint capability cache",
+                        format!(
+                            "\"sapling_suppressed\":{},\"ironwood_suppressed\":{}",
+                            sapling_requested && !sapling_allowed,
+                            ironwood_requested && !ironwood_allowed,
+                        ),
+                    );
+                }
+                request
+                    .retain_capabilities(sapling_allowed, ironwood_allowed)
+                    .then_some(request)
+            });
+            historical_prefill_task = remote_request.map(|request| {
+                HistoricalPrefillTask::spawn(
+                    self.client.clone(),
+                    request,
+                    prefill_timeout,
+                    self.cancel.clone(),
                 )
-                .await?,
-            );
+            });
 
             let sapling_root_backed_subtrees = historical_prefill_state
                 .as_ref()
@@ -3766,7 +3867,11 @@ impl SyncEngine {
                 .as_ref()
                 .map(HistoricalPrefillState::prefetched_any)
                 .unwrap_or(false);
-            let warm_cache_opt_in = warm_shardtree_cache_with_subtrees_enabled();
+            let warm_cache_requested = warm_shardtree_cache_with_subtrees_enabled();
+            // The ordered persistence worker owns all scan-time ShardTree writes.
+            // The older borrowed-connection cache cannot coexist with that ownership
+            // model without creating a second writer.
+            let warm_cache_opt_in = false;
 
             if subtree_roots_used && warm_cache_opt_in {
                 // The sync DB may have been rewritten from remote tree-state seeding and/or
@@ -3792,7 +3897,9 @@ impl SyncEngine {
                 );
             } else {
                 warm_trees = None;
-                let reason = if subtree_roots_used {
+                let reason = if warm_cache_requested {
+                    "ordered_persistence_worker_owns_shardtree_writes"
+                } else if subtree_roots_used {
                     "subtree_roots_prefetched_but_cache_opt_in_disabled"
                 } else {
                     "subtree_root_prefill_unavailable_or_bypassed"
@@ -3814,13 +3921,44 @@ impl SyncEngine {
                             .as_ref()
                             .map(|state| state.orchard_prefetched)
                             .unwrap_or(0),
-                        warm_cache_opt_in
+                        warm_cache_requested
                     ),
                 );
             }
         }
 
-        self.cleanup_orchard_false_positives().await?;
+        let cache_validation_start = Instant::now();
+        let ((), cache_range) = tokio::try_join!(
+            self.cleanup_orchard_false_positives(),
+            Self::validate_cache_horizon(&self.client, current_height, end),
+        )?;
+        validated_cache_range = cache_range;
+        let cache_validation_ms = cache_validation_start.elapsed().as_millis();
+        let roots_ready_before_scan = merge_ready_historical_prefill(
+            &mut historical_prefill_task,
+            &mut historical_prefill_state,
+        )
+        .await;
+        if !roots_ready_before_scan && historical_prefill_task.is_some() {
+            append_sync_decision_log(
+                "sync.rs:sync_range_internal",
+                "remote subtree roots still loading; scan continuing",
+                format!("\"cache_validation_ms\":{}", cache_validation_ms),
+            );
+        }
+        if verbose_sync_batch_logging_enabled() {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let (validated_start, validated_end) = validated_cache_range
+                .map(|range| (range.start, range.end))
+                .unwrap_or((0, 0));
+            append_debug_log_line(&format!(
+                r#"{{"id":"log_cache_horizon","timestamp":{},"location":"sync.rs:sync_range_internal","message":"block cache horizon validation","data":{{"requested_start":{},"requested_end":{},"validated_start":{},"validated_end":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                ts, current_height, end, validated_start, validated_end, cache_validation_ms
+            ));
+        }
 
         // Bootstrap queue extrema at sync start so anchor/target derivation
         // reflects the current known local range immediately, even before the
@@ -3843,6 +3981,21 @@ impl SyncEngine {
             }
         }
 
+        let shardtree_cache_limit_bytes =
+            persistence_shardtree_cache_limit(self.config.max_batch_memory_bytes);
+        let persistence_worker = self
+            .storage
+            .clone()
+            .map(|sink| {
+                PersistenceWorker::start_with_pool(
+                    sink,
+                    shardtree_cache_limit_bytes,
+                    Arc::clone(&self.decrypt_pool),
+                )
+            })
+            .transpose()?
+            .map(Arc::new);
+
         // #region agent log
         pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
@@ -3857,6 +4010,8 @@ impl SyncEngine {
             );
         });
         // #endregion
+
+        let mut repair_attempts: HashMap<(u64, u64), u8> = HashMap::new();
 
         // Outer loop: Keep syncing until we're fully caught up with no new blocks
         'sync_outer: loop {
