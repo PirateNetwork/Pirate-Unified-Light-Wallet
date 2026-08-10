@@ -5004,16 +5004,18 @@ impl SyncEngine {
                             !follow_tip,
                         )
                     });
-                    let sync_state_start = Instant::now();
-                    self.save_sync_state(
-                        batch_end,
-                        end,
-                        last_checkpoint_height,
-                        include_aux_state_update,
-                        run_db.as_ref(),
-                    )
-                    .await?;
-                    let elapsed_ms = sync_state_start.elapsed().as_millis();
+                    let (chain_elapsed_ms, state_elapsed_ms) = self
+                        .save_sync_state(
+                            batch_end,
+                            end,
+                            last_checkpoint_height,
+                            canonical_block_window(&blocks),
+                            include_aux_state_update,
+                            run_db.as_ref(),
+                            persistence_worker.as_deref(),
+                        )
+                        .await?;
+                    chain_blocks_ms = chain_elapsed_ms;
                     batches_since_sync_state_flush = 0;
                     last_sync_state_flush = Instant::now();
                     if include_aux_state_update {
@@ -5021,15 +5023,56 @@ impl SyncEngine {
                             aux.mark_flushed(batch_end);
                         }
                     }
-                    elapsed_ms
+                    state_elapsed_ms
                 } else {
                     batches_since_sync_state_flush =
                         batches_since_sync_state_flush.saturating_add(1);
                     0
                 };
 
+                let batch_full_elapsed = batch_start_time.elapsed();
+                let previous_scan_target = network_max_batch_blocks;
+                let tree_parallel_wall = shardtree_work
+                    .sapling_work
+                    .parallel_construction
+                    .saturating_add(shardtree_work.ironwood_work.parallel_construction);
+                let tree_parallel_worker_active = shardtree_work
+                    .sapling_work
+                    .parallel_worker_active
+                    .saturating_add(shardtree_work.ironwood_work.parallel_worker_active);
+                network_max_batch_blocks = adaptive_scan_batcher.observe(ScanBatchObservation {
+                    requested_blocks,
+                    requested_bytes,
+                    blocks: blocks.len() as u64,
+                    encoded_bytes: total_block_size,
+                    processing_time: batch_full_elapsed
+                        .saturating_sub(Duration::from_millis(fetch_wait_ms as u64)),
+                    intake_wait: Duration::from_millis(fetch_wait_ms as u64),
+                    queued_bytes: prefetch_flow.watermarks.queued_bytes(),
+                    source: match fetch_source {
+                        BlockFetchSource::Cache => ScanBatchSource::Cache,
+                        BlockFetchSource::Network => ScanBatchSource::Network,
+                    },
+                    tree_parallel_wall,
+                    tree_parallel_worker_active,
+                    stream_tail: batch_end >= end,
+                });
+                prefetch_flow
+                    .target_blocks
+                    .store(network_max_batch_blocks, Ordering::Release);
+                if previous_scan_target != network_max_batch_blocks {
+                    tracing::debug!(
+                        previous = previous_scan_target,
+                        next = network_max_batch_blocks,
+                        source = fetch_source.as_str(),
+                        decision = adaptive_scan_batcher.last_decision().as_str(),
+                        queued_bytes = prefetch_flow.watermarks.queued_bytes(),
+                        "adapted local scan batch target"
+                    );
+                }
+
                 // #region agent log
-                if verbose_sync_batch_logging_enabled() {
+                if sync_performance_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -5037,24 +5080,33 @@ impl SyncEngine {
                     let id = format!("{:08x}", ts);
                     let wallet_id = self.wallet_id.as_deref().unwrap_or("unknown");
                     let avg_block_size = total_block_size / blocks.len().max(1) as u64;
+                    let tree_effective_workers_milli = tree_parallel_worker_active
+                        .as_nanos()
+                        .saturating_mul(1_000)
+                        .checked_div(tree_parallel_wall.as_nanos().max(1))
+                        .unwrap_or(u128::from(u64::MAX))
+                        .min(u128::from(u64::MAX))
+                        as u64;
                     let known_processing_ms = fetch_wait_ms
                         + decrypt_ms
                         + frontier_ms
                         + persist_ms
                         + apply_spends_ms
+                        + chain_blocks_ms
                         + prefetch_plan_ms
                         + batch_sizing_ms
                         + next_prefetch_ms
                         + note_post_ms
                         + tx_meta_prepare_ms;
+                    let known_processing_ms = known_processing_ms + boundary_validation_ms;
                     let residual_processing_other_ms =
                         batch_processing_ms.saturating_sub(known_processing_ms);
-                    let batch_full_ms = batch_start_time.elapsed().as_millis();
+                    let batch_full_ms = batch_full_elapsed.as_millis();
                     let known_full_ms =
                         known_processing_ms + perf_progress_ms + checkpoint_ms + sync_state_ms;
                     let residual_full_other_ms = batch_full_ms.saturating_sub(known_full_ms);
                     append_debug_log_line(&format!(
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"wallet_id":"{}","start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"fetch_wait_ms":{},"decrypt_ms":{},"decrypt_cpu_ms":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"prefetch_plan_ms":{},"batch_sizing_ms":{},"next_prefetch_ms":{},"note_post_ms":{},"tx_meta_prepare_ms":{},"perf_progress_ms":{},"checkpoint_ms":{},"sync_state_ms":{},"residual_processing_other_ms":{},"residual_full_other_ms":{},"batch_total_ms":{},"batch_full_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"wallet_id":"{}","start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"fetch_source":"{}","scan_requested_blocks":{},"scan_requested_bytes":{},"scan_controller_decision":"{}","scan_cached_blocks_per_second":{},"scan_cached_parallel_saturation_ppm":{},"scan_target_blocks":{},"durable_segment_blocks":{},"prefetch_queued_bytes":{},"prefetch_high_bytes":{},"fetch_wait_ms":{},"fetch_total_ms":{},"network_fetch_ms":{},"cache_write_ms":{},"boundary_validation_ms":{},"decrypt_ms":{},"decrypt_pool_wall_ms":{},"decrypt_worker_active_ms":{},"decrypt_worker_tasks":{},"tree_parallel_wall_ms":{},"tree_parallel_worker_active_ms":{},"tree_effective_workers_milli":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"chain_blocks_ms":{},"prefetch_plan_ms":{},"batch_sizing_ms":{},"next_prefetch_ms":{},"note_post_ms":{},"tx_meta_prepare_ms":{},"perf_progress_ms":{},"checkpoint_ms":{},"sync_state_ms":{},"residual_processing_other_ms":{},"residual_full_other_ms":{},"batch_total_ms":{},"batch_full_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                         id,
                         ts,
                         wallet_id,
@@ -5064,12 +5116,32 @@ impl SyncEngine {
                         notes.len(),
                         total_block_size,
                         avg_block_size,
+                        fetch_source.as_str(),
+                        requested_blocks,
+                        requested_bytes,
+                        adaptive_scan_batcher.last_decision().as_str(),
+                        adaptive_scan_batcher.cached_blocks_per_second(),
+                        adaptive_scan_batcher.cached_parallel_saturation_ppm(),
+                        network_max_batch_blocks,
+                        prefetch_flow.durable_segment_blocks.load(Ordering::Acquire),
+                        prefetch_flow.watermarks.queued_bytes(),
+                        prefetch_flow.watermarks.high_bytes(),
                         fetch_wait_ms,
+                        fetch_elapsed.as_millis(),
+                        network_fetch_elapsed.as_millis(),
+                        cache_write_elapsed.as_millis(),
+                        boundary_validation_ms,
                         decrypt_ms,
-                        decrypt_cpu_ms,
+                        decrypt_pool_wall_ms,
+                        decrypt_worker_active_ms,
+                        decrypt_worker_tasks,
+                        tree_parallel_wall.as_millis(),
+                        tree_parallel_worker_active.as_millis(),
+                        tree_effective_workers_milli,
                         frontier_ms,
                         persist_ms,
                         apply_spends_ms,
+                        chain_blocks_ms,
                         prefetch_plan_ms,
                         batch_sizing_ms,
                         next_prefetch_ms,
@@ -5086,6 +5158,7 @@ impl SyncEngine {
                 }
                 // #endregion
 
+                previous_processed_hash = blocks.last().map(|block| block.hash.clone());
                 current_height = batch_end + 1;
                 // #region agent log
                 if verbose_sync_batch_logging_enabled() {
