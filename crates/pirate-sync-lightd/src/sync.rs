@@ -4424,6 +4424,7 @@ impl SyncEngine {
 
                 // Stage 2: Trial decryption (batched with parallelism)
                 self.progress.write().await.set_stage(SyncStage::Notes);
+                let wallet_blocks = wallet_relevant_blocks(&blocks, self.birthday_height);
                 // #region agent log
                 if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
@@ -4437,14 +4438,44 @@ impl SyncEngine {
                         ts,
                         current_height,
                         batch_end,
-                        blocks.len()
+                        wallet_blocks.len()
                     ));
                 }
                 // #endregion
                 let decrypt_start = Instant::now();
-                let (mut notes, decrypt_telemetry) = self.trial_decrypt_batch(&blocks).await?;
-                let decrypt_cpu_ms = decrypt_telemetry.cpu_ms;
-                let decrypt_ms = decrypt_start.elapsed().as_millis();
+                let decrypt_was_prepared = prepared_notes.is_some();
+                let commitment_preparation_was_ahead = prepared_commitments.is_some();
+                let ((mut notes, decrypt_telemetry), prepared_commitments) =
+                    match (prepared_notes, prepared_commitments) {
+                        (Some(decrypted), Some(commitments)) => (decrypted, commitments),
+                        (None, None) => {
+                            let (decrypted, commitments) = self.decrypt_pool.install(|| {
+                                rayon::join(
+                                    || self.trial_decrypt_batch_sync(wallet_blocks),
+                                    || prepare_commitment_batch(&blocks),
+                                )
+                            });
+                            (decrypted?, commitments)
+                        }
+                        _ => {
+                            return Err(Error::Sync(
+                                "One-batch lookahead returned incomplete immutable work"
+                                    .to_string(),
+                            ));
+                        }
+                    };
+                let commitment_prepare_ms = prepared_commitments.elapsed.as_millis();
+                let prepared_sapling_commitments = prepared_commitments.sapling_count;
+                let prepared_ironwood_commitments = prepared_commitments.ironwood_count;
+                let decrypt_pool_wall_ms = decrypt_telemetry.pool_wall.as_millis();
+                let decrypt_worker_active_ms = decrypt_telemetry.worker_active.as_millis();
+                let decrypt_worker_tasks = decrypt_telemetry.task_count;
+                let decrypt_ms = if decrypt_was_prepared {
+                    0
+                } else {
+                    decrypt_start.elapsed().as_millis()
+                };
+                self.start_one_batch_decrypt_lookahead(&mut prefetch_queue);
                 // #region agent log
                 if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
@@ -4453,14 +4484,20 @@ impl SyncEngine {
                         .as_millis();
                     let id = format!("{:08x}", ts);
                     append_debug_log_line(&format!(
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:852","message":"trial_decrypt done","data":{{"start":{},"end":{},"notes":{},"ms":{},"cpu_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:852","message":"trial_decrypt done","data":{{"start":{},"end":{},"notes":{},"sync_wait_ms":{},"pool_wall_ms":{},"worker_active_ms":{},"worker_tasks":{},"commitment_prepare_ahead":{},"commitment_prepare_ms":{},"prepared_sapling_commitments":{},"prepared_ironwood_commitments":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                         id,
                         ts,
                         current_height,
                         batch_end,
                         notes.len(),
                         decrypt_ms,
-                        decrypt_cpu_ms
+                        decrypt_pool_wall_ms,
+                        decrypt_worker_active_ms,
+                        decrypt_worker_tasks,
+                        commitment_preparation_was_ahead,
+                        commitment_prepare_ms,
+                        prepared_sapling_commitments,
+                        prepared_ironwood_commitments,
                     ));
                 }
                 // #endregion
