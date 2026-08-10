@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 DMG_PATH="${1:-}"
 if [[ -z "$DMG_PATH" ]]; then
   echo "Usage: $0 path/to/app.dmg" >&2
@@ -182,6 +184,9 @@ if [[ -d "$FRAMEWORKS_DIR" ]]; then
     require_universal "$bin"
   done
 fi
+
+echo "[verify-macos-dmg] Checking portable library linkage..."
+bash "$SCRIPT_DIR/verify-macos-linkage.sh" "$APP_PATH"
 
 echo "[verify-macos-dmg] Verifying code signature..."
 codesign --verify --deep --strict --verbose=4 "$APP_PATH" >/dev/null
