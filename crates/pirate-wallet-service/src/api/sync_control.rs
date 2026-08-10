@@ -1221,23 +1221,14 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
         }
     };
 
-    let (
-        progress_handle,
-        perf_handle,
-        sync_handle,
-        last_status,
-        last_target_update,
-        is_running,
-        has_task,
-    ) = if let Ok(session) = session_arc.try_lock() {
+    let (progress_handle, perf_handle, sync_handle, last_status) = if let Ok(session) =
+        session_arc.try_lock()
+    {
         (
             session.progress.clone(),
             session.perf.clone(),
             session.sync.clone(),
             session.last_status.clone(),
-            session.last_target_height_update,
-            session.is_running,
-            session.task.is_some() || session.startup_in_progress,
         )
     } else {
         {
@@ -1319,14 +1310,6 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
     if let Some(progress) = progress_handle {
         if let Ok(progress) = progress.try_read() {
             let perf_snapshot = perf_handle.as_ref().map(|perf| perf.snapshot());
-            let should_update = last_target_update
-                .map(|last| last.elapsed().as_secs() >= 10)
-                .unwrap_or(true);
-            if should_update {
-                if let Some(sync) = sync_handle.as_ref() {
-                    schedule_target_height_update(Arc::clone(sync), Arc::clone(&session_arc));
-                }
-            }
             let status = SyncStatus {
                 local_height: progress.current_height(),
                 target_height: progress.target_height(),
@@ -1347,7 +1330,6 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 session.last_status = status.clone();
             }
             cache_sync_status(&wallet_id, &status);
-            maybe_schedule_sync_recovery(&wallet_id, &session_arc, &status, is_running, has_task);
 
             pirate_core::debug_log::with_locked_file(|file| {
                 let _ = writeln!(
@@ -1375,14 +1357,6 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 let perf = engine.perf_counters().snapshot();
                 let target_height = progress.target_height();
 
-                let should_update = last_target_update
-                    .map(|last| last.elapsed().as_secs() >= 10)
-                    .unwrap_or(true);
-
-                if should_update {
-                    schedule_target_height_update(Arc::clone(&sync), Arc::clone(&session_arc));
-                }
-
                 let status = SyncStatus {
                     local_height: progress.current_height(),
                     target_height,
@@ -1399,13 +1373,6 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     session.last_status = status.clone();
                 }
                 cache_sync_status(&wallet_id, &status);
-                maybe_schedule_sync_recovery(
-                    &wallet_id,
-                    &session_arc,
-                    &status,
-                    is_running,
-                    has_task,
-                );
 
                 pirate_core::debug_log::with_locked_file(|file| {
                     let _ = writeln!(
@@ -1444,7 +1411,6 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
         );
     });
     cache_sync_status(&wallet_id, &last_status);
-    maybe_schedule_sync_recovery(&wallet_id, &session_arc, &last_status, is_running, has_task);
     Ok(last_status)
 }
 
