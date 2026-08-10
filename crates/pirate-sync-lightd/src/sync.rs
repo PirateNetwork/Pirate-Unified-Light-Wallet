@@ -5181,9 +5181,25 @@ impl SyncEngine {
                 if follow_tip && current_height > end {
                     let tip_height = current_height.saturating_sub(1);
 
+                    // A sampled subtree can end beyond the historical grafting
+                    // ceiling. Materialize any remaining leaves before creating
+                    // the tip checkpoint or validating owned-note witnesses.
+                    self.flush_historical_prefill_buffers(
+                        &mut historical_prefill_state,
+                        &mut warm_trees,
+                        run_db.as_ref(),
+                        persistence_worker.as_deref(),
+                    )
+                    .await?;
+
                     if tip_height > last_checkpoint_height {
                         match self
-                            .create_checkpoint(tip_height, warm_trees.as_mut())
+                            .create_checkpoint(
+                                tip_height,
+                                warm_trees.as_mut(),
+                                run_db.as_ref(),
+                                persistence_worker.as_deref(),
+                            )
                             .await
                         {
                             Ok(()) => {
@@ -5207,7 +5223,11 @@ impl SyncEngine {
                     }
 
                     match self
-                        .check_witnesses_and_queue_rescans(tip_height, run_db.as_ref())
+                        .check_witnesses_and_queue_rescans(
+                            tip_height,
+                            run_db.as_ref(),
+                            persistence_worker.as_deref(),
+                        )
                         .await
                     {
                         Ok(Some((repair_from_height, repair_end_exclusive))) => {
@@ -5236,24 +5256,13 @@ impl SyncEngine {
                 }
             }
 
-            if let Some(state) = historical_prefill_state.as_mut() {
-                let mut pending_batches = Vec::new();
-                merge_emitted_batches(
-                    &mut pending_batches,
-                    drain_historical_skip_state(&mut state.sapling, append_sapling_leaf),
-                );
-                merge_emitted_batches(
-                    &mut pending_batches,
-                    drain_historical_skip_state(&mut state.orchard, append_orchard_leaf),
-                );
-                if !pending_batches.is_empty() {
-                    if let Some(trees) = warm_trees.as_mut() {
-                        let _ = trees.persist_batches(&pending_batches, None)?;
-                    } else {
-                        let _ = self.persist_shardtree_batches(&pending_batches, None)?;
-                    }
-                }
-            }
+            self.flush_historical_prefill_buffers(
+                &mut historical_prefill_state,
+                &mut warm_trees,
+                run_db.as_ref(),
+                persistence_worker.as_deref(),
+            )
+            .await?;
 
             // For bounded ranges (e.g. witness repair replay), persist a final
             // frontier checkpoint before returning so anchor-hydrated selection
@@ -5263,7 +5272,15 @@ impl SyncEngine {
             // periodic mini/major checkpoint thresholds are met, leaving send
             // selection with stale snapshot coverage.
             if !follow_tip {
-                if let Err(e) = self.create_checkpoint(end, warm_trees.as_mut()).await {
+                if let Err(e) = self
+                    .create_checkpoint(
+                        end,
+                        warm_trees.as_mut(),
+                        run_db.as_ref(),
+                        persistence_worker.as_deref(),
+                    )
+                    .await
+                {
                     tracing::warn!(
                         "Failed to persist bounded-range final checkpoint at {}: {}",
                         end,
@@ -5273,7 +5290,11 @@ impl SyncEngine {
                     warm_trees = Some(trees.flush_and_reload(db.conn())?);
                 }
                 match self
-                    .run_tip_witness_validation(end, "bounded_sync_complete")
+                    .run_tip_witness_validation(
+                        end,
+                        "bounded_sync_complete",
+                        persistence_worker.as_deref(),
+                    )
                     .await
                 {
                     TipWitnessValidationOutcome::RepairQueued {
@@ -5290,8 +5311,7 @@ impl SyncEngine {
                     }
                     TipWitnessValidationOutcome::Clean | TipWitnessValidationOutcome::Error => {}
                 }
-                Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                Self::abort_prefetch_queue(&mut prefetch_queue);
                 return Ok(());
             }
 
