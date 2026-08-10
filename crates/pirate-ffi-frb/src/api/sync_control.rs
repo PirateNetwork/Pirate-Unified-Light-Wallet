@@ -2247,16 +2247,16 @@ pub(super) async fn cancel_sync_internal(
     };
 
     if let Some(session_arc) = session_arc_opt {
-        let (cancel_opt, sync_opt, task_opt, previous_status) = {
+        let (cancel_opt, sync_opt, task_opt, profile_session, previous_status) = {
             let mut session = session_arc.lock().await;
             (
                 session.cancelled.clone(),
                 session.sync.clone(),
                 session.task.take(),
+                session.profile_session.take(),
                 session.last_status.clone(),
             )
         };
-        let had_profile_session = task_opt.is_some() || cancel_opt.is_some() || sync_opt.is_some();
         let sync_for_cancel = sync_opt.clone();
 
         if let Some(task) = task_opt {
@@ -2294,8 +2294,8 @@ pub(super) async fn cancel_sync_internal(
                 });
             }
         }
-        if had_profile_session {
-            record_sync_profile_failure();
+        if let Some(profile_session) = profile_session {
+            profile_session.record_failure();
         }
 
         if let Some(sync) = sync_for_cancel {
@@ -2385,6 +2385,7 @@ pub(super) async fn cancel_sync_internal(
             session.last_status = recovered_status.clone();
             session.last_target_height_update = None;
             session.last_recovery_attempt = None;
+            session.profile_session = None;
             session.task = None;
         }
         cache_sync_status(&wallet_id, &recovered_status);
