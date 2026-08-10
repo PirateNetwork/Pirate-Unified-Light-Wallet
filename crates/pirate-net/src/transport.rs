@@ -519,8 +519,10 @@ impl TransportManager {
     pub async fn fetch_spki_pin(&self, host: &str, port: u16, server_name: &str) -> Result<String> {
         let stream = self.open_stream(host, port).await?;
         let connector = NativeTlsConnector::builder()
-            .danger_accept_invalid_certs(true)
-            .danger_accept_invalid_hostnames(true)
+            // A pin is an additional constraint on a normally valid TLS
+            // identity, not a replacement for certificate and hostname checks.
+            .danger_accept_invalid_certs(false)
+            .danger_accept_invalid_hostnames(false)
             .build()
             .map_err(|e| Error::Tls(format!("TLS connector build failed: {}", e)))?;
         let connector = TlsConnector::from(connector);
