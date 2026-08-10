@@ -1648,7 +1648,10 @@ impl LightClient {
         });
         // #endregion
         if self.config.tls.enabled {
-            let mut tls_config = ClientTlsConfig::new();
+            // `ClientTlsConfig::new()` starts with an empty trust store. Keep
+            // public CA validation enabled when overriding Tonic's automatic
+            // HTTPS configuration to set an explicit server name.
+            let mut tls_config = ClientTlsConfig::new().with_enabled_roots();
 
             // Set server name for SNI (required for TLS)
             if let Some(ref server_name) = self.config.tls.server_name {
