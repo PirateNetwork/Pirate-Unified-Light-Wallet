@@ -265,3 +265,49 @@ pub(super) fn build_light_client_config(
         failover_endpoints: Vec::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tls_endpoint(host: &str) -> LightdEndpoint {
+        LightdEndpoint {
+            host: host.to_string(),
+            port: 443,
+            use_tls: true,
+            tls_pin: None,
+            label: None,
+        }
+    }
+
+    #[test]
+    fn tls_hostname_uses_endpoint_host() {
+        let endpoint = tls_endpoint("pirate.mathnodes.com");
+        assert_eq!(
+            tls_server_name(&endpoint).as_deref(),
+            Some("pirate.mathnodes.com")
+        );
+    }
+
+    #[test]
+    fn custom_tls_ip_does_not_use_official_server_name() {
+        let endpoint = tls_endpoint("192.0.2.10");
+        assert_eq!(tls_server_name(&endpoint).as_deref(), Some("192.0.2.10"));
+    }
+
+    #[test]
+    fn official_tls_ip_keeps_its_certificate_server_name() {
+        let endpoint = tls_endpoint(DEFAULT_LIGHTD_HOST);
+        assert_eq!(
+            tls_server_name(&endpoint).as_deref(),
+            Some(IP_TLS_SERVER_NAME)
+        );
+    }
+
+    #[test]
+    fn plaintext_endpoint_has_no_tls_server_name() {
+        let mut endpoint = tls_endpoint("pirate.mathnodes.com");
+        endpoint.use_tls = false;
+        assert_eq!(tls_server_name(&endpoint), None);
+    }
+}
