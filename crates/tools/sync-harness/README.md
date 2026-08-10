@@ -6,6 +6,7 @@ CLI tool for testing and benchmarking the Pirate Chain sync engine.
 
 - **Full Sync**: Test complete sync from birthday to tip
 - **Benchmark**: Measure sync performance over multiple runs
+- **Transport Benchmark**: Compare one continuous compact-block stream with short same-endpoint streams
 - **Interrupt Test**: Verify interrupt/resume behavior
 - **Rollback Test**: Verify checkpoint creation and rollback
 
@@ -21,6 +22,9 @@ cargo run --bin sync-harness -- full-sync --birthday 3800000 --target 4000000
 # Benchmark sync performance
 cargo run --bin sync-harness -- benchmark --start 4000000 --blocks 10000 --runs 3
 
+# Compare same-endpoint compact-block transport strategies
+cargo run --bin sync-harness --release -- transport-benchmark --start 4000000 --blocks 4000 --chunk-size 1000 --concurrency 2 --runs 3
+
 # Test interrupt and resume
 cargo run --bin sync-harness -- interrupt-test --birthday 4000000 --interrupt-after 5
 
@@ -34,7 +38,7 @@ cargo run --bin sync-harness -- rollback-test --birthday 4000000 --checkpoint-in
 
 ```bash
 cargo run --bin sync-harness -- full-sync \
-  --endpoint https://lightd.piratechain.com:443 \
+  --endpoint http://64.23.167.130:9067 \
   --birthday 3800000
 ```
 
@@ -50,6 +54,23 @@ cargo run --bin sync-harness -- benchmark \
 ```
 
 Output includes per-run timing plus aggregate averages.
+
+### Transport Benchmark
+
+```bash
+cargo run --bin sync-harness --release -- transport-benchmark \
+  --endpoint http://127.0.0.1:9067 \
+  --start 4000000 \
+  --blocks 12000 \
+  --chunk-size 1000 \
+  --concurrency 2 \
+  --runs 3
+```
+
+Fetches the same validated height range using sequential short streams,
+concurrent short streams, and one continuous stream. Run order rotates between
+iterations to reduce server-cache bias. The benchmark does not read or write
+wallet state.
 
 ### Interrupt Test
 
