@@ -310,6 +310,10 @@ pub enum SyncStage {
     Witness,
     /// Verifying chain
     Verify,
+    /// Preparing local state and the server connection
+    Preparing,
+    /// Fetching the birthday commitment-tree state
+    TreeState,
 }
 
 /// Sync status with full performance metrics
@@ -338,12 +342,15 @@ pub struct SyncStatus {
 impl SyncStatus {
     /// Check if sync is actively running
     pub fn is_syncing(&self) -> bool {
-        self.local_height < self.target_height && self.target_height > 0
+        matches!(self.stage, SyncStage::Preparing | SyncStage::TreeState)
+            || (self.local_height < self.target_height && self.target_height > 0)
     }
 
     /// Check if sync is complete
     pub fn is_complete(&self) -> bool {
-        self.local_height >= self.target_height && self.target_height > 0
+        !matches!(self.stage, SyncStage::Preparing | SyncStage::TreeState)
+            && self.local_height >= self.target_height
+            && self.target_height > 0
     }
 
     /// Get formatted ETA string
@@ -363,6 +370,8 @@ impl SyncStatus {
             SyncStage::Notes => "Scanning Notes",
             SyncStage::Witness => "Building Witnesses",
             SyncStage::Verify => "Synching Chain",
+            SyncStage::Preparing => "Preparing Sync",
+            SyncStage::TreeState => "Fetching Commitment Tree State",
         }
     }
 }

@@ -53,6 +53,8 @@ fn map_stage(stage: pirate_sync_lightd::SyncStage) -> crate::models::SyncStage {
         pirate_sync_lightd::SyncStage::Notes => crate::models::SyncStage::Notes,
         pirate_sync_lightd::SyncStage::Witness => crate::models::SyncStage::Witness,
         pirate_sync_lightd::SyncStage::Verify => crate::models::SyncStage::Verify,
+        pirate_sync_lightd::SyncStage::Preparing => crate::models::SyncStage::Preparing,
+        pirate_sync_lightd::SyncStage::TreeState => crate::models::SyncStage::TreeState,
         pirate_sync_lightd::SyncStage::Complete => crate::models::SyncStage::Verify,
     }
 }

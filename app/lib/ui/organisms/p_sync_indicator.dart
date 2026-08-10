@@ -11,6 +11,8 @@ import '../../core/i18n/arb_text_localizer.dart';
 
 /// Sync stages matching Rust SyncStage enum
 enum SyncStage {
+  preparing,
+  treeState,
   headers,
   notes,
   witness,
@@ -18,6 +20,8 @@ enum SyncStage {
   idle;
 
   String get label => switch (this) {
+    SyncStage.preparing => 'Preparing sync'.tr,
+    SyncStage.treeState => 'Fetching commitment tree state'.tr,
     SyncStage.headers => 'Headers'.tr,
     SyncStage.notes => 'Notes'.tr,
     SyncStage.witness => 'Witness'.tr,
@@ -26,6 +30,8 @@ enum SyncStage {
   };
 
   String get description => switch (this) {
+    SyncStage.preparing => 'Preparing sync'.tr,
+    SyncStage.treeState => 'Fetching commitment tree state'.tr,
     SyncStage.headers => 'Fetching block headers'.tr,
     SyncStage.notes => 'Scanning for transactions'.tr,
     SyncStage.witness => 'Building witness tree'.tr,
@@ -36,6 +42,11 @@ enum SyncStage {
   /// Get stage from string (FFI interop)
   static SyncStage fromString(String s) {
     switch (s.toLowerCase()) {
+      case 'preparing':
+        return SyncStage.preparing;
+      case 'treestate':
+      case 'tree_state':
+        return SyncStage.treeState;
       case 'headers':
         return SyncStage.headers;
       case 'notes':
@@ -52,6 +63,10 @@ enum SyncStage {
   /// Icon for stage
   IconData get icon {
     switch (this) {
+      case SyncStage.preparing:
+        return Icons.sync;
+      case SyncStage.treeState:
+        return Icons.account_tree_outlined;
       case SyncStage.headers:
         return Icons.cloud_download_outlined;
       case SyncStage.notes:

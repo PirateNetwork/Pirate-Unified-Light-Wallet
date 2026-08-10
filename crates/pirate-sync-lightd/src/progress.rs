@@ -15,6 +15,10 @@ pub enum SyncStage {
     Witness,
     /// Verifying chain
     Verify,
+    /// Preparing local state and the server connection
+    Preparing,
+    /// Fetching the birthday commitment-tree state
+    TreeState,
     /// Complete
     Complete,
 }
@@ -27,6 +31,8 @@ impl SyncStage {
             Self::Notes => "Scanning Notes",
             Self::Witness => "Building Witnesses",
             Self::Verify => "Synching Chain",
+            Self::Preparing => "Preparing Sync",
+            Self::TreeState => "Fetching Commitment Tree State",
             Self::Complete => "Synced",
         }
     }
@@ -365,6 +371,11 @@ mod tests {
         assert_eq!(SyncStage::Notes.name(), "Scanning Notes");
         assert_eq!(SyncStage::Witness.name(), "Building Witnesses");
         assert_eq!(SyncStage::Verify.name(), "Synching Chain");
+        assert_eq!(SyncStage::Preparing.name(), "Preparing Sync");
+        assert_eq!(
+            SyncStage::TreeState.name(),
+            "Fetching Commitment Tree State"
+        );
         assert_eq!(SyncStage::Complete.name(), "Synced");
     }
 

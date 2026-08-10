@@ -3987,6 +3987,8 @@ impl CstDecode<crate::models::SyncStage> for i32 {
             1 => crate::models::SyncStage::Notes,
             2 => crate::models::SyncStage::Witness,
             3 => crate::models::SyncStage::Verify,
+            4 => crate::models::SyncStage::Preparing,
+            5 => crate::models::SyncStage::TreeState,
             _ => unreachable!("Invalid variant for SyncStage: {}", self),
         }
     }
@@ -4904,6 +4906,8 @@ impl SseDecode for crate::models::SyncStage {
             1 => crate::models::SyncStage::Notes,
             2 => crate::models::SyncStage::Witness,
             3 => crate::models::SyncStage::Verify,
+            4 => crate::models::SyncStage::Preparing,
+            5 => crate::models::SyncStage::TreeState,
             _ => unreachable!("Invalid variant for SyncStage: {}", inner),
         };
     }
@@ -5801,6 +5805,8 @@ impl flutter_rust_bridge::IntoDart for crate::models::SyncStage {
             Self::Notes => 1.into_dart(),
             Self::Witness => 2.into_dart(),
             Self::Verify => 3.into_dart(),
+            Self::Preparing => 4.into_dart(),
+            Self::TreeState => 5.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -6708,6 +6714,8 @@ impl SseEncode for crate::models::SyncStage {
                 crate::models::SyncStage::Notes => 1,
                 crate::models::SyncStage::Witness => 2,
                 crate::models::SyncStage::Verify => 3,
+                crate::models::SyncStage::Preparing => 4,
+                crate::models::SyncStage::TreeState => 5,
                 _ => {
                     unimplemented!("");
                 }

@@ -2419,13 +2419,18 @@ extension SyncStatusExtension on SyncStatus {
   /// Check if sync is currently running
   /// Note: This only checks if behind target. Use isSyncRunning() to check if sync engine is active.
   bool get isSyncing {
-    return localHeight < targetHeight && targetHeight > BigInt.zero;
+    return stage == SyncStage.preparing ||
+        stage == SyncStage.treeState ||
+        (localHeight < targetHeight && targetHeight > BigInt.zero);
   }
 
   /// Check if sync is complete (caught up to target)
   /// Note: Sync may still be monitoring for new blocks even when "complete"
   bool get isComplete {
-    return localHeight >= targetHeight && targetHeight > BigInt.zero;
+    return stage != SyncStage.preparing &&
+        stage != SyncStage.treeState &&
+        localHeight >= targetHeight &&
+        targetHeight > BigInt.zero;
   }
 
   /// Get stage name as string with user-friendly labels
@@ -2444,6 +2449,10 @@ extension SyncStatusExtension on SyncStatus {
         return 'Building witnesses'.tr;
       case SyncStage.verify:
         return 'Syncing chain'.tr;
+      case SyncStage.preparing:
+        return 'Preparing sync'.tr;
+      case SyncStage.treeState:
+        return 'Fetching commitment tree state'.tr;
     }
   }
 

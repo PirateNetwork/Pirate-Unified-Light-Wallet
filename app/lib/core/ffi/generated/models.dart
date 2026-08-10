@@ -1030,6 +1030,12 @@ enum SyncStage {
 
   /// Verifying chain
   verify,
+
+  /// Preparing local state and the server connection
+  preparing,
+
+  /// Fetching the birthday commitment-tree state
+  treeState,
 }
 
 /// Sync status with full performance metrics
