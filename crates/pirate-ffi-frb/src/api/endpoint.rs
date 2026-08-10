@@ -151,6 +151,7 @@ pub(super) fn build_light_client_config(
         connect_timeout,
         request_timeout,
         allow_direct_fallback,
+        failover_endpoints: Vec::new(),
     }
 }
 
