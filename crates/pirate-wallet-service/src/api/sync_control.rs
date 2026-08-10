@@ -418,9 +418,7 @@ fn sync_mutation_snapshot(wallet_id: &WalletId) -> (bool, SyncMutationSnapshot) 
     let try_lock = session_arc.try_lock();
     match try_lock {
         Ok(session) => {
-            let is_running = session.is_running;
-            let has_task = session.task.is_some() || session.startup_in_progress;
-            let mutating = is_running || has_task;
+            let mutating = session.has_active_work();
             (
                 mutating,
                 SyncMutationSnapshot {
@@ -450,9 +448,7 @@ pub(super) fn maybe_trigger_compact_sync(wallet_id: WalletId) {
         let sessions = SYNC_SESSIONS.read();
         if let Some(session_arc) = sessions.get(&wallet_id) {
             match session_arc.try_lock() {
-                Ok(session) => {
-                    session.is_running || session.task.is_some() || session.startup_in_progress
-                }
+                Ok(session) => session.has_active_work(),
                 Err(_) => true,
             }
         } else {
