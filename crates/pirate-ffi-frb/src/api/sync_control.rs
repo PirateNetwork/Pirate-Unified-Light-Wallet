@@ -1,8 +1,8 @@
 use super::*;
 use parking_lot::RwLock;
 use pirate_sync_lightd::{
-    begin_sync_profile_session, record_sync_profile_failure, record_sync_profile_success,
-    CancelToken, PerfCounters, SyncEngine, SyncProgress, SyncWorkload,
+    begin_guarded_sync_profile_session, monitor_sync_profile_initial_tip, CancelToken,
+    PerfCounters, SyncEngine, SyncProfileSession, SyncProgress, SyncWorkload,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -491,6 +491,7 @@ struct SyncSession {
     cancelled: Option<CancelToken>,
     progress: Option<Arc<tokio::sync::RwLock<SyncProgress>>>,
     perf: Option<Arc<PerfCounters>>,
+    profile_session: Option<SyncProfileSession>,
     last_status: SyncStatus,
     is_running: bool,
     startup_in_progress: bool,
@@ -506,6 +507,7 @@ impl Default for SyncSession {
             cancelled: None,
             progress: None,
             perf: None,
+            profile_session: None,
             last_status: SyncStatus {
                 local_height: 0,
                 target_height: 0,
@@ -639,7 +641,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         &endpoint_config,
         RetryConfig::default(),
         std::time::Duration::from_secs(30),
-        std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(180),
     );
     let tls_enabled = endpoint_config.use_tls;
     let host = endpoint_config.host.clone();
@@ -726,6 +728,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         session.cancelled = None;
         session.progress = None;
         session.perf = None;
+        session.profile_session = None;
         session.task = None;
         session.last_status = SyncStatus {
             local_height: start_height as u64,
@@ -743,7 +746,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         cache_sync_status(&wallet_id, &session.last_status);
     }
 
-    let selection = begin_sync_profile_session(workload);
+    let (selection, profile_session) = begin_guarded_sync_profile_session(workload);
     let sync_profile = selection.profile;
     let config = selection.config;
     tracing::info!(
@@ -775,7 +778,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             session.is_running = false;
             session.startup_in_progress = false;
             clear_sync_runtime_cache(&wallet_id);
-            record_sync_profile_failure();
+            profile_session.record_failure();
             return Err(anyhow!("Failed to initialize sync engine: {}", e));
         }
     };
@@ -790,6 +793,10 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
     };
     let progress_handle = Arc::clone(&progress);
     let perf_handle = Arc::clone(&perf);
+    tokio::spawn(monitor_sync_profile_initial_tip(
+        profile_session.clone(),
+        Arc::clone(&progress),
+    ));
 
     {
         let mut session = session_arc.lock().await;
@@ -797,6 +804,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         session.cancelled = Some(cancel_flag);
         session.progress = Some(progress);
         session.perf = Some(perf);
+        session.profile_session = Some(profile_session.clone());
         session.last_status = SyncStatus {
             local_height: start_height as u64,
             target_height: 0,
@@ -823,6 +831,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
     let wallet_id_for_task = wallet_id.clone();
     let session_arc_for_task = Arc::clone(&session_arc);
     let sync_for_task = Arc::clone(&sync);
+    let profile_session_for_task = profile_session.clone();
     let task_handle = tokio::spawn(async move {
         let wallet_id_for_log = wallet_id_for_task.clone();
         let result = run_sync_engine_task(sync_for_task.clone(), move |engine| {
@@ -848,9 +857,9 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             (engine.progress(), engine.perf_counters().snapshot())
         };
         if result.is_ok() {
-            record_sync_profile_success();
+            profile_session_for_task.record_success();
         } else {
-            record_sync_profile_failure();
+            profile_session_for_task.record_failure();
         }
         let status_opt = {
             let progress = progress_arc.read().await;
@@ -905,6 +914,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         session.cancelled = None;
         session.progress = None;
         session.perf = None;
+        session.profile_session = None;
         session.last_target_height_update = None;
         session.task = None;
         clear_sync_runtime_cache(&wallet_id_for_task);
