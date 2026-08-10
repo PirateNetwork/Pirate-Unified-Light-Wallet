@@ -1788,6 +1788,41 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
             })?;
         let repo = Repository::new(&db);
         if let Ok(Some(secret)) = repo.get_wallet_secret(&wallet_id) {
+            match repo.get_historical_note_positions(secret.account_id) {
+                Ok(positions) => {
+                    for (note_type, position) in positions {
+                        match note_type {
+                            StoredNoteType::Sapling => {
+                                historical_sapling_mark_positions.push(position)
+                            }
+                            StoredNoteType::Ironwood => {
+                                historical_ironwood_mark_positions.push(position)
+                            }
+                        }
+                    }
+                    pirate_core::debug_log::with_locked_file(|file| {
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_rescan_mark_hints","timestamp":{},"location":"api.rs:rescan","message":"historical rescan mark hints captured","data":{{"wallet_id":"{}","sapling_count":{},"ironwood_count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"P"}}"#,
+                            ts,
+                            wallet_id,
+                            historical_sapling_mark_positions.len(),
+                            historical_ironwood_mark_positions.len()
+                        );
+                    });
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "Could not load historical note-position hints for wallet {}: {}",
+                        wallet_id,
+                        error
+                    );
+                }
+            }
             if let Ok(unspent_notes) = repo.get_unspent_notes(secret.account_id) {
                 let min_unspent_height = unspent_notes
                     .iter()
@@ -1844,22 +1879,26 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 );
             });
         }
-        pirate_storage_sqlite::truncate_above_height(&mut db, truncate_height).map_err(|e| {
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rescan_truncate_error","timestamp":{},"location":"api.rs:3098","message":"rescan truncate error","data":{{"wallet_id":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id,
+        let tree_replay_height =
+            pirate_storage_sqlite::truncate_above_height(&db, truncate_height).map_err(
+                |e| {
+                    pirate_core::debug_log::with_locked_file(|file| {
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_rescan_truncate_error","timestamp":{},"location":"api.rs:3098","message":"rescan truncate error","data":{{"wallet_id":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                            ts,
+                            wallet_id,
+                            e
+                        );
+                    });
                     e
-                );
-            });
-            e
-        })?;
+                },
+            )?;
+        replay_from_height = tree_replay_height.saturating_add(1).max(1);
         {
             pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
@@ -1882,15 +1921,13 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3234","message":"rescan step","data":{{"wallet_id":"{}","step":"reset_state_start","reset_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id,
-                    effective_from_height.saturating_sub(1)
+                    ts, wallet_id, tree_replay_height
                 );
             });
         }
         let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
         sync_storage
-            .reset_sync_state(effective_from_height.saturating_sub(1) as u64)
+            .reset_sync_state(tree_replay_height)
             .map_err(|e| {
                 pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
@@ -1946,11 +1983,12 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_rescan_reset","timestamp":{},"location":"api.rs:3078","message":"rescan reset ok","data":{{"wallet_id":"{}","truncate_height":{},"reset_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                r#"{{"id":"log_rescan_reset","timestamp":{},"location":"api.rs:3078","message":"rescan reset ok","data":{{"wallet_id":"{}","truncate_height":{},"reset_height":{},"replay_from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                 ts,
                 wallet_id,
                 truncate_height,
-                effective_from_height.saturating_sub(1)
+                replay_from_height.saturating_sub(1),
+                replay_from_height
             );
         });
     }
@@ -1962,7 +2000,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         &endpoint_config,
         RetryConfig::default(),
         std::time::Duration::from_secs(30),
-        std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(180),
     );
 
     tracing::info!(
@@ -1976,7 +2014,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     let address_network_type = address_prefix_network_type(&wallet_id)?;
     let db_path = wallet_db_path_for(&wallet_id)?;
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
-    let selection = begin_sync_profile_session(SyncWorkload::Rescan);
+    let (selection, profile_session) = begin_guarded_sync_profile_session(SyncWorkload::Rescan);
     let sync_profile = selection.profile;
     let config = selection.config;
     tracing::info!(
