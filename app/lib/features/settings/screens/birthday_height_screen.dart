@@ -1,8 +1,6 @@
 /// Birthday height settings screen
 library;
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,6 +52,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
   int? _latestHeight;
   bool _loadingHeight = false;
   bool _isSaving = false;
+  bool _isStartingRescan = false;
   String? _heightError;
   String? _error;
 
@@ -163,23 +162,18 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
       if (!mounted) return;
       final rescan = await _confirmRescan(context);
       if (!mounted) return;
-      setState(() => _isSaving = false);
 
       if (rescan ?? false) {
-        // Kick off rescan without blocking the UI.
-        unawaited(() async {
-          try {
-            await FfiBridge.rescan(walletId, selectedHeight);
-          } catch (e) {
-            if (mounted) {
-              setState(() => _error = 'Rescan failed to start.'.tr);
-            }
+        setState(() => _isStartingRescan = true);
+        // This awaits rescan setup only; block scanning continues in Rust.
+        try {
+          await ref.read(rescanProvider)(selectedHeight);
+        } catch (_) {
+          if (mounted) {
+            setState(() => _error = 'Rescan failed to start.'.tr);
           }
-        }());
-        // Invalidate sync progress so home screen updates immediately.
-        ref
-          ..invalidate(syncProgressStreamProvider)
-          ..invalidate(syncStatusProvider);
+          return;
+        }
       }
 
       if (mounted) {
@@ -202,7 +196,10 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
       setState(() => _error = 'Failed to update birthday height.'.tr);
     } finally {
       if (mounted) {
-        setState(() => _isSaving = false);
+        setState(() {
+          _isSaving = false;
+          _isStartingRescan = false;
+        });
       }
     }
   }
@@ -484,7 +481,11 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
             ],
             const SizedBox(height: AppSpacing.xl),
             PButton(
-              text: _isSaving ? 'Saving...'.tr : 'Save birthday height'.tr,
+              text: _isStartingRescan
+                  ? 'Rescanning...'.tr
+                  : _isSaving
+                  ? 'Saving...'.tr
+                  : 'Save birthday height'.tr,
               onPressed: _isSaving ? null : _saveBirthdayHeight,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,
