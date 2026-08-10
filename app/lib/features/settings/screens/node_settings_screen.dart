@@ -166,7 +166,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     try {
       final result = await ffi.FfiBridge.testNode(url: url, tlsPin: null);
       final actualPin = result.actualPin?.trim();
-      if (actualPin != null && actualPin.isNotEmpty) {
+      if (result.success && actualPin != null && actualPin.isNotEmpty) {
         final normalizedPin = _normalizeSpkiPin(actualPin);
         if (!_isValidSpkiPin(normalizedPin)) {
           setState(() {
