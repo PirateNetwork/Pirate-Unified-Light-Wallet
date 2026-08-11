@@ -892,10 +892,13 @@ fn ensure_primary_account_key(
 ) -> Result<i64> {
     let keys = repo.get_account_keys(secret.account_id)?;
     let meta = get_wallet_meta(wallet_id)?;
-    if let Some(existing) = keys
-        .iter()
-        .find(|k| k.key_type == KeyType::Seed && k.key_scope == KeyScope::Account)
-    {
+    // ImportView keys (created by import_viewing_wallet for watch-only
+    // wallets) are just as valid a "primary" key as a Seed key - they have
+    // no spending key, so the fallback below (which assumes secret.extsk is
+    // a real Sapling spending key) must never run for them.
+    if let Some(existing) = keys.iter().find(|k| {
+        matches!(k.key_type, KeyType::Seed | KeyType::ImportView) && k.key_scope == KeyScope::Account
+    }) {
         if let Some(id) = existing.id {
             if existing.birthday_height != meta.birthday_height as i64 {
                 let mut updated = existing.clone();
@@ -1012,6 +1015,17 @@ fn should_generate_ironwood(wallet_id: &WalletId) -> Result<bool> {
     };
 
     Ok(network.is_ironwood_active(effective_height))
+}
+
+/// Whether new receive addresses for this wallet should be Ironwood
+/// (Orchard) rather than Sapling, based on the wallet's synced height.
+///
+/// Exposed so callers deriving addresses through a spend-key-independent
+/// path (e.g. `generate_address_for_key`, for watch-only wallets) can match
+/// the same Sapling/Ironwood switchover `next_receive_address` applies for
+/// spend-capable wallets.
+pub fn is_ironwood_active_for_wallet(wallet_id: WalletId) -> Result<bool> {
+    should_generate_ironwood(&wallet_id)
 }
 
 /// Get current receive address for wallet
@@ -4094,3 +4108,5 @@ pub async fn qortal_redeem_p2sh(
 }
 #[cfg(test)]
 mod api_regression_tests;
+#[cfg(test)]
+mod watch_only_regression_tests;
