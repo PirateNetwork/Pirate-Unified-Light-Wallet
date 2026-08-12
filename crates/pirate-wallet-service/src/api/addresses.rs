@@ -88,7 +88,6 @@ pub(super) fn next_receive_address(wallet_id: WalletId) -> Result<String> {
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
     let key_id = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
-    let next_index = repo.get_next_diversifier_index(secret.account_id, key_id)?;
     let extsk = if use_orchard {
         None
     } else {
@@ -97,30 +96,44 @@ pub(super) fn next_receive_address(wallet_id: WalletId) -> Result<String> {
                 .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?,
         )
     };
-    let (addr_string, address_type) =
-        derive_receive_address(&wallet_id, &secret, extsk.as_ref(), next_index, use_orchard)?;
+    let account_id = secret.account_id;
+    let wallet_id_for_derivation = wallet_id.clone();
+    let address = repo.allocate_next_diversified_address(
+        account_id,
+        key_id,
+        pirate_storage_sqlite::AddressScope::External,
+        move |next_index| {
+            let (addr_string, address_type) = derive_receive_address(
+                &wallet_id_for_derivation,
+                &secret,
+                extsk.as_ref(),
+                next_index,
+                use_orchard,
+            )
+            .map_err(|e| pirate_storage_sqlite::Error::Storage(e.to_string()))?;
 
-    let address = pirate_storage_sqlite::Address {
-        id: None,
-        key_id: Some(key_id),
-        account_id: secret.account_id,
-        diversifier_index: next_index,
-        address: addr_string.clone(),
-        address_type,
-        label: None,
-        created_at: chrono::Utc::now().timestamp(),
-        color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
-        address_scope: pirate_storage_sqlite::AddressScope::External,
-    };
-    repo.upsert_address(&address)?;
+            Ok(pirate_storage_sqlite::Address {
+                id: None,
+                key_id: Some(key_id),
+                account_id,
+                diversifier_index: next_index,
+                address: addr_string,
+                address_type,
+                label: None,
+                created_at: chrono::Utc::now().timestamp(),
+                color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+                address_scope: pirate_storage_sqlite::AddressScope::External,
+            })
+        },
+    )?;
 
     tracing::info!(
         "Generated and stored next {} address at index {}: {}",
         if use_orchard { "Ironwood" } else { "Sapling" },
-        next_index,
-        addr_string
+        address.diversifier_index,
+        address.address
     );
-    Ok(addr_string)
+    Ok(address.address)
 }
 
 pub(super) fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
