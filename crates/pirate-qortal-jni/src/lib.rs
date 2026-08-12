@@ -5,9 +5,9 @@ use jni::sys::{jboolean, jstring};
 use jni::JNIEnv;
 use pirate_core::mnemonic::{inspect_mnemonic, mnemonic_from_entropy};
 use pirate_wallet_service::{
-    AddressInfo, KeyExportInfo, KeyGroupInfo, MnemonicLanguage, NodeTestResult,
-    QortalP2shRedeemRequest, QortalP2shSendRequest, QortalSendRequest, SyncMode, SyncStatus,
-    TunnelMode, WalletMeta, WalletService, WalletServiceRequest,
+    KeyExportInfo, KeyGroupInfo, MnemonicLanguage, NodeTestResult, QortalP2shRedeemRequest,
+    QortalP2shSendRequest, QortalSendRequest, SyncMode, SyncStatus, TunnelMode, WalletMeta,
+    WalletService, WalletServiceRequest,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -243,40 +243,60 @@ fn send(args: &str, wallet_id: String) -> Result<Value> {
     Ok(json!({ "txid": txid }))
 }
 
+fn receive_key_material(keys: &KeyExportInfo, address: &str) -> Result<(String, String)> {
+    let (private_key, viewing_key) = if address.starts_with("pirate") {
+        (
+            keys.ironwood_spending_key.as_ref(),
+            keys.ironwood_viewing_key.as_ref(),
+        )
+    } else {
+        (
+            keys.sapling_spending_key.as_ref(),
+            keys.sapling_viewing_key.as_ref(),
+        )
+    };
+    let private_key = private_key.ok_or_else(|| {
+        anyhow!("The current receive address has no matching spending key in its key group")
+    })?;
+    let viewing_key = viewing_key.ok_or_else(|| {
+        anyhow!("The current receive address has no matching viewing key in its key group")
+    })?;
+    Ok((private_key.clone(), viewing_key.clone()))
+}
+
 fn export_primary_key(wallet_id: String) -> Result<Value> {
+    let address: String =
+        serde_json::from_value(execute(WalletServiceRequest::CurrentReceiveAddress {
+            wallet_id: wallet_id.clone(),
+        })?)?;
     let groups: Vec<KeyGroupInfo> =
         serde_json::from_value(execute(WalletServiceRequest::ListKeyGroups {
             wallet_id: wallet_id.clone(),
         })?)?;
-    let group = groups
-        .into_iter()
-        .find(|group| group.spendable)
-        .ok_or_else(|| anyhow!("No spendable key group is available"))?;
+    let mut owning_group = None;
+    for group in groups.into_iter().filter(|group| group.spendable) {
+        let addresses = pirate_wallet_service::list_addresses_for_key(wallet_id.clone(), group.id)?;
+        if addresses
+            .iter()
+            .any(|entry| entry.address == address.as_str())
+        {
+            owning_group = Some(group);
+            break;
+        }
+    }
+    let group = owning_group
+        .ok_or_else(|| anyhow!("No spendable key group owns the current receive address"))?;
     let keys: KeyExportInfo =
         serde_json::from_value(execute(WalletServiceRequest::ExportKeyGroupKeys {
-            wallet_id: wallet_id.clone(),
+            wallet_id,
             key_id: group.id,
         })?)?;
-    let addresses: Vec<AddressInfo> =
-        serde_json::from_value(execute(WalletServiceRequest::ListAddresses {
-            wallet_id: wallet_id.clone(),
-        })?)?;
-    let address = if let Some(sapling) = addresses.into_iter().find(|entry| {
-        entry.address.starts_with("zs")
-            || entry.address.starts_with("ztestsapling")
-            || entry.address.starts_with("zregtestsapling")
-    }) {
-        sapling.address
-    } else {
-        serde_json::from_value(execute(WalletServiceRequest::CurrentReceiveAddress {
-            wallet_id,
-        })?)?
-    };
+    let (private_key, viewing_key) = receive_key_material(&keys, &address)?;
 
     Ok(json!([{
         "address": address,
-        "private_key": keys.sapling_spending_key.or(keys.ironwood_spending_key),
-        "viewing_key": keys.sapling_viewing_key.or(keys.ironwood_viewing_key),
+        "private_key": private_key,
+        "viewing_key": viewing_key,
     }]))
 }
 
@@ -548,5 +568,38 @@ mod tests {
             address,
             "zs1ra3g8uphtg8ad7p8ye76pg06nr9rg5y8m5ycq40vpw4nvae6amehenaafv02g3dny9myxz7f60s"
         );
+    }
+
+    #[test]
+    fn exported_keys_follow_the_current_receive_pool() {
+        let keys = KeyExportInfo {
+            key_id: 1,
+            sapling_viewing_key: Some("sapling-view".to_string()),
+            ironwood_viewing_key: Some("ironwood-view".to_string()),
+            sapling_spending_key: Some("sapling-spend".to_string()),
+            ironwood_spending_key: Some("ironwood-spend".to_string()),
+        };
+
+        assert_eq!(
+            receive_key_material(&keys, "zs1receive").unwrap(),
+            ("sapling-spend".to_string(), "sapling-view".to_string())
+        );
+        assert_eq!(
+            receive_key_material(&keys, "pirate1receive").unwrap(),
+            ("ironwood-spend".to_string(), "ironwood-view".to_string())
+        );
+    }
+
+    #[test]
+    fn exported_keys_never_fall_back_across_pools() {
+        let keys = KeyExportInfo {
+            key_id: 1,
+            sapling_viewing_key: Some("sapling-view".to_string()),
+            ironwood_viewing_key: None,
+            sapling_spending_key: Some("sapling-spend".to_string()),
+            ironwood_spending_key: None,
+        };
+
+        assert!(receive_key_material(&keys, "pirate1receive").is_err());
     }
 }
