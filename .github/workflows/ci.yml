@@ -544,7 +544,7 @@ jobs:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh native
+          scripts/prefetch-kdf-artifact.sh linux
 
       - name: Prefetch KDF macOS artifact
         if: matrix.platform == 'macOS'
@@ -552,7 +552,7 @@ jobs:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh native
+          scripts/prefetch-kdf-artifact.sh macos
 
       - name: Prefetch KDF Windows artifact
         if: matrix.platform == 'Windows'
@@ -561,7 +561,7 @@ jobs:
         shell: bash
         run: |
           chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh native
+          scripts/prefetch-kdf-artifact.sh windows
 
       - name: Prefetch KDF Android artifacts
         if: matrix.platform == 'Android'
@@ -569,7 +569,7 @@ jobs:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh native
+          scripts/prefetch-kdf-artifact.sh android
 
       - name: Prime Android Gradle plugin cache
         if: matrix.platform == 'Android'

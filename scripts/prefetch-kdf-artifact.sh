@@ -5,6 +5,7 @@ set -euo pipefail
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <platform>" >&2
     echo "Example: $0 linux" >&2
+    echo "Use '$0 android' to prefetch both Android ABIs." >&2
     echo "Use '$0 native' to prefetch all native KDF artifacts." >&2
     exit 64
 fi
@@ -13,6 +14,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$PROJECT_ROOT/app"
 PLATFORM="$1"
+
+if [ "$PLATFORM" = "android" ]; then
+    for android_platform in android-aarch64 android-armv7; do
+        bash "$0" "$android_platform"
+    done
+    exit 0
+fi
 
 if [ "$PLATFORM" = "native" ] || [ "$PLATFORM" = "all" ]; then
     for native_platform in ios macos windows linux android-aarch64 android-armv7; do
@@ -42,6 +50,7 @@ fi
 "$PYTHON_BIN" - "$PLATFORM" <<'PY'
 import hashlib
 import html.parser
+import http.client
 import json
 import os
 import pathlib
@@ -51,10 +60,13 @@ import sys
 import tempfile
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 import zipfile
 
 platform = sys.argv[1]
+MAX_HTTP_ATTEMPTS = 4
+RETRIABLE_HTTP_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 
 def package_root(package_name):
@@ -156,24 +168,73 @@ class LinkParser(html.parser.HTMLParser):
                 self.links.append(value)
 
 
-def http_get(url):
+def request_headers(url):
     headers = {"User-Agent": "pirate-wallet-ci"}
     token = os.environ.get("GITHUB_API_PUBLIC_READONLY_TOKEN")
     if token and urllib.parse.urlparse(url).netloc == "api.github.com":
         headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read()
+    return headers
+
+
+def retry_http(operation, description):
+    for attempt in range(1, MAX_HTTP_ATTEMPTS + 1):
+        try:
+            return operation()
+        except urllib.error.HTTPError as exc:
+            if exc.code not in RETRIABLE_HTTP_STATUS_CODES or attempt == MAX_HTTP_ATTEMPTS:
+                raise
+            error = exc
+        except (
+            urllib.error.URLError,
+            http.client.RemoteDisconnected,
+            TimeoutError,
+            ConnectionError,
+            OSError,
+        ) as exc:
+            if attempt == MAX_HTTP_ATTEMPTS:
+                raise
+            error = exc
+
+        delay = min(2 ** (attempt - 1), 8)
+        print(
+            f"{description} failed on attempt {attempt}/{MAX_HTTP_ATTEMPTS}: "
+            f"{error}; retrying in {delay}s",
+            file=sys.stderr,
+            flush=True,
+        )
+        time.sleep(delay)
+
+    raise RuntimeError(f"{description} exhausted its retry loop")
+
+
+def http_get(url):
+    def read_response():
+        request = urllib.request.Request(url, headers=request_headers(url))
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.read()
+
+    return retry_http(read_response, f"Request for {url}")
 
 
 def download_file(url, path):
-    headers = {"User-Agent": "pirate-wallet-ci"}
-    token = os.environ.get("GITHUB_API_PUBLIC_READONLY_TOKEN")
-    if token and urllib.parse.urlparse(url).netloc == "api.github.com":
-        headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=60) as response, path.open("wb") as output:
-        shutil.copyfileobj(response, output)
+    partial_path = path.with_suffix(path.suffix + ".part")
+
+    def write_response():
+        request = urllib.request.Request(url, headers=request_headers(url))
+        response = urllib.request.urlopen(request, timeout=120)
+        with response, partial_path.open("wb") as output:
+            expected_size = response.headers.get("Content-Length")
+            written = 0
+            while chunk := response.read(1024 * 1024):
+                output.write(chunk)
+                written += len(chunk)
+            if expected_size is not None and written != int(expected_size):
+                raise OSError(
+                    f"incomplete download: received {written} of {expected_size} bytes",
+                )
+        partial_path.replace(path)
+
+    return retry_http(write_response, f"Download of {url}")
 
 
 def choose_preferred(names, preferences):
