@@ -34,6 +34,51 @@ pub(super) fn backfill_address_key_id(
     Ok(rows)
 }
 
+/// Atomically allocates the next diversifier index for (account_id, key_id,
+/// scope) and persists whatever `build` derives for that index, all in one
+/// write transaction.
+///
+/// `get_next_diversifier_index` + a separate `upsert_address` call is a
+/// read-then-write with no lock held across the two: two threads calling it
+/// concurrently (e.g. two HTTP requests generating an address at the same
+/// moment) can both read the same current max index before either writes,
+/// derive the *same* next address, and hand it out to two different
+/// callers. `BEGIN IMMEDIATE` takes SQLite's write lock before the read, so
+/// a second, concurrent caller - even on its own connection, since
+/// `pirate-wallet-service` caches one connection per thread - blocks until
+/// the first commits and then correctly observes its newly-inserted row.
+///
+/// `build` must be a pure function of the index (it runs with the write
+/// lock held, so it must not perform its own database I/O).
+pub(super) fn allocate_next_diversified_address<F>(
+    repo: &Repository<'_>,
+    account_id: i64,
+    key_id: i64,
+    scope: AddressScope,
+    build: F,
+) -> Result<Address>
+where
+    F: FnOnce(u32) -> Result<Address>,
+{
+    let conn = repo.db.conn();
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+
+    let result = (|| {
+        let current_index = get_current_diversifier_index_for_scope(repo, account_id, key_id, scope)?;
+        let address = build(current_index.saturating_add(1))?;
+        upsert_address(repo, &address)?;
+        Ok(address)
+    })();
+
+    if result.is_err() {
+        let _ = conn.execute_batch("ROLLBACK");
+    } else {
+        conn.execute_batch("COMMIT")?;
+    }
+
+    result
+}
+
 pub(super) fn upsert_address(repo: &Repository<'_>, address: &Address) -> Result<()> {
     repo.db.conn().execute(
         "INSERT INTO addresses (account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope)
