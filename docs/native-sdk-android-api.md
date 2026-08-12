@@ -78,9 +78,9 @@ Address access is split into explicit shielded receive-address APIs.
 returns external receive-address rows only; with a key ID it also includes
 internal change-address rows for that key group. Internal change is always
 included in `getBalance`, which should be used for wallet totals. Newly generated
-addresses use Sapling before Ironwood activation and Ironwood after activation;
-the current address can remain an older Sapling address until the wallet
-rotates.
+addresses use Sapling before Ironwood activation and Ironwood after activation.
+At activation, both current- and next-address calls select Ironwood; existing
+Sapling addresses remain valid and continue to appear in address lists.
 
 Balances and transaction inspection:
 
