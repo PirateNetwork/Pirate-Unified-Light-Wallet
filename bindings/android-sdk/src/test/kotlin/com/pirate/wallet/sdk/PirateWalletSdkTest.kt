@@ -10,6 +10,26 @@ import java.util.ArrayDeque
 
 class PirateWalletSdkTest {
     @Test
+    fun `receive address methods use the activation aware service operations`() {
+        val invoker = ScriptedInvoker(
+            expect("current_receive_address") { request ->
+                assertEquals("wallet-1", request.getString("wallet_id"))
+                ok("pirate1current")
+            },
+            expect("next_receive_address") { request ->
+                assertEquals("wallet-1", request.getString("wallet_id"))
+                ok("pirate1next")
+            },
+        )
+
+        val sdk = PirateWalletSdk(invoker)
+
+        assertEquals("pirate1current", sdk.getCurrentAddress("wallet-1"))
+        assertEquals("pirate1next", sdk.getNextAddress("wallet-1"))
+        invoker.assertFinished()
+    }
+
+    @Test
     fun `buildInfo parses the typed facade response`() {
         val invoker = ScriptedInvoker(
             expect("get_build_info") {
