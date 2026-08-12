@@ -53,9 +53,74 @@ function Ensure-Dir {
 }
 
 function Download-File {
-    param([string]$Url, [string]$Destination)
-    Write-Host "[INFO] Downloading $Url"
-    Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
+    param(
+        [string]$Url,
+        [string]$Destination,
+        [int]$MaxAttempts = 5
+    )
+
+    if ($MaxAttempts -lt 1) {
+        throw "Download attempt count must be positive."
+    }
+
+    $destinationDir = Split-Path -Parent $Destination
+    if ($destinationDir) {
+        Ensure-Dir $destinationDir
+    }
+
+    $partial = "$Destination.$([Guid]::NewGuid().ToString('N')).part"
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+        Write-Host "[INFO] Downloading $Url (attempt $attempt/$MaxAttempts)"
+
+        try {
+            if ($curl) {
+                & $curl.Source `
+                    --fail `
+                    --location `
+                    --silent `
+                    --show-error `
+                    --http1.1 `
+                    --connect-timeout 30 `
+                    --max-time 600 `
+                    --output $partial `
+                    $Url
+                if ($LASTEXITCODE -ne 0) {
+                    throw "curl exited with code $LASTEXITCODE"
+                }
+            } else {
+                [Net.ServicePointManager]::SecurityProtocol =
+                    [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+                Invoke-WebRequest `
+                    -Uri $Url `
+                    -OutFile $partial `
+                    -UseBasicParsing `
+                    -TimeoutSec 600 `
+                    -ErrorAction Stop
+            }
+
+            if (-not (Test-Path -LiteralPath $partial -PathType Leaf)) {
+                throw "download completed without producing a file"
+            }
+            if ((Get-Item -LiteralPath $partial -ErrorAction Stop).Length -le 0) {
+                throw "download produced an empty file"
+            }
+
+            Move-Item -LiteralPath $partial -Destination $Destination -Force
+            return
+        } catch {
+            Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+            if ($attempt -eq $MaxAttempts) {
+                throw "Failed to download $Url after $MaxAttempts attempts: $($_.Exception.Message)"
+            }
+
+            $delay = [Math]::Min([Math]::Pow(2, $attempt), 16)
+            Write-Warning "Download attempt $attempt/$MaxAttempts failed: $($_.Exception.Message). Retrying in $delay seconds."
+            Start-Sleep -Seconds $delay
+        }
+    }
 }
 
 function Check-Hash {
