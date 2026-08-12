@@ -67,7 +67,10 @@ function Check-Hash {
     if (-not $Expected) {
         throw "Missing expected $Algorithm hash for $Path"
     }
-    $hash = (Get-FileHash -Algorithm $Algorithm -Path $Path).Hash.ToLowerInvariant()
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Cannot verify $Algorithm hash because the downloaded file is missing: $Path"
+    }
+    $hash = (Get-FileHash -Algorithm $Algorithm -LiteralPath $Path -ErrorAction Stop).Hash.ToLowerInvariant()
     if ($hash -ne $Expected.ToLowerInvariant()) {
         throw "$Algorithm mismatch for $Path"
     }
