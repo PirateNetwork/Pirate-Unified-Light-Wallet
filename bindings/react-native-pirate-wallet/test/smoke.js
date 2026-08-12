@@ -48,6 +48,12 @@ function createMockNativeModule() {
           ])
         case 'get_active_wallet':
           return ok('wallet-1')
+        case 'current_receive_address':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
+          return ok('pirate1current')
+        case 'next_receive_address':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
+          return ok('pirate1next')
         case 'get_balance':
           return ok({ total: '1000', spendable: '900', pending: '100' })
         case 'format_amount':
@@ -157,6 +163,9 @@ async function main() {
 
   const latestBirthdayHeight = await sdk.getLatestBirthdayHeight('wallet-1')
   assert.strictEqual(latestBirthdayHeight, 345678)
+
+  assert.strictEqual(await sdk.getCurrentAddress('wallet-1'), 'pirate1current')
+  assert.strictEqual(await sdk.getNextAddress('wallet-1'), 'pirate1next')
 
   const groups = await sdk.advancedKeyManagement.listKeyGroups('wallet-1')
   assert.strictEqual(groups.length, 1)
