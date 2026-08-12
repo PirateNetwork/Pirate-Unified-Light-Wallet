@@ -56,6 +56,7 @@ import os
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -65,7 +66,7 @@ import urllib.request
 import zipfile
 
 platform = sys.argv[1]
-MAX_HTTP_ATTEMPTS = 4
+MAX_HTTP_ATTEMPTS = 6
 RETRIABLE_HTTP_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 
@@ -218,6 +219,48 @@ def http_get(url):
 
 def download_file(url, path):
     partial_path = path.with_suffix(path.suffix + ".part")
+
+    curl = shutil.which("curl")
+    if curl:
+        partial_path.unlink(missing_ok=True)
+
+        def write_with_curl():
+            command = [
+                curl,
+                "--fail",
+                "--location",
+                "--silent",
+                "--show-error",
+                "--http1.1",
+                "--connect-timeout",
+                "30",
+                "--speed-limit",
+                "1024",
+                "--speed-time",
+                "90",
+            ]
+            if partial_path.exists() and partial_path.stat().st_size > 0:
+                command.extend(["--continue-at", "-"])
+            for name, value in request_headers(url).items():
+                command.extend(["--header", f"{name}: {value}"])
+            command.extend(["--output", str(partial_path), url])
+
+            result = subprocess.run(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                detail = result.stderr.strip() or "no error details"
+                raise OSError(f"curl exited with code {result.returncode}: {detail}")
+            if not partial_path.exists() or partial_path.stat().st_size == 0:
+                raise OSError("curl completed without producing a non-empty file")
+
+            partial_path.replace(path)
+
+        return retry_http(write_with_curl, f"Download of {url}")
 
     def write_response():
         request = urllib.request.Request(url, headers=request_headers(url))
