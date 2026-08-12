@@ -449,6 +449,62 @@ pub(super) fn invalidate_all_wallet_db_caches() {
     invalidate_wallet_db_cache_epoch();
 }
 
+pub(super) fn remove_wallet_storage_artifacts(wallet_id: &str) {
+    invalidate_wallet_db_cache_for(wallet_id);
+
+    if let Some(keystore) = platform_keystore() {
+        let key_id = format!("pirate_wallet_{}_db", wallet_id);
+        if let Err(error) = keystore.delete_key(&key_id) {
+            tracing::warn!(
+                "Failed to remove platform key for wallet {}: {}",
+                wallet_id,
+                error
+            );
+        }
+    }
+
+    let mut paths = Vec::new();
+    match wallet_db_path_for(wallet_id) {
+        Ok(db_path) => {
+            let mut wal_path = db_path.as_os_str().to_os_string();
+            wal_path.push("-wal");
+            let mut shm_path = db_path.as_os_str().to_os_string();
+            shm_path.push("-shm");
+            paths.extend([db_path, PathBuf::from(wal_path), PathBuf::from(shm_path)]);
+        }
+        Err(error) => tracing::warn!(
+            "Failed to resolve database path while cleaning wallet {}: {}",
+            wallet_id,
+            error
+        ),
+    }
+    for path in [
+        wallet_db_salt_path(wallet_id),
+        wallet_db_key_path(wallet_id),
+    ] {
+        match path {
+            Ok(path) => paths.push(path),
+            Err(error) => tracing::warn!(
+                "Failed to resolve key path while cleaning wallet {}: {}",
+                wallet_id,
+                error
+            ),
+        }
+    }
+
+    for path in paths {
+        if let Err(error) = fs::remove_file(&path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(
+                    "Failed to remove wallet artifact {}: {}",
+                    path.display(),
+                    error
+                );
+            }
+        }
+    }
+}
+
 pub(super) fn open_wallet_db_for(wallet_id: &str) -> Result<(Rc<Database>, Repository<'static>)> {
     let passphrase = app_passphrase()?;
     sync_wallet_db_cache_epoch();

@@ -356,14 +356,8 @@ pub(super) fn delete_wallet(wallet_id: WalletId) -> Result<()> {
     }
 
     sync_control::clear_wallet_sync_state(&wallet_id);
-    encrypted_db::invalidate_wallet_db_cache_for(&wallet_id);
-
     endpoint::remove_cached_lightd_endpoint(&wallet_id);
-
-    let db_path = wallet_db_path_for(&wallet_id)?;
-    let _ = fs::remove_file(db_path);
-    let _ = fs::remove_file(wallet_db_salt_path(&wallet_id)?);
-    let _ = fs::remove_file(wallet_db_key_path(&wallet_id)?);
+    encrypted_db::remove_wallet_storage_artifacts(&wallet_id);
 
     if wallets.is_empty() {
         *ACTIVE_WALLET.write() = None;
