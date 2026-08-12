@@ -1,6 +1,6 @@
 param(
     [string]$TorBrowserVersion = $(if ($env:TOR_BROWSER_VERSION) { $env:TOR_BROWSER_VERSION } else { "15.0.5" }),
-    [string]$TorBrowserBaseUrl = $(if ($env:TOR_BROWSER_BASE_URL) { $env:TOR_BROWSER_BASE_URL } else { "https://dist.torproject.org/torbrowser/$TorBrowserVersion" }),
+    [string]$TorBrowserBaseUrl = $(if ($env:TOR_BROWSER_BASE_URL) { $env:TOR_BROWSER_BASE_URL } else { "https://archive.torproject.org/tor-package-archive/torbrowser/$TorBrowserVersion" }),
     [string]$TorBrowserFile = $(if ($env:TOR_BROWSER_WINDOWS_FILE) { $env:TOR_BROWSER_WINDOWS_FILE } else { "tor-browser-windows-x86_64-portable-$TorBrowserVersion.exe" }),
     [string]$TorBrowserSha256 = $(if ($env:TOR_BROWSER_WINDOWS_SHA256) { $env:TOR_BROWSER_WINDOWS_SHA256 } else { "15448e951583b624c3f8fdfa8bc55fa9b65e1bcafd474f3f2dfd5444e4178846" }),
     [string]$I2pdVersion = $(if ($env:I2PD_VERSION) { $env:I2PD_VERSION } else { "2.59.0" }),
