@@ -2890,6 +2890,23 @@ impl<'a> Repository<'a> {
         address::get_current_diversifier_index_for_scope(self, account_id, key_id, scope)
     }
 
+    /// Get the current diversifier index for one address pool and scope.
+    pub fn get_current_diversifier_index_for_scope_and_type(
+        &self,
+        account_id: i64,
+        key_id: i64,
+        scope: crate::models::AddressScope,
+        address_type: crate::models::AddressType,
+    ) -> Result<u32> {
+        address::get_current_diversifier_index_for_scope_and_type(
+            self,
+            account_id,
+            key_id,
+            scope,
+            address_type,
+        )
+    }
+
     /// Get the current diversifier index for external (receive) addresses.
     pub fn get_current_diversifier_index(&self, account_id: i64, key_id: i64) -> Result<u32> {
         self.get_current_diversifier_index_for_scope(
@@ -2910,6 +2927,23 @@ impl<'a> Repository<'a> {
     ) -> Result<u32> {
         let current = self.get_current_diversifier_index_for_scope(account_id, key_id, scope)?;
         Ok(current.saturating_add(1))
+    }
+
+    /// Get the next diversifier index for one address pool and scope.
+    pub fn get_next_diversifier_index_for_scope_and_type(
+        &self,
+        account_id: i64,
+        key_id: i64,
+        scope: crate::models::AddressScope,
+        address_type: crate::models::AddressType,
+    ) -> Result<u32> {
+        address::get_next_diversifier_index_for_scope_and_type(
+            self,
+            account_id,
+            key_id,
+            scope,
+            address_type,
+        )
     }
 
     /// Get the next diversifier index for external (receive) addresses.
@@ -2972,6 +3006,25 @@ impl<'a> Repository<'a> {
         scope: crate::models::AddressScope,
     ) -> Result<Option<Address>> {
         address::get_address_by_index_for_scope(self, account_id, key_id, diversifier_index, scope)
+    }
+
+    /// Get an address by diversifier index, scope, and shielded pool.
+    pub fn get_address_by_index_for_scope_and_type(
+        &self,
+        account_id: i64,
+        key_id: i64,
+        diversifier_index: u32,
+        scope: crate::models::AddressScope,
+        address_type: crate::models::AddressType,
+    ) -> Result<Option<Address>> {
+        address::get_address_by_index_for_scope_and_type(
+            self,
+            account_id,
+            key_id,
+            diversifier_index,
+            scope,
+            address_type,
+        )
     }
 
     /// Get external address by diversifier index for a key group.
@@ -6050,6 +6103,104 @@ mod tests {
             .unwrap();
         assert_eq!(default_lookup.address, external.address);
         assert_eq!(default_lookup.address_scope, AddressScope::External);
+    }
+
+    #[test]
+    fn address_indices_are_tracked_independently_per_pool() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Pool Index Test".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let key_id = 43_i64;
+
+        assert_eq!(
+            repo.get_next_diversifier_index_for_scope_and_type(
+                account_id,
+                key_id,
+                AddressScope::External,
+                AddressType::Ironwood,
+            )
+            .unwrap(),
+            0
+        );
+
+        for address in [
+            Address {
+                id: None,
+                key_id: Some(key_id),
+                account_id,
+                diversifier_index: 7,
+                address: "zs1poolindex0000000000000000000000000000000000000000000000".to_string(),
+                address_type: AddressType::Sapling,
+                label: None,
+                created_at: 1,
+                color_tag: ColorTag::None,
+                address_scope: AddressScope::External,
+            },
+            Address {
+                id: None,
+                key_id: Some(key_id),
+                account_id,
+                diversifier_index: 2,
+                address: "pirate1poolindex00000000000000000000000000000000000000000000".to_string(),
+                address_type: AddressType::Ironwood,
+                label: None,
+                created_at: 1,
+                color_tag: ColorTag::None,
+                address_scope: AddressScope::External,
+            },
+        ] {
+            repo.upsert_address(&address).unwrap();
+        }
+
+        assert_eq!(
+            repo.get_current_diversifier_index_for_scope_and_type(
+                account_id,
+                key_id,
+                AddressScope::External,
+                AddressType::Sapling,
+            )
+            .unwrap(),
+            7
+        );
+        assert_eq!(
+            repo.get_next_diversifier_index_for_scope_and_type(
+                account_id,
+                key_id,
+                AddressScope::External,
+                AddressType::Ironwood,
+            )
+            .unwrap(),
+            3
+        );
+        assert!(repo
+            .get_address_by_index_for_scope_and_type(
+                account_id,
+                key_id,
+                2,
+                AddressScope::External,
+                AddressType::Sapling,
+            )
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            repo.get_address_by_index_for_scope_and_type(
+                account_id,
+                key_id,
+                2,
+                AddressScope::External,
+                AddressType::Ironwood,
+            )
+            .unwrap()
+            .unwrap()
+            .address_type,
+            AddressType::Ironwood
+        );
     }
 
     #[test]

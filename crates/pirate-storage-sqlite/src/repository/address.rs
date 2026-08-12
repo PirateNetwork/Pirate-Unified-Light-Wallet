@@ -22,6 +22,50 @@ pub(super) fn get_current_diversifier_index_for_scope(
     Ok(max_index.map_or(0, |value| value as u32))
 }
 
+pub(super) fn get_current_diversifier_index_for_scope_and_type(
+    repo: &Repository<'_>,
+    account_id: i64,
+    key_id: i64,
+    scope: AddressScope,
+    address_type: AddressType,
+) -> Result<u32> {
+    let max_index: Option<i64> = repo.db.conn().query_row(
+        "SELECT MAX(diversifier_index) FROM addresses
+         WHERE account_id = ?1 AND key_id = ?2 AND address_scope = ?3 AND address_type = ?4",
+        params![
+            account_id,
+            key_id,
+            address_scope_str(scope),
+            address_type_str(address_type)
+        ],
+        |row| row.get(0),
+    )?;
+
+    Ok(max_index.map_or(0, |value| value as u32))
+}
+
+pub(super) fn get_next_diversifier_index_for_scope_and_type(
+    repo: &Repository<'_>,
+    account_id: i64,
+    key_id: i64,
+    scope: AddressScope,
+    address_type: AddressType,
+) -> Result<u32> {
+    let max_index: Option<i64> = repo.db.conn().query_row(
+        "SELECT MAX(diversifier_index) FROM addresses
+         WHERE account_id = ?1 AND key_id = ?2 AND address_scope = ?3 AND address_type = ?4",
+        params![
+            account_id,
+            key_id,
+            address_scope_str(scope),
+            address_type_str(address_type)
+        ],
+        |row| row.get(0),
+    )?;
+
+    Ok(max_index.map_or(0, |value| (value as u32).saturating_add(1)))
+}
+
 pub(super) fn backfill_address_key_id(
     repo: &Repository<'_>,
     account_id: i64,
@@ -148,6 +192,35 @@ pub(super) fn get_address_by_index_for_scope(
                 key_id,
                 diversifier_index as i64,
                 address_scope_str(scope)
+            ],
+            decode_address_row,
+        )
+        .optional()?;
+    Ok(result)
+}
+
+pub(super) fn get_address_by_index_for_scope_and_type(
+    repo: &Repository<'_>,
+    account_id: i64,
+    key_id: i64,
+    diversifier_index: u32,
+    scope: AddressScope,
+    address_type: AddressType,
+) -> Result<Option<Address>> {
+    let sql = format!(
+        "SELECT {ADDRESS_SELECT_COLUMNS} FROM addresses
+         WHERE account_id = ?1 AND key_id = ?2 AND diversifier_index = ?3
+           AND address_scope = ?4 AND address_type = ?5"
+    );
+    let mut stmt = repo.db.conn().prepare(&sql)?;
+    let result = stmt
+        .query_row(
+            params![
+                account_id,
+                key_id,
+                diversifier_index as i64,
+                address_scope_str(scope),
+                address_type_str(address_type)
             ],
             decode_address_row,
         )
