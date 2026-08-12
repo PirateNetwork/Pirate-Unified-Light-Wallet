@@ -1,0 +1,11 @@
+{
+  "name": "image-size",
+  "version": "2.0.3-pirate.0",
+  "private": true,
+  "description": "Metro compatibility adapter for the maintained image-size-next parser",
+  "main": "index.cjs",
+  "license": "MIT",
+  "dependencies": {
+    "image-size-next": "2.1.0"
+  }
+}

@@ -32,6 +32,7 @@
     "@types/react-test-renderer": "^18.0.0",
     "babel-jest": "^29.6.3",
     "eslint": "^8.19.0",
+    "image-size": "file:packages/metro-image-size-compat",
     "jest": "^29.6.3",
     "prettier": "2.8.8",
     "react-test-renderer": "18.2.0",
@@ -39,6 +40,7 @@
   },
   "overrides": {
     "fast-xml-parser": "^5.7.0",
+    "image-size": "$image-size",
     "joi": "^18.2.1",
     "js-yaml": "4.3.1",
     "lodash": "^4.18.1",
