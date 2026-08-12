@@ -2419,6 +2419,43 @@ mod lifecycle_tests {
     use super::*;
 
     #[tokio::test]
+    async fn status_polling_does_not_restart_an_idle_session() {
+        let wallet_id = format!("test-sync-status-{}", uuid::Uuid::new_v4());
+        let session = Arc::new(Mutex::new(SyncSession {
+            last_status: SyncStatus {
+                local_height: 4_077_400,
+                target_height: 4_077_500,
+                percent: 99.99,
+                eta: None,
+                stage: SyncStage::Headers,
+                last_checkpoint: Some(4_077_400),
+                blocks_per_second: 0.0,
+                notes_decrypted: 0,
+                last_batch_ms: 0,
+            },
+            ..SyncSession::default()
+        }));
+        SYNC_SESSIONS
+            .write()
+            .insert(wallet_id.clone(), Arc::clone(&session));
+
+        for _ in 0..3 {
+            let status = sync_status(wallet_id.clone()).unwrap();
+            assert_eq!(status.local_height, 4_077_400);
+            assert_eq!(status.target_height, 4_077_500);
+            assert!(matches!(status.stage, SyncStage::Headers));
+        }
+
+        let state = session.lock().await;
+        assert!(!state.is_running);
+        assert!(!state.startup_in_progress);
+        assert!(state.task.is_none());
+        drop(state);
+        SYNC_SESSIONS.write().remove(&wallet_id);
+        clear_sync_runtime_cache(&wallet_id);
+    }
+
+    #[tokio::test]
     async fn sync_stop_waits_for_cooperative_task_completion() {
         let wallet_id = format!("test-sync-stop-{}", uuid::Uuid::new_v4());
         let session = Arc::new(Mutex::new(SyncSession::default()));
