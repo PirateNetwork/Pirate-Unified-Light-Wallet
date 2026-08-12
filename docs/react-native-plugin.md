@@ -79,8 +79,8 @@ Receive-address access is split into `getCurrentAddress(walletId)`,
 `getNextAddress(walletId)`, `listAddresses(walletId)`, and
 `listAddressBalances(walletId, keyId?)`. These APIs return shielded receive
 addresses. Newly generated addresses use Sapling before Ironwood activation and
-Ironwood after activation; the current address can remain an older Sapling
-address until the wallet rotates.
+Ironwood after activation. At activation, current- and next-address calls both
+select Ironwood while existing Sapling addresses remain valid.
 
 Without `keyId`, `listAddressBalances` lists external receive-address rows and
 omits internal change-address rows. Supplying a key ID includes both scopes for

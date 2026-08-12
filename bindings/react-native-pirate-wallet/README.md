@@ -293,10 +293,9 @@ Receive-address APIs are shielded and wallet-scoped:
   - with `keyId`, also returns internal change-address entries for that key group
 
 These APIs return shielded receive addresses. Newly generated addresses use
-Sapling before Ironwood activation and Ironwood after activation. The current
-address can still be an older Sapling address until the wallet rotates, and
-`listAddresses(walletId)` can contain both Sapling and Ironwood receive
-addresses over time.
+Sapling before Ironwood activation and Ironwood after activation. At activation,
+both current- and next-address calls select Ironwood; existing Sapling addresses
+remain valid, so `listAddresses(walletId)` can contain both pools over time.
 
 Internal change is always included in `getBalance(walletId)`. Do not sum an
 unfiltered `listAddressBalances(walletId)` response to calculate the wallet
