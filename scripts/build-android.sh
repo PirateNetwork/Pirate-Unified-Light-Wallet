@@ -120,7 +120,7 @@ bash "$SCRIPT_DIR/build-rust-android.sh"
 # network fetch from the Flutter build step.
 log "Fetching KDF Android artifacts..."
 chmod +x "$SCRIPT_DIR/prefetch-kdf-artifact.sh"
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" android
 export OVERRIDE_DEFI_API_DOWNLOAD=false
 
 log "Preparing Komodo coin assets..."

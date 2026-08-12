@@ -539,7 +539,7 @@ log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
 log "Fetching KDF macOS artifact..."
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" macos
 
 log "Preparing Komodo coin assets..."
 bash "$SCRIPT_DIR/prepare-komodo-assets.sh"

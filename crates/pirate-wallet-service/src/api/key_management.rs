@@ -181,48 +181,65 @@ pub(super) fn generate_address_for_key(
         .ok_or_else(|| anyhow!("Key group not found"))?;
 
     let account_id = key.account_id;
-    let next_index = repo.get_next_diversifier_index(account_id, key_id)?;
     let network_type = address_prefix_network_type(&wallet_id)?;
 
-    let (addr_string, address_type) = if use_ironwood {
-        let fvk_bytes = key
-            .orchard_fvk
-            .as_ref()
-            .ok_or_else(|| anyhow!("Ironwood viewing key not available"))?;
-        let fvk = IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes)
-            .map_err(|e| anyhow!("Invalid Ironwood viewing key bytes: {}", e))?;
-        let addr = fvk
-            .address_at(next_index)
-            .encode_for_network(network_type)?;
-        (addr, AddressType::Ironwood)
-    } else {
-        let dfvk_bytes = key
-            .sapling_dfvk
-            .as_ref()
-            .ok_or_else(|| anyhow!("Sapling viewing key not available"))?;
-        let dfvk = ExtendedFullViewingKey::from_bytes(dfvk_bytes)
-            .ok_or_else(|| anyhow!("Invalid Sapling viewing key bytes"))?;
-        let addr = dfvk
-            .derive_address(next_index)
-            .encode_for_network(network_type);
-        (addr, AddressType::Sapling)
-    };
-
-    let address = pirate_storage_sqlite::Address {
-        id: None,
-        key_id: Some(key_id),
+    // Allocating the index and deriving+storing the address for it must be
+    // one atomic operation - see allocate_next_diversified_address's doc
+    // comment for the concurrent-caller collision this closes.
+    let address = repo.allocate_next_diversified_address(
         account_id,
-        diversifier_index: next_index,
-        address: addr_string.clone(),
-        address_type,
-        label: None,
-        created_at: chrono::Utc::now().timestamp(),
-        color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
-        address_scope: pirate_storage_sqlite::AddressScope::External,
-    };
+        key_id,
+        pirate_storage_sqlite::AddressScope::External,
+        move |next_index| {
+            // The closure runs inside allocate_next_diversified_address's
+            // transaction and is bounded by pirate-storage-sqlite's own
+            // Result/Error type, not anyhow - map failures into its generic
+            // `Storage` variant; the `?` on the outer call converts back to
+            // anyhow::Error for this function's own Result.
+            use pirate_storage_sqlite::Error as StorageError;
+            let (addr_string, address_type) = if use_ironwood {
+                let fvk_bytes = key.orchard_fvk.as_ref().ok_or_else(|| {
+                    StorageError::Storage("Ironwood viewing key not available".to_string())
+                })?;
+                let fvk = IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes).map_err(|e| {
+                    StorageError::Storage(format!("Invalid Ironwood viewing key bytes: {e}"))
+                })?;
+                let addr = fvk
+                    .address_at(next_index)
+                    .encode_for_network(network_type)
+                    .map_err(|e| {
+                        StorageError::Storage(format!("Ironwood address encoding failed: {e}"))
+                    })?;
+                (addr, AddressType::Ironwood)
+            } else {
+                let dfvk_bytes = key.sapling_dfvk.as_ref().ok_or_else(|| {
+                    StorageError::Storage("Sapling viewing key not available".to_string())
+                })?;
+                let dfvk = ExtendedFullViewingKey::from_bytes(dfvk_bytes).ok_or_else(|| {
+                    StorageError::Storage("Invalid Sapling viewing key bytes".to_string())
+                })?;
+                let addr = dfvk
+                    .derive_address(next_index)
+                    .encode_for_network(network_type);
+                (addr, AddressType::Sapling)
+            };
 
-    repo.upsert_address(&address)?;
-    Ok(addr_string)
+            Ok(pirate_storage_sqlite::Address {
+                id: None,
+                key_id: Some(key_id),
+                account_id,
+                diversifier_index: next_index,
+                address: addr_string,
+                address_type,
+                label: None,
+                created_at: chrono::Utc::now().timestamp(),
+                color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+                address_scope: pirate_storage_sqlite::AddressScope::External,
+            })
+        },
+    )?;
+
+    Ok(address.address)
 }
 
 pub(super) fn import_spending_key(

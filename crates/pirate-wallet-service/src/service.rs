@@ -431,6 +431,9 @@ pub enum WalletServiceRequest {
         mnemonic: String,
     },
     GetNetworkInfo,
+    IsIronwoodActiveForWallet {
+        wallet_id: WalletId,
+    },
     FormatAmount {
         #[serde(with = "crate::models::amount_json::u64")]
         arrrtoshis: u64,
@@ -975,6 +978,9 @@ impl WalletService {
                 serialize(ffi::inspect_mnemonic(mnemonic)?)
             }
             WalletServiceRequest::GetNetworkInfo => serialize(ffi::get_network_info()?),
+            WalletServiceRequest::IsIronwoodActiveForWallet { wallet_id } => {
+                serialize(ffi::is_ironwood_active_for_wallet(wallet_id)?)
+            }
             WalletServiceRequest::FormatAmount { arrrtoshis } => {
                 serialize(ffi::format_amount(arrrtoshis)?)
             }
