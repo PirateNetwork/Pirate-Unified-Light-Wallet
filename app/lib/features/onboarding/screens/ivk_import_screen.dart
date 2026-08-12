@@ -119,34 +119,14 @@ class _ViewingKeysImportScreenState
         throw ArgumentError('Enter a Sapling or Ironwood viewing key'.tr);
       }
 
-      // Import viewing key via FFI
-      final walletId = await FfiBridge.importViewingWallet(
+      await ref.read(importViewingWalletProvider)(
         name: _nameController.text.trim(),
         saplingViewingKey: saplingKey.isEmpty ? null : saplingKey,
         ironwoodViewingKey: ironwoodKey.isEmpty ? null : ironwoodKey,
         birthday: birthday,
       );
 
-      // Set as active wallet
-      unawaited(
-        ref.read(activeWalletProvider.notifier).setActiveWallet(walletId),
-      );
-
-      // Refresh wallets list
-      ref.read(refreshWalletsProvider)();
-
       if (mounted) {
-        ref.invalidate(walletsExistProvider);
-        final walletsExist = await ref.read(walletsExistProvider.future);
-        if (!mounted) return;
-        if (!walletsExist) {
-          setState(() {
-            _error =
-                'Wallet import succeeded but was not detected. Try again.'.tr;
-            _isImporting = false;
-          });
-          return;
-        }
         // Navigate to home with success message
         context.go('/home');
 

@@ -128,13 +128,12 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
               });
 
               try {
-                await FfiBridge.importViewingWallet(
+                await ref.read(importViewingWalletProvider)(
                   name: name,
                   saplingViewingKey: saplingKey.isEmpty ? null : saplingKey,
                   ironwoodViewingKey: ironwoodKey.isEmpty ? null : ironwoodKey,
                   birthday: birthday,
                 );
-                ref.read(refreshWalletsProvider)();
                 if (!context.mounted) return;
                 Navigator.of(context).pop(true);
               } catch (e) {

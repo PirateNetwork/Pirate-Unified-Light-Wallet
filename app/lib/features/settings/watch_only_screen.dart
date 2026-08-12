@@ -7,6 +7,7 @@ import '../../design/compat.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/providers/wallet_providers.dart';
 import '../../core/security/clipboard_manager.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/i18n/arb_text_localizer.dart';
@@ -507,8 +508,7 @@ class _ImportSaplingViewingKeyTabState
         throw StateError('Failed to resolve a default birthday height.'.tr);
       }
 
-      // Import via FFI
-      await FfiBridge.importViewingWallet(
+      await ref.read(importViewingWalletProvider)(
         name: _nameController.text.trim(),
         saplingViewingKey: trimmed,
         birthday: fallbackBirthday,
