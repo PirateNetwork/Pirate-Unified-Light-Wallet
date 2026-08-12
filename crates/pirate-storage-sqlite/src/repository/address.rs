@@ -64,7 +64,8 @@ where
     conn.execute_batch("BEGIN IMMEDIATE")?;
 
     let result = (|| {
-        let current_index = get_current_diversifier_index_for_scope(repo, account_id, key_id, scope)?;
+        let current_index =
+            get_current_diversifier_index_for_scope(repo, account_id, key_id, scope)?;
         let address = build(current_index.saturating_add(1))?;
         upsert_address(repo, &address)?;
         Ok(address)

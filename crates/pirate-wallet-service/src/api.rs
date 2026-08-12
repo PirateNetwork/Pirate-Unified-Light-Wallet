@@ -897,7 +897,8 @@ fn ensure_primary_account_key(
     // no spending key, so the fallback below (which assumes secret.extsk is
     // a real Sapling spending key) must never run for them.
     if let Some(existing) = keys.iter().find(|k| {
-        matches!(k.key_type, KeyType::Seed | KeyType::ImportView) && k.key_scope == KeyScope::Account
+        matches!(k.key_type, KeyType::Seed | KeyType::ImportView)
+            && k.key_scope == KeyScope::Account
     }) {
         if let Some(id) = existing.id {
             if existing.birthday_height != meta.birthday_height as i64 {

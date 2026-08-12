@@ -63,8 +63,15 @@ fn watch_only_wallet_supports_balance_listing_and_address_generation() {
     .unwrap();
 
     let groups = list_key_groups(watch_wallet.clone()).unwrap();
-    assert_eq!(groups.len(), 1, "expected exactly one key group for a freshly imported watch-only wallet");
-    assert!(!groups[0].spendable, "an imported-viewing key group must never be marked spendable");
+    assert_eq!(
+        groups.len(),
+        1,
+        "expected exactly one key group for a freshly imported watch-only wallet"
+    );
+    assert!(
+        !groups[0].spendable,
+        "an imported-viewing key group must never be marked spendable"
+    );
     let key_id = groups[0].id;
 
     // Regression: get_accounts (list_address_balances) used to fail here.

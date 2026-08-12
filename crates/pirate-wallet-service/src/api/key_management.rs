@@ -204,9 +204,12 @@ pub(super) fn generate_address_for_key(
                 let fvk = IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes).map_err(|e| {
                     StorageError::Storage(format!("Invalid Ironwood viewing key bytes: {e}"))
                 })?;
-                let addr = fvk.address_at(next_index).encode_for_network(network_type).map_err(|e| {
-                    StorageError::Storage(format!("Ironwood address encoding failed: {e}"))
-                })?;
+                let addr = fvk
+                    .address_at(next_index)
+                    .encode_for_network(network_type)
+                    .map_err(|e| {
+                        StorageError::Storage(format!("Ironwood address encoding failed: {e}"))
+                    })?;
                 (addr, AddressType::Ironwood)
             } else {
                 let dfvk_bytes = key.sapling_dfvk.as_ref().ok_or_else(|| {
