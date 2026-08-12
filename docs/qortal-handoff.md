@@ -111,7 +111,7 @@ as one logical batch (`batch_num: 0`, `batch_total: 1`).
 | `info` | Returns `latest_block_height`, querying the configured server before the first sync |
 | `balance` | Returns shielded wallet totals and external receive-address balances |
 | `list` | Returns incoming, outgoing, and change metadata |
-| `export` | Returns the primary spendable key group |
+| `export` | Returns the active-pool address and matching keys from its spendable key group |
 | `send` | Selects the key group identified by the supplied wallet-owned input address |
 | `sendp2sh` | Funds the supplied P2SH script from that key group's Sapling or Ironwood notes |
 | `redeemp2sh` | Redeems or refunds funding output zero |
@@ -126,6 +126,8 @@ contains external receive-address rows only, matching Qortal's address-picker
 contract, and must not be summed to reconstruct the wallet total. For sends, the
 supplied external address identifies its owning key group; note selection also
 includes that group's internal change so post-Ironwood funds remain spendable.
+The `export` command follows activation as well: it returns Sapling key material
+before Ironwood and the matching Ironwood address and keys afterward.
 
 Before the first sync, `height` reports the restore birthday rather than zero.
 This preserves Qortal's initialization check without claiming the wallet is
