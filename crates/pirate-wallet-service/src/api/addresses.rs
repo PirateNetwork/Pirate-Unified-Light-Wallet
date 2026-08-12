@@ -25,16 +25,26 @@ pub(super) fn current_receive_address(wallet_id: WalletId) -> Result<String> {
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
-        .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?;
     let key_id = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
-    let current_index = repo.get_current_diversifier_index(secret.account_id, key_id)?;
+    let use_ironwood = should_generate_ironwood(&wallet_id)?;
+    let address_type = if use_ironwood {
+        AddressType::Ironwood
+    } else {
+        AddressType::Sapling
+    };
+    let current_index = repo.get_current_diversifier_index_for_scope_and_type(
+        secret.account_id,
+        key_id,
+        pirate_storage_sqlite::AddressScope::External,
+        address_type,
+    )?;
 
-    if let Some(addr_record) = repo.get_address_by_index_for_scope(
+    if let Some(addr_record) = repo.get_address_by_index_for_scope_and_type(
         secret.account_id,
         key_id,
         current_index,
         pirate_storage_sqlite::AddressScope::External,
+        address_type,
     )? {
         tracing::debug!(
             "Found existing address at index {}: {}",
@@ -44,13 +54,20 @@ pub(super) fn current_receive_address(wallet_id: WalletId) -> Result<String> {
         return Ok(addr_record.address);
     }
 
-    let use_orchard = should_generate_ironwood(&wallet_id)?;
+    let extsk = if use_ironwood {
+        None
+    } else {
+        Some(
+            ExtendedSpendingKey::from_bytes(&secret.extsk)
+                .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?,
+        )
+    };
     let (addr_string, address_type) = derive_receive_address(
         &wallet_id,
         &secret,
-        Some(&extsk),
+        extsk.as_ref(),
         current_index,
-        use_orchard,
+        use_ironwood,
     )?;
 
     let address = pirate_storage_sqlite::Address {
@@ -69,7 +86,7 @@ pub(super) fn current_receive_address(wallet_id: WalletId) -> Result<String> {
 
     tracing::debug!(
         "Generated and stored {} address at index {}: {}",
-        if use_orchard { "Ironwood" } else { "Sapling" },
+        if use_ironwood { "Ironwood" } else { "Sapling" },
         current_index,
         addr_string
     );
@@ -82,13 +99,18 @@ pub(super) fn next_receive_address(wallet_id: WalletId) -> Result<String> {
     }
     tracing::info!("Generating next receive address for wallet {}", wallet_id);
 
-    let use_orchard = should_generate_ironwood(&wallet_id)?;
+    let use_ironwood = should_generate_ironwood(&wallet_id)?;
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
     let key_id = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
-    let extsk = if use_orchard {
+    let address_type = if use_ironwood {
+        AddressType::Ironwood
+    } else {
+        AddressType::Sapling
+    };
+    let extsk = if use_ironwood {
         None
     } else {
         Some(
@@ -102,13 +124,14 @@ pub(super) fn next_receive_address(wallet_id: WalletId) -> Result<String> {
         account_id,
         key_id,
         pirate_storage_sqlite::AddressScope::External,
+        address_type,
         move |next_index| {
             let (addr_string, address_type) = derive_receive_address(
                 &wallet_id_for_derivation,
                 &secret,
                 extsk.as_ref(),
                 next_index,
-                use_orchard,
+                use_ironwood,
             )
             .map_err(|e| pirate_storage_sqlite::Error::Storage(e.to_string()))?;
 
@@ -129,7 +152,7 @@ pub(super) fn next_receive_address(wallet_id: WalletId) -> Result<String> {
 
     tracing::info!(
         "Generated and stored next {} address at index {}: {}",
-        if use_orchard { "Ironwood" } else { "Sapling" },
+        if use_ironwood { "Ironwood" } else { "Sapling" },
         address.diversifier_index,
         address.address
     );
@@ -452,9 +475,9 @@ fn derive_receive_address(
     secret: &pirate_storage_sqlite::WalletSecret,
     extsk: Option<&ExtendedSpendingKey>,
     diversifier_index: u32,
-    use_orchard: bool,
+    use_ironwood: bool,
 ) -> Result<(String, AddressType)> {
-    if use_orchard {
+    if use_ironwood {
         let orchard_extsk_bytes = secret.orchard_extsk.clone().ok_or_else(|| {
             anyhow!("Ironwood key not found - wallet needs to be recreated with Ironwood support")
         })?;

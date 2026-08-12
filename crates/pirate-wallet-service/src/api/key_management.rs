@@ -182,6 +182,11 @@ pub(super) fn generate_address_for_key(
 
     let account_id = key.account_id;
     let network_type = address_prefix_network_type(&wallet_id)?;
+    let address_type = if use_ironwood {
+        AddressType::Ironwood
+    } else {
+        AddressType::Sapling
+    };
 
     // Allocating the index and deriving+storing the address for it must be
     // one atomic operation - see allocate_next_diversified_address's doc
@@ -190,6 +195,7 @@ pub(super) fn generate_address_for_key(
         account_id,
         key_id,
         pirate_storage_sqlite::AddressScope::External,
+        address_type,
         move |next_index| {
             // The closure runs inside allocate_next_diversified_address's
             // transaction and is bounded by pirate-storage-sqlite's own

@@ -78,9 +78,8 @@ pub(super) fn backfill_address_key_id(
     Ok(rows)
 }
 
-/// Atomically allocates the next diversifier index for (account_id, key_id,
-/// scope) and persists whatever `build` derives for that index, all in one
-/// write transaction.
+/// Atomically allocates the next diversifier index for an account, key, scope,
+/// and shielded pool, then persists whatever `build` derives for that index.
 ///
 /// `get_next_diversifier_index` + a separate `upsert_address` call is a
 /// read-then-write with no lock held across the two: two threads calling it
@@ -99,6 +98,7 @@ pub(super) fn allocate_next_diversified_address<F>(
     account_id: i64,
     key_id: i64,
     scope: AddressScope,
+    address_type: AddressType,
     build: F,
 ) -> Result<Address>
 where
@@ -108,9 +108,14 @@ where
     conn.execute_batch("BEGIN IMMEDIATE")?;
 
     let result = (|| {
-        let current_index =
-            get_current_diversifier_index_for_scope(repo, account_id, key_id, scope)?;
-        let address = build(current_index.saturating_add(1))?;
+        let next_index = get_next_diversifier_index_for_scope_and_type(
+            repo,
+            account_id,
+            key_id,
+            scope,
+            address_type,
+        )?;
+        let address = build(next_index)?;
         upsert_address(repo, &address)?;
         Ok(address)
     })();

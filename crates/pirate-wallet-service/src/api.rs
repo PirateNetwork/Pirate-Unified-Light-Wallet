@@ -1045,8 +1045,8 @@ pub fn is_ironwood_active_for_wallet(wallet_id: WalletId) -> Result<bool> {
 
 /// Get current receive address for wallet
 ///
-/// Returns the current diversified Sapling address from storage.
-/// If no address exists, generates and stores the first address (index 0).
+/// Returns the current external address for the active shielded pool.
+/// If no address exists in that pool, generates and stores its first address.
 /// Call `next_receive_address` to rotate to a new unlinkable address.
 pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
     addresses::current_receive_address(wallet_id)

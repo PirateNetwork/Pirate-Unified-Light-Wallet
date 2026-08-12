@@ -2975,8 +2975,8 @@ impl<'a> Repository<'a> {
         address::upsert_address(self, address)
     }
 
-    /// Atomically allocates the next diversifier index for a key group and
-    /// scope, and persists whatever `build` derives for that index - see
+    /// Atomically allocates the next diversifier index for a key group, scope,
+    /// and shielded pool, then persists whatever `build` derives - see
     /// `address::allocate_next_diversified_address` for why this needs to
     /// be one transaction rather than a separate read + write.
     pub fn allocate_next_diversified_address<F>(
@@ -2984,12 +2984,20 @@ impl<'a> Repository<'a> {
         account_id: i64,
         key_id: i64,
         scope: crate::models::AddressScope,
+        address_type: crate::models::AddressType,
         build: F,
     ) -> Result<Address>
     where
         F: FnOnce(u32) -> Result<Address>,
     {
-        address::allocate_next_diversified_address(self, account_id, key_id, scope, build)
+        address::allocate_next_diversified_address(
+            self,
+            account_id,
+            key_id,
+            scope,
+            address_type,
+            build,
+        )
     }
 
     /// Get address by address string.
