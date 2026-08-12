@@ -39,9 +39,15 @@ pub(super) fn resolve_wallet_birthday_height(birthday_opt: Option<u32>) -> u32 {
 fn persist_wallet_account_secret(
     wallet_id: &str,
     account_name: String,
-    secret: WalletSecret,
-) -> Result<bool> {
-    if let Ok((_db, repo)) = open_wallet_db_for(wallet_id) {
+    mut secret: WalletSecret,
+    birthday_height: u32,
+) -> Result<()> {
+    let passphrase = app_passphrase()?;
+    let (db, _key, _master_key) = open_wallet_db_with_passphrase(wallet_id, &passphrase)?;
+    let repo = Repository::new(&db);
+    let transaction = db.conn().unchecked_transaction()?;
+
+    let result = (|| -> Result<()> {
         let account = Account {
             id: None,
             name: account_name,
@@ -49,27 +55,57 @@ fn persist_wallet_account_secret(
         };
         let account_id = repo.insert_account(&account)?;
 
-        let mut secret = secret;
         secret.account_id = account_id;
 
         let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
         repo.upsert_wallet_secret(&encrypted_secret)?;
-        let _ = ensure_primary_account_key(&repo, wallet_id, &secret)?;
-        return Ok(true);
-    }
+        let _ = ensure_primary_account_key_at_birthday(&repo, &secret, birthday_height)?;
+        Ok(())
+    })();
 
-    Ok(false)
+    result?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn register_wallet(meta: &WalletMeta) -> Result<()> {
-    WALLETS.write().push(meta.clone());
-    *ACTIVE_WALLET.write() = Some(meta.id.clone());
-
     let registry_db = open_wallet_registry()?;
+    let transaction = registry_db.conn().unchecked_transaction()?;
     persist_wallet_meta(&registry_db, meta)?;
     set_active_wallet_registry(&registry_db, Some(&meta.id))?;
     touch_wallet_last_used(&registry_db, &meta.id)?;
+    transaction.commit()?;
+
+    WALLETS.write().push(meta.clone());
+    *ACTIVE_WALLET.write() = Some(meta.id.clone());
     Ok(())
+}
+
+fn run_provisioning_steps<P, R, C>(persist: P, register: R, cleanup: C) -> Result<()>
+where
+    P: FnOnce() -> Result<()>,
+    R: FnOnce() -> Result<()>,
+    C: FnOnce(),
+{
+    match persist().and_then(|_| register()) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            cleanup();
+            Err(error)
+        }
+    }
+}
+
+fn provision_seed_wallet(
+    meta: &WalletMeta,
+    account_name: String,
+    secret: WalletSecret,
+) -> Result<()> {
+    run_provisioning_steps(
+        || persist_wallet_account_secret(&meta.id, account_name, secret, meta.birthday_height),
+        || register_wallet(meta),
+        || encrypted_db::remove_wallet_storage_artifacts(&meta.id),
+    )
 }
 
 pub(super) fn create_wallet(
@@ -114,8 +150,6 @@ pub(super) fn create_wallet(
         network_type: Some("mainnet".to_string()),
     };
 
-    register_wallet(&meta)?;
-
     let dfvk_bytes = extsk.to_extended_fvk().to_bytes();
     let secret = WalletSecret {
         wallet_id: wallet_id.clone(),
@@ -129,12 +163,11 @@ pub(super) fn create_wallet(
         mnemonic_language: Some(mnemonic_language.as_key().to_string()),
         created_at: chrono::Utc::now().timestamp(),
     };
-    if persist_wallet_account_secret(&wallet_id, name_for_account, secret)? {
-        tracing::info!(
-            "Persisted wallet secret (Sapling + Ironwood) for wallet {}",
-            wallet_id
-        );
-    }
+    provision_seed_wallet(&meta, name_for_account, secret)?;
+    tracing::info!(
+        "Persisted wallet secret (Sapling + Ironwood) for wallet {}",
+        wallet_id
+    );
 
     Ok(wallet_id)
 }
@@ -181,8 +214,6 @@ pub(super) fn restore_wallet(
         network_type: Some("mainnet".to_string()),
     };
 
-    register_wallet(&meta)?;
-
     let dfvk_bytes = extsk.to_extended_fvk().to_bytes();
     let secret = WalletSecret {
         wallet_id: wallet_id.clone(),
@@ -196,11 +227,67 @@ pub(super) fn restore_wallet(
         mnemonic_language: Some(mnemonic_language.as_key().to_string()),
         created_at: chrono::Utc::now().timestamp(),
     };
-    if persist_wallet_account_secret(&wallet_id, name_for_account, secret)? {
-        tracing::info!("Persisted encrypted wallet secret for wallet {}", wallet_id);
-    }
+    provision_seed_wallet(&meta, name_for_account, secret)?;
+    tracing::info!("Persisted encrypted wallet secret for wallet {}", wallet_id);
 
     Ok(wallet_id)
+}
+
+fn persist_viewing_wallet_account(
+    meta: &WalletMeta,
+    sapling_dfvk: Option<Vec<u8>>,
+    ironwood_fvk: Option<Vec<u8>>,
+) -> Result<()> {
+    let passphrase = app_passphrase()?;
+    let (db, _key, _master_key) = open_wallet_db_with_passphrase(&meta.id, &passphrase)?;
+    let repo = Repository::new(&db);
+    let transaction = db.conn().unchecked_transaction()?;
+
+    let result = (|| -> Result<()> {
+        let account_id = repo.insert_account(&Account {
+            id: None,
+            name: meta.name.clone(),
+            created_at: meta.created_at,
+        })?;
+
+        let secret = WalletSecret {
+            wallet_id: meta.id.clone(),
+            account_id,
+            extsk: Vec::new(),
+            dfvk: sapling_dfvk.clone(),
+            orchard_extsk: None,
+            sapling_ivk: None,
+            orchard_ivk: ironwood_fvk.clone(),
+            encrypted_mnemonic: None,
+            mnemonic_language: None,
+            created_at: meta.created_at,
+        };
+        let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
+        repo.upsert_wallet_secret(&encrypted_secret)?;
+
+        let account_key = AccountKey {
+            id: None,
+            account_id,
+            key_type: KeyType::ImportView,
+            key_scope: KeyScope::Account,
+            label: None,
+            birthday_height: meta.birthday_height as i64,
+            created_at: meta.created_at,
+            spendable: false,
+            sapling_extsk: None,
+            sapling_dfvk,
+            orchard_extsk: None,
+            orchard_fvk: ironwood_fvk,
+            encrypted_mnemonic: None,
+        };
+        let encrypted_key = repo.encrypt_account_key_fields(&account_key)?;
+        let _ = repo.upsert_account_key(&encrypted_key)?;
+        Ok(())
+    })();
+
+    result?;
+    transaction.commit()?;
+    Ok(())
 }
 
 pub(super) fn import_viewing_wallet(
@@ -215,6 +302,23 @@ pub(super) fn import_viewing_wallet(
         ironwood_viewing_key.as_deref(),
     )?;
 
+    let sapling_dfvk = sapling_viewing_key
+        .as_deref()
+        .map(|value| {
+            ExtendedFullViewingKey::from_xfvk_bech32_any(value)
+                .map(|key| key.to_bytes())
+                .map_err(|_| anyhow!("Invalid Sapling viewing key (xFVK)"))
+        })
+        .transpose()?;
+    let ironwood_fvk = ironwood_viewing_key
+        .as_deref()
+        .map(|value| {
+            IronwoodExtendedFullViewingKey::from_bech32_any(value)
+                .map(|key| key.to_bytes())
+                .map_err(|_| anyhow!("Invalid Ironwood viewing key"))
+        })
+        .transpose()?;
+
     let wallet_id = uuid::Uuid::new_v4().to_string();
     let meta = WalletMeta {
         id: wallet_id.clone(),
@@ -225,70 +329,78 @@ pub(super) fn import_viewing_wallet(
         network_type: Some("mainnet".to_string()),
     };
 
-    let account_name = meta.name.clone();
-    let account_created_at = meta.created_at;
-
-    register_wallet(&meta)?;
-
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-
-    let account = Account {
-        id: None,
-        name: account_name,
-        created_at: account_created_at,
-    };
-    let account_id = repo.insert_account(&account)?;
-
-    let mut dfvk_bytes: Option<Vec<u8>> = None;
-    if let Some(ref value) = sapling_viewing_key {
-        let dfvk = ExtendedFullViewingKey::from_xfvk_bech32_any(value)
-            .map_err(|_| anyhow!("Invalid Sapling viewing key (xFVK)"))?;
-        dfvk_bytes = Some(dfvk.to_bytes());
-    }
-
-    let mut ironwood_fvk_bytes: Option<Vec<u8>> = None;
-    if let Some(ref value) = ironwood_viewing_key {
-        let fvk = IronwoodExtendedFullViewingKey::from_bech32_any(value)
-            .map_err(|_| anyhow!("Invalid Ironwood viewing key"))?;
-        ironwood_fvk_bytes = Some(fvk.to_bytes());
-    }
-
-    let dfvk_bytes_for_key = dfvk_bytes.clone();
-    let ironwood_fvk_bytes_for_key = ironwood_fvk_bytes.clone();
-
-    let secret = WalletSecret {
-        wallet_id: wallet_id.clone(),
-        account_id,
-        extsk: Vec::new(),
-        dfvk: dfvk_bytes,
-        orchard_extsk: None,
-        sapling_ivk: None,
-        orchard_ivk: ironwood_fvk_bytes,
-        encrypted_mnemonic: None,
-        mnemonic_language: None,
-        created_at: account_created_at,
-    };
-
-    let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
-    repo.upsert_wallet_secret(&encrypted_secret)?;
-
-    let account_key = AccountKey {
-        id: None,
-        account_id,
-        key_type: KeyType::ImportView,
-        key_scope: KeyScope::Account,
-        label: None,
-        birthday_height: birthday as i64,
-        created_at: account_created_at,
-        spendable: false,
-        sapling_extsk: None,
-        sapling_dfvk: dfvk_bytes_for_key,
-        orchard_extsk: None,
-        orchard_fvk: ironwood_fvk_bytes_for_key,
-        encrypted_mnemonic: None,
-    };
-    let encrypted_key = repo.encrypt_account_key_fields(&account_key)?;
-    let _ = repo.upsert_account_key(&encrypted_key)?;
+    run_provisioning_steps(
+        || persist_viewing_wallet_account(&meta, sapling_dfvk, ironwood_fvk),
+        || register_wallet(&meta),
+        || encrypted_db::remove_wallet_storage_artifacts(&meta.id),
+    )?;
 
     Ok(wallet_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::{Cell, RefCell};
+
+    #[test]
+    fn persistence_failure_never_attempts_registry_publication() {
+        let registered = Cell::new(false);
+        let cleaned = Cell::new(false);
+
+        let error = run_provisioning_steps(
+            || Err(anyhow!("secret persistence failed")),
+            || {
+                registered.set(true);
+                Ok(())
+            },
+            || cleaned.set(true),
+        )
+        .expect_err("persistence failure must abort provisioning");
+
+        assert_eq!(error.to_string(), "secret persistence failed");
+        assert!(!registered.get());
+        assert!(cleaned.get());
+    }
+
+    #[test]
+    fn registry_failure_cleans_durable_wallet_artifacts() {
+        let steps = RefCell::new(Vec::new());
+
+        let error = run_provisioning_steps(
+            || {
+                steps.borrow_mut().push("persist");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("register");
+                Err(anyhow!("registry commit failed"))
+            },
+            || steps.borrow_mut().push("cleanup"),
+        )
+        .expect_err("registry failure must abort provisioning");
+
+        assert_eq!(error.to_string(), "registry commit failed");
+        assert_eq!(*steps.borrow(), ["persist", "register", "cleanup"]);
+    }
+
+    #[test]
+    fn successful_provisioning_keeps_wallet_artifacts() {
+        let steps = RefCell::new(Vec::new());
+
+        run_provisioning_steps(
+            || {
+                steps.borrow_mut().push("persist");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("register");
+                Ok(())
+            },
+            || steps.borrow_mut().push("cleanup"),
+        )
+        .unwrap();
+
+        assert_eq!(*steps.borrow(), ["persist", "register"]);
+    }
 }

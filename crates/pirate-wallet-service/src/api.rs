@@ -106,9 +106,8 @@ use self::wallet_registry::{
 };
 use encrypted_db::{
     app_passphrase, get_registry_setting, open_wallet_db_for, open_wallet_db_with_passphrase,
-    open_wallet_registry, set_registry_setting, set_wallet_base_dir_override, wallet_db_key_path,
-    wallet_db_keys, wallet_db_path_for, wallet_db_salt_path, wallet_registry_key_path,
-    wallet_registry_path, wallet_registry_salt_path,
+    open_wallet_registry, set_registry_setting, set_wallet_base_dir_override, wallet_db_keys,
+    wallet_db_path_for, wallet_registry_key_path, wallet_registry_path, wallet_registry_salt_path,
 };
 // Global state with thread-safe access
 lazy_static::lazy_static! {
@@ -901,20 +900,24 @@ fn ensure_primary_account_key(
     wallet_id: &str,
     secret: &WalletSecret,
 ) -> Result<i64> {
-    let keys = repo.get_account_keys(secret.account_id)?;
     let meta = get_wallet_meta(wallet_id)?;
-    // ImportView keys (created by import_viewing_wallet for watch-only
-    // wallets) are just as valid a "primary" key as a Seed key - they have
-    // no spending key, so the fallback below (which assumes secret.extsk is
-    // a real Sapling spending key) must never run for them.
-    if let Some(existing) = keys.iter().find(|k| {
-        matches!(k.key_type, KeyType::Seed | KeyType::ImportView)
-            && k.key_scope == KeyScope::Account
+    ensure_primary_account_key_at_birthday(repo, secret, meta.birthday_height)
+}
+
+fn ensure_primary_account_key_at_birthday(
+    repo: &Repository,
+    secret: &WalletSecret,
+    birthday_height: u32,
+) -> Result<i64> {
+    let keys = repo.get_account_keys(secret.account_id)?;
+    if let Some(existing) = keys.iter().find(|key| {
+        matches!(key.key_type, KeyType::Seed | KeyType::ImportView)
+            && key.key_scope == KeyScope::Account
     }) {
         if let Some(id) = existing.id {
-            if existing.birthday_height != meta.birthday_height as i64 {
+            if existing.birthday_height != birthday_height as i64 {
                 let mut updated = existing.clone();
-                updated.birthday_height = meta.birthday_height as i64;
+                updated.birthday_height = birthday_height as i64;
                 let encrypted = repo.encrypt_account_key_fields(&updated)?;
                 let _ = repo.upsert_account_key(&encrypted);
             }
@@ -945,7 +948,7 @@ fn ensure_primary_account_key(
         key_type: KeyType::Seed,
         key_scope: KeyScope::Account,
         label: Some("Seed".to_string()),
-        birthday_height: meta.birthday_height as i64,
+        birthday_height: birthday_height as i64,
         created_at: chrono::Utc::now().timestamp(),
         spendable: true,
         sapling_extsk: Some(secret.extsk.clone()),
