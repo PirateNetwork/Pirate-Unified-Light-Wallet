@@ -3,6 +3,24 @@ import XCTest
 @testable import PirateWalletSDK
 
 final class PirateWalletSDKSmokeTests: XCTestCase {
+    func testReceiveAddressMethodsUseActivationAwareServiceOperations() throws {
+        let invoker = ScriptedInvoker(expectedCalls: [
+            expected("current_receive_address") { request in
+                XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
+                return try ok("pirate1current")
+            },
+            expected("next_receive_address") { request in
+                XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
+                return try ok("pirate1next")
+            },
+        ])
+        let sdk = PirateWalletSDK(invoker: invoker)
+
+        XCTAssertEqual(try sdk.getCurrentAddress(walletId: "wallet-1"), "pirate1current")
+        XCTAssertEqual(try sdk.getNextAddress(walletId: "wallet-1"), "pirate1next")
+        invoker.assertFinished()
+    }
+
     func testTypedSurfaceBuildInfoAndWalletMetadata() throws {
         let invoker = ScriptedInvoker(expectedCalls: [
             expected("get_build_info") { _ in
