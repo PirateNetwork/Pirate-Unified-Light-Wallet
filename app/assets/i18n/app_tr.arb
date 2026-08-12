@@ -468,6 +468,7 @@
   "Failed to load logs": "Günlükler yüklenemedi",
   "Failed to remove duress passphrase: {error}": "Zorlama parolası kaldırılamadı: {error}",
   "Failed to resolve a default birthday height.": "Varsayılan başlangıç blok yüksekliği çözümlenemedi.",
+  "Failed to restore wallet: {error}": "Cüzdan geri yüklenemedi: {error}",
   "Failed to save I2P endpoint: {error}": "I2P uç noktası kaydedilemedi: {error}",
   "Failed to save address": "Adres kaydedilemedi",
   "Failed to save duress passphrase: {error}": "Zorlama parolası kaydedilemedi: {error}",

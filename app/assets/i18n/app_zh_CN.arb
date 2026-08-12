@@ -468,6 +468,7 @@
   "Failed to load logs": "无法加载日志",
   "Failed to remove duress passphrase: {error}": "无法删除胁迫密码：{error}",
   "Failed to resolve a default birthday height.": "无法解析默认起始区块高度。",
+  "Failed to restore wallet: {error}": "恢复钱包失败：{error}",
   "Failed to save I2P endpoint: {error}": "无法保存 I2P 端点：{error}",
   "Failed to save address": "保存地址失败",
   "Failed to save duress passphrase: {error}": "保存胁迫密码失败：{error}",

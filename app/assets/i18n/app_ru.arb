@@ -468,6 +468,7 @@
   "Failed to load logs": "Не удалось загрузить журналы.",
   "Failed to remove duress passphrase: {error}": "Не удалось удалить парольную фразу для принуждения: {error}.",
   "Failed to resolve a default birthday height.": "Не удалось определить начальную высоту блока по умолчанию.",
+  "Failed to restore wallet: {error}": "Не удалось восстановить кошелек: {error}",
   "Failed to save I2P endpoint: {error}": "Не удалось сохранить конечную точку I2P: {error}.",
   "Failed to save address": "Не удалось сохранить адрес.",
   "Failed to save duress passphrase: {error}": "Не удалось сохранить кодовую фразу для принуждения: {error}.",

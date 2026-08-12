@@ -468,6 +468,7 @@
   "Failed to load logs": "لاگز لوڈ کرنے میں ناکام",
   "Failed to remove duress passphrase: {error}": "دباؤ والے پاسفریز کو ہٹانے میں ناکام: {error}",
   "Failed to resolve a default birthday height.": "ڈیفالٹ ابتدائی بلاک کی اونچائی کا تعین نہیں ہو سکا۔",
+  "Failed to restore wallet: {error}": "والیٹ بحال کرنے میں ناکام: {error}",
   "Failed to save I2P endpoint: {error}": "I2P اینڈ پوائنٹ کو محفوظ کرنے میں ناکام: {error}",
   "Failed to save address": "پتہ محفوظ کرنے میں ناکام",
   "Failed to save duress passphrase: {error}": "دباؤ پاسفریز کو محفوظ کرنے میں ناکام: {error}",

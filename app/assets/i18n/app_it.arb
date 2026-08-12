@@ -468,6 +468,7 @@
   "Failed to load logs": "Impossibile caricare i log",
   "Failed to remove duress passphrase: {error}": "Impossibile rimuovere la passphrase coercizione: {error}",
   "Failed to resolve a default birthday height.": "Impossibile determinare l’altezza predefinita del blocco iniziale.",
+  "Failed to restore wallet: {error}": "Impossibile ripristinare il portafoglio: {error}",
   "Failed to save I2P endpoint: {error}": "Impossibile salvare l'endpoint I2P: {error}",
   "Failed to save address": "Impossibile salvare l'indirizzo",
   "Failed to save duress passphrase: {error}": "Impossibile salvare la passphrase coercizione: {error}",

@@ -468,6 +468,7 @@
   "Failed to load logs": "로그를 로드하지 못했습니다.",
   "Failed to remove duress passphrase: {error}": "협박 암호 문구 제거 실패: {error}",
   "Failed to resolve a default birthday height.": "기본 시작 블록 높이를 확인하지 못했습니다.",
+  "Failed to restore wallet: {error}": "지갑 복원 실패: {error}",
   "Failed to save I2P endpoint: {error}": "I2P 엔드포인트 저장 실패: {error}",
   "Failed to save address": "주소를 저장하지 못했습니다.",
   "Failed to save duress passphrase: {error}": "협박 암호 문구 저장 실패: {error}",

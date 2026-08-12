@@ -468,6 +468,7 @@
   "Failed to load logs": "लॉग लोड करने में विफल",
   "Failed to remove duress passphrase: {error}": "ड्यूरेस पासफ़्रेज़ हटाने में विफल: {error}",
   "Failed to resolve a default birthday height.": "डिफ़ॉल्ट शुरुआती ब्लॉक ऊंचाई निर्धारित नहीं की जा सकी।",
+  "Failed to restore wallet: {error}": "वॉलेट पुनर्स्थापित करने में विफल: {error}",
   "Failed to save I2P endpoint: {error}": "I2P समापन बिंदु को सहेजने में विफल: {error}",
   "Failed to save address": "पता सहेजने में विफल",
   "Failed to save duress passphrase: {error}": "ड्यूरेस पासफ़्रेज़ सहेजने में विफल: {error}",

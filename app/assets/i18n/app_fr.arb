@@ -468,6 +468,7 @@
   "Failed to load logs": "Échec du chargement des journaux",
   "Failed to remove duress passphrase: {error}": "Échec de la suppression de la phrase secrète sous contrainte : {error}",
   "Failed to resolve a default birthday height.": "Impossible de déterminer la hauteur de bloc initiale par défaut.",
+  "Failed to restore wallet: {error}": "Échec de la restauration du portefeuille : {error}",
   "Failed to save I2P endpoint: {error}": "Échec de l'enregistrement du point de terminaison I2P : {error}",
   "Failed to save address": "Échec de l'enregistrement de l'adresse",
   "Failed to save duress passphrase: {error}": "Échec de l'enregistrement de la phrase secrète sous contrainte : {error}",

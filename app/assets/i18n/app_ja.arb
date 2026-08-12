@@ -468,6 +468,7 @@
   "Failed to load logs": "ログのロードに失敗しました",
   "Failed to remove duress passphrase: {error}": "強迫パスフレーズの削除に失敗しました: {error}",
   "Failed to resolve a default birthday height.": "デフォルトの開始ブロック高を取得できませんでした。",
+  "Failed to restore wallet: {error}": "ウォレットの復元に失敗しました: {error}",
   "Failed to save I2P endpoint: {error}": "I2P エンドポイントの保存に失敗しました: {error}",
   "Failed to save address": "アドレスの保存に失敗しました",
   "Failed to save duress passphrase: {error}": "強迫パスフレーズの保存に失敗しました: {error}",

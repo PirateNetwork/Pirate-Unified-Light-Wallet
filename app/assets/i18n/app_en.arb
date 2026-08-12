@@ -468,6 +468,7 @@
   "Failed to load logs": "Failed to load logs",
   "Failed to remove duress passphrase: {error}": "Failed to remove duress passphrase: {error}",
   "Failed to resolve a default birthday height.": "Failed to resolve a default birthday height.",
+  "Failed to restore wallet: {error}": "Failed to restore wallet: {error}",
   "Failed to save I2P endpoint: {error}": "Failed to save I2P endpoint: {error}",
   "Failed to save address": "Failed to save address",
   "Failed to save duress passphrase: {error}": "Failed to save duress passphrase: {error}",

@@ -468,6 +468,7 @@
   "Failed to load logs": "Kan logboeken niet laden",
   "Failed to remove duress passphrase: {error}": "Kan dwangwachtwoordzin niet verwijderen: {error}",
   "Failed to resolve a default birthday height.": "De standaard startblokhoogte kon niet worden bepaald.",
+  "Failed to restore wallet: {error}": "Kan portemonnee niet herstellen: {error}",
   "Failed to save I2P endpoint: {error}": "Kan I2P-eindpunt niet opslaan: {error}",
   "Failed to save address": "Kan adres niet opslaan",
   "Failed to save duress passphrase: {error}": "Kan dwangwachtwoordzin niet opslaan: {error}",

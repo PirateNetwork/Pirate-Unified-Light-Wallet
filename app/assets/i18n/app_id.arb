@@ -468,6 +468,7 @@
   "Failed to load logs": "Gagal memuat log",
   "Failed to remove duress passphrase: {error}": "Gagal menghapus frasa sandi darurat: {error}",
   "Failed to resolve a default birthday height.": "Gagal menentukan tinggi blok pembuatan default.",
+  "Failed to restore wallet: {error}": "Gagal memulihkan dompet: {error}",
   "Failed to save I2P endpoint: {error}": "Gagal menyimpan endpoint I2P: {error}",
   "Failed to save address": "Gagal menyimpan alamat",
   "Failed to save duress passphrase: {error}": "Gagal menyimpan frasa sandi darurat: {error}",

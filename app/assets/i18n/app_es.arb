@@ -468,6 +468,7 @@
   "Failed to load logs": "Error al cargar registros",
   "Failed to remove duress passphrase: {error}": "No se pudo eliminar la frase de contraseña de coacción: {error}",
   "Failed to resolve a default birthday height.": "No se pudo resolver la altura de bloque inicial predeterminada.",
+  "Failed to restore wallet: {error}": "Error al restaurar la billetera: {error}",
   "Failed to save I2P endpoint: {error}": "No se pudo guardar el punto final I2P: {error}",
   "Failed to save address": "No se pudo guardar la dirección",
   "Failed to save duress passphrase: {error}": "No se pudo guardar la frase de contraseña de coacción: {error}",

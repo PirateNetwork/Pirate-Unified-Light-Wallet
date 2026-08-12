@@ -468,6 +468,7 @@
   "Failed to load logs": "فشل في تحميل السجلات",
   "Failed to remove duress passphrase: {error}": "فشل في إزالة عبارة مرور الإكراه: {error}",
   "Failed to resolve a default birthday height.": "فشل في حل ارتفاع كتلة البداية الافتراضي.",
+  "Failed to restore wallet: {error}": "فشل في استعادة المحفظة: {error}",
   "Failed to save I2P endpoint: {error}": "فشل في حفظ نقطة النهاية I2P: {error}",
   "Failed to save address": "فشل في حفظ العنوان",
   "Failed to save duress passphrase: {error}": "فشل في حفظ عبارة مرور الإكراه: {error}",

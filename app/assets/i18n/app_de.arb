@@ -468,6 +468,7 @@
   "Failed to load logs": "Protokolle konnten nicht geladen werden",
   "Failed to remove duress passphrase: {error}": "Die Zwang-Passphrase konnte nicht entfernt werden: {error}",
   "Failed to resolve a default birthday height.": "Die Standard-Startblockhöhe konnte nicht ermittelt werden.",
+  "Failed to restore wallet: {error}": "Wallet konnte nicht wiederhergestellt werden: {error}",
   "Failed to save I2P endpoint: {error}": "Der I2P-Endpunkt konnte nicht gespeichert werden: {error}",
   "Failed to save address": "Adresse konnte nicht gespeichert werden",
   "Failed to save duress passphrase: {error}": "Die Zwangspassphrase konnte nicht gespeichert werden: {error}",

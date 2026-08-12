@@ -468,6 +468,7 @@
   "Failed to load logs": "Falha ao carregar registros",
   "Failed to remove duress passphrase: {error}": "Falha ao remover a senha de coação: {error}",
   "Failed to resolve a default birthday height.": "Não foi possível determinar a altura inicial do bloco predefinida.",
+  "Failed to restore wallet: {error}": "Falha ao restaurar carteira: {error}",
   "Failed to save I2P endpoint: {error}": "Falha ao salvar o endpoint I2P: {error}",
   "Failed to save address": "Falha ao salvar endereço",
   "Failed to save duress passphrase: {error}": "Falha ao salvar a senha de coação: {error}",
