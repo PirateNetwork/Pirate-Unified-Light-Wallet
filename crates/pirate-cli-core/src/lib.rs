@@ -26,8 +26,9 @@ enum SyncModeArg {
     Deep,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum AddressPoolArg {
+    Auto,
     Sapling,
     Ironwood,
     Z,
@@ -141,7 +142,7 @@ enum Command {
         wallet_id: Option<String>,
         #[arg(long)]
         key_id: Option<i64>,
-        #[arg(value_enum, default_value = "sapling")]
+        #[arg(value_enum, default_value = "auto")]
         pool: AddressPoolArg,
     },
     Seed {
@@ -1068,23 +1069,45 @@ async fn legacy_new_address(
     pool: AddressPoolArg,
 ) -> Result<Value> {
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-    let use_ironwood = matches!(pool, AddressPoolArg::Ironwood);
-    let pool_label = match pool {
-        AddressPoolArg::Sapling | AddressPoolArg::Z => "z",
-        AddressPoolArg::Ironwood => "ironwood",
-    };
-
-    let address = if let Some(key_id) = key_id {
-        pirate_wallet_service::generate_address_for_key(wallet_id.clone(), key_id, use_ironwood)?
-    } else if matches!(pool, AddressPoolArg::Sapling | AddressPoolArg::Z) {
+    let address = if pool == AddressPoolArg::Auto && key_id.is_none() {
         pirate_wallet_service::next_receive_address(wallet_id.clone())?
     } else {
-        let key_groups = pirate_wallet_service::list_key_groups(wallet_id.clone())?;
-        let group = key_groups
-            .into_iter()
-            .find(|group| group.spendable && group.has_ironwood)
-            .ok_or_else(|| anyhow!("No Ironwood-capable key group found"))?;
-        pirate_wallet_service::generate_address_for_key(wallet_id.clone(), group.id, true)?
+        let use_ironwood = match pool {
+            AddressPoolArg::Auto => {
+                pirate_wallet_service::current_receive_address(wallet_id.clone())?
+                    .starts_with("pirate")
+            }
+            AddressPoolArg::Sapling | AddressPoolArg::Z => false,
+            AddressPoolArg::Ironwood => true,
+        };
+        let key_id = if let Some(key_id) = key_id {
+            key_id
+        } else {
+            let key_groups = pirate_wallet_service::list_key_groups(wallet_id.clone())?;
+            key_groups
+                .into_iter()
+                .find(|group| {
+                    group.spendable
+                        && if use_ironwood {
+                            group.has_ironwood
+                        } else {
+                            group.has_sapling
+                        }
+                })
+                .map(|group| group.id)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "No {}-capable spendable key group found",
+                        if use_ironwood { "Ironwood" } else { "Sapling" }
+                    )
+                })?
+        };
+        pirate_wallet_service::generate_address_for_key(wallet_id.clone(), key_id, use_ironwood)?
+    };
+    let pool_label = if address.starts_with("pirate") {
+        "ironwood"
+    } else {
+        "z"
     };
 
     Ok(json!({
@@ -1235,10 +1258,22 @@ async fn repl(service: &WalletService, format: OutputFormat) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_qortal_txid, sanitize_cli_value, QortalCli, QortalCommand};
+    use super::{
+        format_qortal_txid, sanitize_cli_value, AddressPoolArg, Cli, Command, QortalCli,
+        QortalCommand,
+    };
     use clap::Parser;
     use pirate_wallet_service::{QortalP2shRedeemRequest, QortalP2shSendRequest};
     use serde_json::json;
+
+    #[test]
+    fn legacy_new_address_defaults_to_the_active_pool() {
+        let parsed = Cli::parse_from(["piratewallet-cli", "new"]);
+        match parsed.command {
+            Some(Command::New { pool, .. }) => assert_eq!(pool, AddressPoolArg::Auto),
+            _ => panic!("expected new-address command"),
+        }
+    }
 
     #[test]
     fn qortal_sendp2sh_command_parses_json_arg() {
