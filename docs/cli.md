@@ -251,6 +251,9 @@ These commands accept `--wallet-id <WALLET_ID>`. If omitted, the active wallet i
 - `address balances [--wallet-id <WALLET_ID>] [--key-id <KEY_ID>]`
   - Output: `AddressBalanceInfo[]`
 
+`address current` and `address next` follow network activation automatically:
+they return Sapling addresses before Ironwood and Ironwood addresses afterward.
+
 ## Legacy-compatible top-level commands
 
 These commands preserve older CLI names. Wallet-scoped commands accept `--wallet-id <WALLET_ID>`. If it is omitted, the active wallet is used.
@@ -298,10 +301,12 @@ These commands preserve older CLI names. Wallet-scoped commands accept `--wallet
 - `defaultfee`
   - Output:
     - `defaultfee`
-- `new [--wallet-id <WALLET_ID>] [--key-id <KEY_ID>] [sapling|ironwood|z]`
+- `new [--wallet-id <WALLET_ID>] [--key-id <KEY_ID>] [auto|sapling|ironwood|z]`
   - Output:
     - `pool`
     - `address`
+  - The default `auto` pool follows the active shielded protocol; explicit pool
+    values remain available for recovery and testing.
 - `seed [--wallet-id <WALLET_ID>] [--mnemonic-language <LANG>]`
   - Legacy raw advanced seed export
   - Intended for operator and integration use where local authorization UX is handled by the caller
