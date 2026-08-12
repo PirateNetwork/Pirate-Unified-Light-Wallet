@@ -11,7 +11,6 @@ import '../../../core/crypto/bip39_wordlist.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/tokens/spacing.dart';
-import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/ffi/generated/models.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
@@ -117,15 +116,6 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
     return _wordControllers.every((c) => c.text.trim().isNotEmpty);
   }
 
-  Future<bool> _canReadWalletRegistry() async {
-    try {
-      final wallets = await FfiBridge.listWallets();
-      return wallets.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<void> _verifyAndProceed() async {
     if (!_isComplete) return;
 
@@ -169,27 +159,9 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
           .read(onboardingControllerProvider.notifier)
           .complete('My Pirate Wallet'.tr);
 
-      ref.invalidate(walletsExistProvider);
-      final walletsExist = await ref
-          .read(walletsExistProvider.future)
-          .timeout(const Duration(seconds: 8), onTimeout: () => true);
-      if (!mounted) return;
-      if (!walletsExist) {
-        setState(() {
-          _error =
-              'Wallet creation succeeded but was not detected. Try again.'.tr;
-          _isVerifying = false;
-        });
-        return;
-      }
-      final registryUnlocked = await _canReadWalletRegistry().timeout(
-        const Duration(seconds: 8),
-        onTimeout: () => false,
-      );
       if (!mounted) return;
 
-      if (registryUnlocked) {
-        ref.read(appUnlockedProvider.notifier).unlocked = true;
+      if (ref.read(appUnlockedProvider)) {
         context.go('/home');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

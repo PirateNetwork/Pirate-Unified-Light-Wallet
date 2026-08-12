@@ -83,15 +83,6 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     return _heightFromDate();
   }
 
-  Future<bool> _canReadWalletRegistry() async {
-    try {
-      final wallets = await FfiBridge.listWallets();
-      return wallets.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
-
   int? _heightFromDate() {
     return BirthdayHeightEstimator.estimateForMonth(
       year: _selectedYear,
@@ -163,44 +154,15 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     });
 
     try {
-      if (state.mode == OnboardingMode.create) {
-        await FfiBridge.createWallet(
-          name: 'My Pirate Wallet'.tr,
-          entropyLen: 256,
-          birthday: selectedHeight,
-        );
-      } else {
-        if (state.mnemonic == null || state.mnemonic!.isEmpty) {
-          throw StateError('Mnemonic not provided for restore'.tr);
-        }
-
-        await FfiBridge.restoreWallet(
-          name: 'Restored Wallet'.tr,
-          mnemonic: state.mnemonic!,
-          birthday: selectedHeight,
-        );
-      }
-
-      ref.read(onboardingControllerProvider.notifier)
-        ..setBirthdayHeight(selectedHeight)
-        ..nextStep();
-
-      ref.invalidate(walletsExistProvider);
-      final walletsExist = await ref.read(walletsExistProvider.future);
-      if (!mounted) return;
-      if (!walletsExist) {
-        setState(() {
-          _error =
-              'Wallet creation succeeded but was not detected. Try again.'.tr;
-          _isCreating = false;
-        });
-        return;
-      }
-      final registryUnlocked = await _canReadWalletRegistry();
+      final controller = ref.read(onboardingControllerProvider.notifier);
+      await (controller..setBirthdayHeight(selectedHeight)).complete(
+        state.mode == OnboardingMode.create
+            ? 'My Pirate Wallet'.tr
+            : 'Restored Wallet'.tr,
+      );
       if (!mounted) return;
 
-      if (registryUnlocked) {
-        ref.read(appUnlockedProvider.notifier).unlocked = true;
+      if (ref.read(appUnlockedProvider)) {
         context.go('/home');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -228,7 +190,11 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
       }
     } catch (e) {
       setState(() {
-        _error = 'Failed to create wallet: {error}'.trArgs({'error': e});
+        _error =
+            (state.mode == OnboardingMode.import
+                    ? 'Failed to restore wallet: {error}'
+                    : 'Failed to create wallet: {error}')
+                .trArgs({'error': e});
         _isCreating = false;
       });
     }
