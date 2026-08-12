@@ -59,6 +59,8 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Once};
+#[cfg(test)]
+use std::sync::Mutex;
 use std::time::Duration;
 use zcash_note_encryption::try_output_recovery_with_ovk;
 use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
@@ -134,6 +136,15 @@ thread_local! {
 }
 
 static REGISTRY_LOADED: AtomicBool = AtomicBool::new(false);
+/// Serializes every test (across every module in this crate) that mutates
+/// the process-wide statics above (`WALLETS`, `ACTIVE_WALLET`,
+/// `REGISTRY_LOADED`, the `encrypted_db` cache) via `configure_wallet_storage`
+/// or similar. Module-local test mutexes don't cut it here - two different
+/// `Mutex` instances don't block each other, so tests in different files
+/// still race and corrupt each other's SQLCipher-encrypted DBs unless they
+/// all serialize against this single, crate-wide lock.
+#[cfg(test)]
+pub(crate) static GLOBAL_WALLET_STATE_TEST_MUTEX: Mutex<()> = Mutex::new(());
 static WALLET_DB_CACHE_EPOCH: AtomicU64 = AtomicU64::new(1);
 static PANIC_HOOK_ONCE: Once = Once::new();
 static RUNTIME_DIAGNOSTICS_ONCE: Once = Once::new();

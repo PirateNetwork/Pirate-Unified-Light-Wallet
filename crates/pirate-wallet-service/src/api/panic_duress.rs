@@ -363,10 +363,7 @@ pub(super) fn deactivate_decoy() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use tempfile::tempdir;
-
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn reset_test_state() {
         passphrase_store::clear_passphrase();
@@ -390,7 +387,7 @@ mod tests {
 
     #[test]
     fn verify_duress_and_exit_use_backend_authority() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_WALLET_STATE_TEST_MUTEX.lock().unwrap();
         let temp_dir = tempdir().unwrap();
         std::env::set_var("PIRATE_WALLET_DB_DIR", temp_dir.path());
         reset_test_state();
@@ -418,7 +415,7 @@ mod tests {
 
     #[test]
     fn default_reverse_duress_works_after_locked_restart() {
-        let _guard = TEST_MUTEX.lock().unwrap();
+        let _guard = GLOBAL_WALLET_STATE_TEST_MUTEX.lock().unwrap();
         let temp_dir = tempdir().unwrap();
         std::env::set_var("PIRATE_WALLET_DB_DIR", temp_dir.path());
         reset_test_state();

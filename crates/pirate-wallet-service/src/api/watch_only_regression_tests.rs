@@ -15,14 +15,7 @@
 //! key.
 
 use super::*;
-use std::sync::Mutex;
 use tempfile::tempdir;
-
-// configure_wallet_storage mutates process-wide statics (WALLETS,
-// ACTIVE_WALLET, the registry cache, ...), same as the panic_duress tests
-// elsewhere in this crate. Serialize this module's tests against each other
-// so they don't stomp on one another's wallet storage context.
-static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Best-effort reset of the same process-wide statics `configure_wallet_storage`
 /// mutates, so this test doesn't leave the app "unlocked" for whichever test
@@ -38,7 +31,7 @@ fn reset_global_wallet_state() {
 
 #[test]
 fn watch_only_wallet_supports_balance_listing_and_address_generation() {
-    let _guard = TEST_MUTEX.lock().unwrap();
+    let _guard = GLOBAL_WALLET_STATE_TEST_MUTEX.lock().unwrap();
     reset_global_wallet_state();
     let temp_dir = tempdir().unwrap();
 
