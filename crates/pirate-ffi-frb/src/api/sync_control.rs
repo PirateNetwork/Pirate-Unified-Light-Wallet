@@ -1825,7 +1825,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 );
             });
         }
-        let (mut db, _key, _master_key) =
+        let (db, _key, _master_key) =
             open_wallet_db_with_passphrase(&wallet_id, &passphrase).map_err(|e| {
                 pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
@@ -1900,7 +1900,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 );
             });
         }
-        pirate_storage_sqlite::truncate_above_height(&mut db, truncate_height).map_err(|e| {
+        pirate_storage_sqlite::truncate_above_height(&db, truncate_height).map_err(|e| {
             pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
