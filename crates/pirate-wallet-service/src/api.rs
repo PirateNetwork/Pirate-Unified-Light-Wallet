@@ -58,9 +58,9 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Once};
 #[cfg(test)]
 use std::sync::Mutex;
+use std::sync::{Arc, Once};
 use std::time::Duration;
 use zcash_note_encryption::try_output_recovery_with_ovk;
 use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
