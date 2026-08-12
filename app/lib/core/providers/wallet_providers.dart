@@ -13,6 +13,78 @@ import 'rust_init_provider.dart';
 import '../sync/sync_status_cache.dart';
 import '../services/birthday_update_service.dart';
 
+abstract class WalletProvisioningApi {
+  const WalletProvisioningApi();
+
+  Future<WalletId> createWallet({
+    required String name,
+    required int entropyLen,
+    int? birthday,
+    MnemonicLanguage? mnemonicLanguage,
+  });
+
+  Future<WalletId> restoreWallet({
+    required String name,
+    required String mnemonic,
+    int? birthday,
+    MnemonicLanguage? mnemonicLanguage,
+  });
+
+  Future<WalletId> importViewingWallet({
+    required String name,
+    String? saplingViewingKey,
+    String? ironwoodViewingKey,
+    required int birthday,
+  });
+}
+
+class FfiWalletProvisioningApi extends WalletProvisioningApi {
+  const FfiWalletProvisioningApi();
+
+  @override
+  Future<WalletId> createWallet({
+    required String name,
+    required int entropyLen,
+    int? birthday,
+    MnemonicLanguage? mnemonicLanguage,
+  }) => FfiBridge.createWallet(
+    name: name,
+    entropyLen: entropyLen,
+    birthday: birthday,
+    mnemonicLanguage: mnemonicLanguage,
+  );
+
+  @override
+  Future<WalletId> restoreWallet({
+    required String name,
+    required String mnemonic,
+    int? birthday,
+    MnemonicLanguage? mnemonicLanguage,
+  }) => FfiBridge.restoreWallet(
+    name: name,
+    mnemonic: mnemonic,
+    birthday: birthday,
+    mnemonicLanguage: mnemonicLanguage,
+  );
+
+  @override
+  Future<WalletId> importViewingWallet({
+    required String name,
+    String? saplingViewingKey,
+    String? ironwoodViewingKey,
+    required int birthday,
+  }) => FfiBridge.importViewingWallet(
+    name: name,
+    saplingViewingKey: saplingViewingKey,
+    ironwoodViewingKey: ironwoodViewingKey,
+    birthday: birthday,
+  );
+}
+
+final walletProvisioningApiProvider = Provider<WalletProvisioningApi>((ref) {
+  return const FfiWalletProvisioningApi();
+});
+
 // ============================================================================
 // Session & Active Wallet
 // ============================================================================
@@ -23,13 +95,23 @@ final activeWalletProvider = NotifierProvider<ActiveWalletNotifier, WalletId?>(
 );
 
 class ActiveWalletNotifier extends Notifier<WalletId?> {
+  Future<void> _transitionTail = Future<void>.value();
+  WalletId? _sessionWalletId;
+
   @override
   WalletId? build() {
-    unawaited(_loadActiveWallet());
+    unawaited(_enqueueTransition(_loadActiveWallet));
     return null;
   }
 
-  bool _isSwitching = false;
+  Future<void> _enqueueTransition(Future<void> Function() transition) {
+    final next = _transitionTail.then((_) => transition());
+    _transitionTail = next.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return next;
+  }
 
   Future<void> _loadActiveWallet() async {
     try {
@@ -60,15 +142,13 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
     }
   }
 
-  Future<void> setActiveWallet(WalletId id) async {
-    if (_isSwitching) return;
-
-    _isSwitching = true;
-    try {
+  Future<void> setActiveWallet(WalletId id) {
+    return _enqueueTransition(() async {
       final previous = state;
       if (previous == id) {
         await FfiBridge.switchWallet(id);
         _notifyBackgroundHandler(id);
+        await _startWalletSessions(id);
         return;
       }
 
@@ -77,13 +157,12 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
       _notifyBackgroundHandler(id);
 
       await _startWalletSessions(id);
-    } finally {
-      _isSwitching = false;
-    }
+    });
   }
 
   void clearActiveWallet() {
     state = null;
+    _sessionWalletId = null;
     BackgroundSyncHandler().updateActiveWallet(null);
     unawaited(
       ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(null),
@@ -91,9 +170,12 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
   }
 
   Future<void> _startWalletSessions(WalletId walletId) async {
+    if (_sessionWalletId == walletId) return;
+    _sessionWalletId = walletId;
     try {
       await FfiBridge.startSync(walletId, SyncMode.compact);
     } catch (_) {
+      _sessionWalletId = null;
       // Sync failures are surfaced via sync providers; swallow here
     }
   }
@@ -160,6 +242,28 @@ final refreshWalletRuntimeProvider = Provider<void Function()>((ref) {
   };
 });
 
+final finalizeWalletProvisioningProvider =
+    Provider<Future<void> Function(WalletId)>((ref) {
+      return (WalletId walletId) async {
+        await ref.read(activeWalletProvider.notifier).setActiveWallet(walletId);
+
+        ref.read(refreshWalletRuntimeProvider)();
+        ref.invalidate(walletsExistProvider);
+
+        final wallets = await ref.read(walletsProvider.future);
+        if (!wallets.any((wallet) => wallet.id == walletId)) {
+          throw StateError(
+            'Provisioned wallet is missing from the wallet registry',
+          );
+        }
+
+        final walletsExist = await ref.read(walletsExistProvider.future);
+        if (!walletsExist) {
+          throw StateError('Provisioned wallet was not detected');
+        }
+      };
+    });
+
 // ============================================================================
 // Wallet Creation & Restore
 // ============================================================================
@@ -180,20 +284,16 @@ final createWalletProvider =
         int? birthday,
         MnemonicLanguage? mnemonicLanguage,
       }) async {
-        final walletId = await FfiBridge.createWallet(
-          name: name,
-          entropyLen: entropyLen,
-          birthday: birthday,
-          mnemonicLanguage: mnemonicLanguage,
-        );
+        final walletId = await ref
+            .read(walletProvisioningApiProvider)
+            .createWallet(
+              name: name,
+              entropyLen: entropyLen,
+              birthday: birthday,
+              mnemonicLanguage: mnemonicLanguage,
+            );
 
-        // Set as active
-        unawaited(
-          ref.read(activeWalletProvider.notifier).setActiveWallet(walletId),
-        );
-
-        // Refresh wallets list
-        ref.read(refreshWalletsProvider)();
+        await ref.read(finalizeWalletProvisioningProvider)(walletId);
 
         return walletId;
       };
@@ -215,20 +315,16 @@ final restoreWalletProvider =
         int? birthday,
         MnemonicLanguage? mnemonicLanguage,
       }) async {
-        final walletId = await FfiBridge.restoreWallet(
-          name: name,
-          mnemonic: mnemonic,
-          birthday: birthday,
-          mnemonicLanguage: mnemonicLanguage,
-        );
+        final walletId = await ref
+            .read(walletProvisioningApiProvider)
+            .restoreWallet(
+              name: name,
+              mnemonic: mnemonic,
+              birthday: birthday,
+              mnemonicLanguage: mnemonicLanguage,
+            );
 
-        // Set as active
-        unawaited(
-          ref.read(activeWalletProvider.notifier).setActiveWallet(walletId),
-        );
-
-        // Refresh wallets list
-        ref.read(refreshWalletsProvider)();
+        await ref.read(finalizeWalletProvisioningProvider)(walletId);
 
         return walletId;
       };
@@ -250,20 +346,16 @@ final importViewingWalletProvider =
         String? ironwoodViewingKey,
         required int birthday,
       }) async {
-        final walletId = await FfiBridge.importViewingWallet(
-          name: name,
-          saplingViewingKey: saplingViewingKey,
-          ironwoodViewingKey: ironwoodViewingKey,
-          birthday: birthday,
-        );
+        final walletId = await ref
+            .read(walletProvisioningApiProvider)
+            .importViewingWallet(
+              name: name,
+              saplingViewingKey: saplingViewingKey,
+              ironwoodViewingKey: ironwoodViewingKey,
+              birthday: birthday,
+            );
 
-        // Set as active
-        unawaited(
-          ref.read(activeWalletProvider.notifier).setActiveWallet(walletId),
-        );
-
-        // Refresh wallets list
-        ref.read(refreshWalletsProvider)();
+        await ref.read(finalizeWalletProvisioningProvider)(walletId);
 
         return walletId;
       };

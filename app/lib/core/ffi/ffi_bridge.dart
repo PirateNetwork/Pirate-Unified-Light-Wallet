@@ -18,7 +18,6 @@ import 'generated/models.dart'
 import 'generated/models.dart'
     as models
     show AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
-import 'wallet_lifecycle_sync_helper.dart';
 
 part 'ffi_bridge_network_helpers.dart';
 part 'ffi_bridge_sync_streams.dart';
@@ -204,13 +203,12 @@ class FfiBridge {
   // WALLET LIFECYCLE - FFI Implementation
   // ============================================================================
 
-  /// Create new wallet with entropy, birthday, and auto-start sync
+  /// Create new wallet with entropy and birthday
   ///
   /// @param name - Wallet display name
   /// @param entropyLen - 128 or 256 bits (default 256 for 24 words)
   /// @param birthday - Block height for scanning (default: mainnet default)
   ///
-  /// After creation, automatically starts compact sync.
   static Future<WalletId> createWallet({
     required String name,
     int entropyLen = 256,
@@ -225,8 +223,6 @@ class FfiBridge {
         mnemonicLanguage: mnemonicLanguage,
       );
       _activeWalletId = walletId;
-      // Auto-start compact sync after wallet creation
-      _startCompactSyncAfterCreate(walletId);
       return walletId;
     }
 
@@ -234,13 +230,12 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  /// Restore wallet from mnemonic with birthday and auto-start sync
+  /// Restore wallet from mnemonic with birthday
   ///
   /// @param name - Wallet display name
   /// @param mnemonic - 24-word BIP-39 seed phrase
   /// @param birthday - Block height to scan from (critical for restore)
   ///
-  /// After restore, automatically starts compact sync from birthday.
   static Future<WalletId> restoreWallet({
     required String name,
     required String mnemonic,
@@ -255,8 +250,6 @@ class FfiBridge {
         mnemonicLanguage: mnemonicLanguage,
       );
       _activeWalletId = walletId;
-      // Auto-start compact sync after restore
-      _startCompactSyncAfterCreate(walletId);
       return walletId;
     }
 
@@ -414,14 +407,6 @@ class FfiBridge {
       return;
     }
     throw UnimplementedError('FRB bindings not available');
-  }
-
-  /// Helper to auto-start sync after wallet creation
-  static Future<void> _startCompactSyncAfterCreate(WalletId walletId) async {
-    await WalletLifecycleSyncHelper.startCompactSyncAfterCreate(
-      walletId: walletId,
-      startSync: (walletId) => startSync(walletId, SyncMode.compact),
-    );
   }
 
   // Addresses
@@ -587,7 +572,6 @@ class FfiBridge {
   /// @param saplingViewingKey - Sapling viewing key string
   /// @param birthday - Block height to scan from (required for viewing key import)
   ///
-  /// After import, automatically starts compact sync from birthday.
   static Future<WalletId> importViewingWallet({
     required String name,
     String? saplingViewingKey,
@@ -605,8 +589,6 @@ class FfiBridge {
         birthday: birthday,
       );
       _activeWalletId = walletId;
-      // Auto-start compact sync from birthday
-      _startCompactSyncAfterCreate(walletId);
       return walletId;
     }
 
