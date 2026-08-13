@@ -219,3 +219,18 @@ pub struct TransactionRecord {
     /// Memo (from first note with memo)
     pub memo: Option<Vec<u8>>,
 }
+
+/// Wallet-authored details retained independently of chain-derived state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutgoingTransactionIntent {
+    /// Transaction ID in display byte order.
+    pub txid: String,
+    /// Account that authored the transaction.
+    pub account_id: i64,
+    /// Total value sent to requested recipients, excluding fee and change.
+    pub amount: u64,
+    /// Transaction fee.
+    pub fee: u64,
+    /// Unix timestamp recorded after a successful broadcast.
+    pub broadcast_at: i64,
+}

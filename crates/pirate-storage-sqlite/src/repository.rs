@@ -1113,6 +1113,109 @@ impl<'a> Repository<'a> {
         Ok(())
     }
 
+    /// Persist the exact recipient value for a wallet-authored transaction.
+    ///
+    /// This metadata survives rescans because it records user intent rather
+    /// than an observation derived from the chain.
+    pub fn upsert_outgoing_transaction_intent(
+        &self,
+        account_id: i64,
+        txid_hex: &str,
+        amount: u64,
+        fee: u64,
+        broadcast_at: i64,
+    ) -> Result<()> {
+        let txid = txid_hex.trim().to_ascii_lowercase();
+        if txid.len() != 64 || !txid.chars().all(|character| character.is_ascii_hexdigit()) {
+            return Err(Error::Validation(
+                "Outgoing transaction ID must be 32-byte hexadecimal".to_string(),
+            ));
+        }
+        let amount = i64::try_from(amount)
+            .map_err(|_| Error::Validation("Outgoing amount exceeds storage range".to_string()))?;
+        let fee = i64::try_from(fee)
+            .map_err(|_| Error::Validation("Transaction fee exceeds storage range".to_string()))?;
+        let encrypted_account_id = self.encrypt_int64(account_id)?;
+        let encrypted_amount = self.encrypt_int64(amount)?;
+        let encrypted_fee = self.encrypt_int64(fee)?;
+
+        let tx = self.db.conn().unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO outgoing_transaction_intents
+                (txid, account_id, amount, fee, broadcast_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(txid) DO UPDATE SET
+                account_id = excluded.account_id,
+                amount = excluded.amount,
+                fee = excluded.fee,
+                broadcast_at = excluded.broadcast_at",
+            params![
+                txid,
+                encrypted_account_id,
+                encrypted_amount,
+                encrypted_fee,
+                broadcast_at
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO transactions (txid, height, timestamp, fee)
+             VALUES (?1, 0, ?2, ?3)
+             ON CONFLICT(txid) DO UPDATE SET
+                timestamp = CASE
+                    WHEN transactions.height > 0 THEN transactions.timestamp
+                    ELSE excluded.timestamp
+                END,
+                fee = excluded.fee",
+            params![txid, broadcast_at, fee],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Return durable outgoing intents owned by one account.
+    pub fn get_outgoing_transaction_intents(
+        &self,
+        account_id: i64,
+    ) -> Result<Vec<OutgoingTransactionIntent>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT txid, account_id, amount, fee, broadcast_at
+             FROM outgoing_transaction_intents
+             ORDER BY broadcast_at DESC, txid DESC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Vec<u8>>(1)?,
+                    row.get::<_, Vec<u8>>(2)?,
+                    row.get::<_, Vec<u8>>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut intents = Vec::new();
+        for (txid, encrypted_account_id, encrypted_amount, encrypted_fee, broadcast_at) in rows {
+            if self.decrypt_int64(&encrypted_account_id)? != account_id {
+                continue;
+            }
+            let amount = self.decrypt_int64(&encrypted_amount)?;
+            let fee = self.decrypt_int64(&encrypted_fee)?;
+            intents.push(OutgoingTransactionIntent {
+                txid,
+                account_id,
+                amount: u64::try_from(amount).map_err(|_| {
+                    Error::Storage("Stored outgoing amount is negative".to_string())
+                })?,
+                fee: u64::try_from(fee).map_err(|_| {
+                    Error::Storage("Stored transaction fee is negative".to_string())
+                })?,
+                broadcast_at,
+            });
+        }
+        Ok(intents)
+    }
+
     /// Insert or update an outgoing memo for a transaction.
     pub fn upsert_tx_memo(&self, txid_hex: &str, memo: &[u8]) -> Result<()> {
         let encrypted_memo = self.encrypt_blob(memo)?;
