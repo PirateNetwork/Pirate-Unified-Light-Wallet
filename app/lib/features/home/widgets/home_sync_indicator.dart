@@ -59,12 +59,21 @@ class HomeSyncIndicator extends StatelessWidget {
     final statusColor = isComplete && eta == null
         ? AppColors.success
         : AppColors.textSecondary;
-
+    final blockProgressText = (targetHeight > 0 && currentHeight > 0)
+        ? 'Block {currentHeight} / {targetHeight}'.trArgs({
+            'currentHeight': currentHeight,
+            'targetHeight': targetHeight,
+          })
+        : (currentHeight > 0)
+        ? 'Block {currentHeight}'.trArgs({'currentHeight': currentHeight})
+        : (targetHeight > 0)
+        ? 'Block 0 / {targetHeight}'.trArgs({'targetHeight': targetHeight})
+        : 'Block 0'.tr;
     return Semantics(
       container: true,
       liveRegion: true,
       label: 'Wallet sync status'.tr,
-      value: '$stage, ${(progress * 100).toStringAsFixed(1)} percent complete',
+      value: blockProgressText,
       child: PCard(
         padding: const EdgeInsets.all(PSpacing.md),
         child: Column(
