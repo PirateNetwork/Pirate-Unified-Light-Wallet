@@ -102,7 +102,7 @@ fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
         )
         .unwrap();
 
-    assert_eq!(version, 33);
+    assert_eq!(version, 34);
     assert_eq!(sapling_checkpoint, 12345);
     assert_eq!(orchard_checkpoint, 67890);
     assert_eq!(retained_tables, 2);
@@ -137,8 +137,61 @@ fn test_v33_adds_durable_outgoing_transaction_intents() {
         )
         .unwrap();
 
-    assert_eq!(version, 33);
+    assert_eq!(version, 34);
     assert_eq!(table_count, 1);
+}
+
+#[test]
+fn test_v34_adds_ironwood_activation_height_to_sync_state() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+
+    conn.execute_batch(
+        "CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+         INSERT INTO schema_version (version) VALUES (33);
+         CREATE TABLE migration_state (
+             key TEXT PRIMARY KEY,
+             value TEXT NOT NULL,
+             updated_at TEXT NOT NULL
+         );
+         CREATE TABLE sync_state (
+             id INTEGER PRIMARY KEY CHECK (id = 1),
+             local_height INTEGER NOT NULL DEFAULT 0,
+             target_height INTEGER NOT NULL DEFAULT 0,
+             last_checkpoint_height INTEGER NOT NULL DEFAULT 0,
+             updated_at TEXT NOT NULL
+         );
+         INSERT INTO sync_state (
+             id, local_height, target_height, last_checkpoint_height, updated_at
+         ) VALUES (1, 100, 200, 90, datetime('now'));",
+    )
+    .unwrap();
+
+    migrations::run_migrations(&conn).unwrap();
+
+    let version: i32 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let activation_height: Option<i64> = conn
+        .query_row(
+            "SELECT ironwood_activation_height FROM sync_state WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let migration_marker: String = conn
+        .query_row(
+            "SELECT value FROM migration_state WHERE key = 'v34_ironwood_activation_height'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(version, 34);
+    assert_eq!(activation_height, None);
+    assert_eq!(migration_marker, "completed");
 }
 
 #[test]

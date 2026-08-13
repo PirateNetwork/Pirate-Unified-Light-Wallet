@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 33;
+const SCHEMA_VERSION: i32 = 34;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -128,6 +128,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 33 {
         migrate_v33(conn)?;
+    }
+    if current_version < 34 {
+        migrate_v34(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -658,6 +661,41 @@ fn migrate_v33(conn: &Connection) -> Result<()> {
         COMMIT;
         "#,
     )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v34(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(sync_state)")?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(stmt);
+    let alter_sync_state = if columns
+        .iter()
+        .any(|column| column == "ironwood_activation_height")
+    {
+        ""
+    } else {
+        "ALTER TABLE sync_state ADD COLUMN ironwood_activation_height INTEGER;"
+    };
+
+    conn.execute_batch(&format!(
+        r#"
+        BEGIN IMMEDIATE;
+
+        {alter_sync_state}
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v34_ironwood_activation_height', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#
+    ))
     .map_err(|e| Error::Migration(e.to_string()))?;
 
     Ok(())
