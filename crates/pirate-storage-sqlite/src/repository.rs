@@ -6,7 +6,8 @@ use crate::address_book::ColorTag;
 use crate::frontier_witness::{
     construct_anchor_witnesses_from_db_state, resolve_orchard_anchor_from_db_state,
 };
-use crate::{models::*, Database, Result};
+use crate::{models::*, Database, Error, Result};
+use pirate_core::keys::{ExtendedSpendingKey, IronwoodExtendedSpendingKey};
 use pirate_core::DEFAULT_FEE;
 use pirate_params::consensus::ConsensusParams;
 use rusqlite::params_from_iter;
@@ -25,6 +26,34 @@ type NoteOutputGroups = HashMap<(Vec<u8>, i64, NoteType), Vec<NoteRecord>>;
 const NOTE_SHARD_INDEX_BITS: u32 = 16;
 // Keep dynamic `IN` queries below SQLite's historical 999-variable default.
 const TRANSACTION_QUERY_CHUNK_SIZE: usize = 900;
+const SEED_KEY_SCAN_REPLAY_MARKER: &str = "seed_key_scan_replay_required";
+
+fn refresh_account_key_viewing_material(key: &mut AccountKey) -> Result<bool> {
+    let mut changed = false;
+
+    if let Some(extsk_bytes) = key.sapling_extsk.as_deref() {
+        let extsk = ExtendedSpendingKey::from_bytes(extsk_bytes)
+            .map_err(|error| Error::Validation(format!("Invalid Sapling spending key: {error}")))?;
+        let canonical_dfvk = Some(extsk.to_extended_fvk().to_bytes());
+        if key.sapling_dfvk != canonical_dfvk {
+            key.sapling_dfvk = canonical_dfvk;
+            changed = true;
+        }
+    }
+
+    if let Some(extsk_bytes) = key.orchard_extsk.as_deref() {
+        let extsk = IronwoodExtendedSpendingKey::from_bytes(extsk_bytes).map_err(|error| {
+            Error::Validation(format!("Invalid Ironwood spending key: {error}"))
+        })?;
+        let canonical_fvk = Some(extsk.to_extended_fvk().to_bytes());
+        if key.orchard_fvk != canonical_fvk {
+            key.orchard_fvk = canonical_fvk;
+            changed = true;
+        }
+    }
+
+    Ok(changed)
+}
 
 /// Repository for database operations
 pub struct Repository<'a> {
@@ -1746,6 +1775,187 @@ impl<'a> Repository<'a> {
         }
 
         Ok(None)
+    }
+
+    /// Reconcile the primary seed key with the wallet secret without discarding
+    /// any older spending key that may still control funds.
+    ///
+    /// Returns the canonical seed key id and whether sync must replay historical
+    /// blocks before the reconciled key set is considered complete.
+    pub fn reconcile_primary_seed_account_key(
+        &self,
+        secret: &WalletSecret,
+        birthday_height: i64,
+    ) -> Result<(i64, bool)> {
+        if secret.extsk.is_empty() {
+            return Err(Error::Validation(
+                "A spending wallet must contain a Sapling spending key".to_string(),
+            ));
+        }
+
+        let sapling_extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
+            .map_err(|error| Error::Validation(format!("Invalid Sapling spending key: {error}")))?;
+        let canonical_sapling_dfvk = Some(sapling_extsk.to_extended_fvk().to_bytes());
+        let canonical_ironwood_fvk = secret
+            .orchard_extsk
+            .as_deref()
+            .map(IronwoodExtendedSpendingKey::from_bytes)
+            .transpose()
+            .map_err(|error| Error::Validation(format!("Invalid Ironwood spending key: {error}")))?
+            .map(|extsk| extsk.to_extended_fvk().to_bytes());
+
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let result = (|| -> Result<(i64, bool)> {
+            let keys = self.get_account_keys(secret.account_id)?;
+            let canonical_index = keys.iter().position(|key| {
+                key.key_scope == KeyScope::Account
+                    && key.sapling_extsk.as_deref() == Some(secret.extsk.as_slice())
+                    && key.orchard_extsk.as_deref() == secret.orchard_extsk.as_deref()
+            });
+
+            let mut updates = Vec::new();
+            let mut new_seed = None;
+            let mut scan_keys_changed = false;
+            let primary_key_id = if let Some(index) = canonical_index {
+                let mut canonical = keys[index].clone();
+                let id = canonical
+                    .id
+                    .ok_or_else(|| Error::Storage("Stored seed key has no id".to_string()))?;
+                let viewing_material_changed = canonical.sapling_dfvk != canonical_sapling_dfvk
+                    || canonical.orchard_fvk != canonical_ironwood_fvk;
+                let metadata_changed = canonical.key_type != KeyType::Seed
+                    || canonical.birthday_height != birthday_height
+                    || !canonical.spendable
+                    || canonical.encrypted_mnemonic != secret.encrypted_mnemonic;
+                if viewing_material_changed || metadata_changed {
+                    canonical.key_type = KeyType::Seed;
+                    canonical.key_scope = KeyScope::Account;
+                    canonical.label = Some("Seed".to_string());
+                    canonical.birthday_height = birthday_height;
+                    canonical.spendable = true;
+                    canonical.sapling_dfvk = canonical_sapling_dfvk.clone();
+                    canonical.orchard_fvk = canonical_ironwood_fvk.clone();
+                    canonical.encrypted_mnemonic = secret.encrypted_mnemonic.clone();
+                    updates.push(canonical);
+                }
+                scan_keys_changed |= viewing_material_changed;
+                id
+            } else {
+                scan_keys_changed = true;
+                new_seed = Some(AccountKey {
+                    id: None,
+                    account_id: secret.account_id,
+                    key_type: KeyType::Seed,
+                    key_scope: KeyScope::Account,
+                    label: Some("Seed".to_string()),
+                    birthday_height,
+                    created_at: secret.created_at,
+                    spendable: true,
+                    sapling_extsk: Some(secret.extsk.clone()),
+                    sapling_dfvk: canonical_sapling_dfvk.clone(),
+                    orchard_extsk: secret.orchard_extsk.clone(),
+                    orchard_fvk: canonical_ironwood_fvk.clone(),
+                    encrypted_mnemonic: secret.encrypted_mnemonic.clone(),
+                });
+                0
+            };
+
+            for (index, key) in keys.iter().enumerate() {
+                if Some(index) == canonical_index
+                    || key.key_type != KeyType::Seed
+                    || key.key_scope != KeyScope::Account
+                {
+                    continue;
+                }
+
+                let mut previous = key.clone();
+                previous.key_type =
+                    if previous.sapling_extsk.is_some() || previous.orchard_extsk.is_some() {
+                        KeyType::ImportSpend
+                    } else {
+                        KeyType::ImportView
+                    };
+                previous.spendable = previous.key_type == KeyType::ImportSpend;
+                if previous
+                    .label
+                    .as_deref()
+                    .is_none_or(|label| label == "Seed")
+                {
+                    previous.label = Some("Previous wallet key".to_string());
+                }
+                previous.encrypted_mnemonic = None;
+                scan_keys_changed |= refresh_account_key_viewing_material(&mut previous)?;
+                updates.push(previous);
+            }
+
+            let replay_was_pending = self.seed_key_scan_replay_required()?;
+            if updates.is_empty() && new_seed.is_none() {
+                return Ok((primary_key_id, replay_was_pending));
+            }
+
+            let encrypted_updates = updates
+                .iter()
+                .map(|key| self.encrypt_account_key_fields(key))
+                .collect::<Result<Vec<_>>>()?;
+            let encrypted_new_seed = new_seed
+                .as_ref()
+                .map(|key| self.encrypt_account_key_fields(key))
+                .transpose()?;
+
+            for key in &encrypted_updates {
+                self.upsert_account_key(key)?;
+            }
+            let key_id = if let Some(key) = encrypted_new_seed.as_ref() {
+                self.upsert_account_key(key)?
+            } else {
+                primary_key_id
+            };
+            if scan_keys_changed {
+                conn.execute(
+                    "INSERT INTO migration_state (key, value, updated_at) VALUES (?1, '1', ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                    params![SEED_KEY_SCAN_REPLAY_MARKER, chrono::Utc::now().to_rfc3339()],
+                )?;
+            }
+            Ok((key_id, replay_was_pending || scan_keys_changed))
+        })();
+
+        match result {
+            Ok(value) => {
+                if let Err(error) = conn.execute_batch("COMMIT") {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    return Err(error.into());
+                }
+                Ok(value)
+            }
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
+    }
+
+    /// Return whether a seed-key repair requires historical block replay.
+    pub fn seed_key_scan_replay_required(&self) -> Result<bool> {
+        let value = self
+            .db
+            .conn()
+            .query_row(
+                "SELECT value FROM migration_state WHERE key = ?1",
+                [SEED_KEY_SCAN_REPLAY_MARKER],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        Ok(value.as_deref() == Some("1"))
+    }
+
+    /// Clear the durable seed-key replay marker after scan state is rewound.
+    pub fn clear_seed_key_scan_replay_required(&self) -> Result<()> {
+        self.db.conn().execute(
+            "DELETE FROM migration_state WHERE key = ?1",
+            [SEED_KEY_SCAN_REPLAY_MARKER],
+        )?;
+        Ok(())
     }
 
     /// Insert or update an account key (expects encrypted key material fields).
@@ -6544,5 +6754,193 @@ mod tests {
                 .unwrap(),
             120
         );
+    }
+
+    #[test]
+    fn seed_key_reconciliation_refreshes_stale_viewing_material() {
+        const MNEMONIC: &str =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        const OTHER_MNEMONIC: &str =
+            "legal winner thank year wave sausage worth useful legal winner thank yellow";
+
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Stale viewing material".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let sapling_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
+            MNEMONIC,
+            pirate_params::NetworkType::Mainnet,
+            0,
+        )
+        .unwrap();
+        let seed = ExtendedSpendingKey::seed_bytes_from_mnemonic(MNEMONIC).unwrap();
+        let ironwood_extsk = IronwoodExtendedSpendingKey::master(&seed)
+            .unwrap()
+            .derive_account(133, 0)
+            .unwrap();
+        let other_seed = ExtendedSpendingKey::seed_bytes_from_mnemonic(OTHER_MNEMONIC).unwrap();
+        let stale_ironwood_fvk = IronwoodExtendedSpendingKey::master(&other_seed)
+            .unwrap()
+            .derive_account(133, 0)
+            .unwrap()
+            .to_extended_fvk()
+            .to_bytes();
+        let secret = WalletSecret {
+            wallet_id: "stale-viewing-wallet".to_string(),
+            account_id,
+            extsk: sapling_extsk.to_bytes(),
+            dfvk: Some(sapling_extsk.to_extended_fvk().to_bytes()),
+            orchard_extsk: Some(ironwood_extsk.to_bytes()),
+            sapling_ivk: None,
+            orchard_ivk: None,
+            encrypted_mnemonic: Some(MNEMONIC.as_bytes().to_vec()),
+            mnemonic_language: None,
+            created_at: 1,
+        };
+        let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret).unwrap();
+        repo.upsert_wallet_secret(&encrypted_secret).unwrap();
+
+        let stale_key = AccountKey {
+            id: None,
+            account_id,
+            key_type: KeyType::ImportSpend,
+            key_scope: KeyScope::Account,
+            label: Some("Imported account".to_string()),
+            birthday_height: 10,
+            created_at: 1,
+            spendable: true,
+            sapling_extsk: Some(secret.extsk.clone()),
+            sapling_dfvk: Some(vec![0x11; 128]),
+            orchard_extsk: secret.orchard_extsk.clone(),
+            orchard_fvk: Some(stale_ironwood_fvk),
+            encrypted_mnemonic: secret.encrypted_mnemonic.clone(),
+        };
+        let encrypted_key = repo.encrypt_account_key_fields(&stale_key).unwrap();
+        let original_id = repo.upsert_account_key(&encrypted_key).unwrap();
+
+        let (key_id, replay_required) = repo
+            .reconcile_primary_seed_account_key(&secret, 20)
+            .unwrap();
+
+        assert_eq!(key_id, original_id);
+        assert!(replay_required);
+        assert!(repo.seed_key_scan_replay_required().unwrap());
+        let repaired = repo.get_account_key_by_id(key_id).unwrap().unwrap();
+        assert_eq!(repaired.key_type, KeyType::Seed);
+        assert_eq!(repaired.label.as_deref(), Some("Seed"));
+        assert_eq!(
+            repaired.sapling_dfvk,
+            Some(sapling_extsk.to_extended_fvk().to_bytes())
+        );
+        assert_eq!(
+            repaired.orchard_fvk,
+            Some(ironwood_extsk.to_extended_fvk().to_bytes())
+        );
+        assert_eq!(repaired.birthday_height, 20);
+    }
+
+    #[test]
+    fn seed_key_reconciliation_preserves_a_previous_spending_key() {
+        const CURRENT_MNEMONIC: &str =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        const PREVIOUS_MNEMONIC: &str =
+            "legal winner thank year wave sausage worth useful legal winner thank yellow";
+
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Changed seed key".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let current_sapling = ExtendedSpendingKey::from_mnemonic_with_account(
+            CURRENT_MNEMONIC,
+            pirate_params::NetworkType::Mainnet,
+            0,
+        )
+        .unwrap();
+        let current_seed = ExtendedSpendingKey::seed_bytes_from_mnemonic(CURRENT_MNEMONIC).unwrap();
+        let current_ironwood = IronwoodExtendedSpendingKey::master(&current_seed)
+            .unwrap()
+            .derive_account(133, 0)
+            .unwrap();
+        let previous_sapling = ExtendedSpendingKey::from_mnemonic_with_account(
+            PREVIOUS_MNEMONIC,
+            pirate_params::NetworkType::Mainnet,
+            0,
+        )
+        .unwrap();
+        let previous_seed =
+            ExtendedSpendingKey::seed_bytes_from_mnemonic(PREVIOUS_MNEMONIC).unwrap();
+        let previous_ironwood = IronwoodExtendedSpendingKey::master(&previous_seed)
+            .unwrap()
+            .derive_account(133, 0)
+            .unwrap();
+        let secret = WalletSecret {
+            wallet_id: "changed-seed-wallet".to_string(),
+            account_id,
+            extsk: current_sapling.to_bytes(),
+            dfvk: Some(current_sapling.to_extended_fvk().to_bytes()),
+            orchard_extsk: Some(current_ironwood.to_bytes()),
+            sapling_ivk: None,
+            orchard_ivk: None,
+            encrypted_mnemonic: Some(CURRENT_MNEMONIC.as_bytes().to_vec()),
+            mnemonic_language: None,
+            created_at: 1,
+        };
+        let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret).unwrap();
+        repo.upsert_wallet_secret(&encrypted_secret).unwrap();
+        let previous_key = AccountKey {
+            id: None,
+            account_id,
+            key_type: KeyType::Seed,
+            key_scope: KeyScope::Account,
+            label: Some("Seed".to_string()),
+            birthday_height: 10,
+            created_at: 1,
+            spendable: true,
+            sapling_extsk: Some(previous_sapling.to_bytes()),
+            sapling_dfvk: Some(vec![0x22; 128]),
+            orchard_extsk: Some(previous_ironwood.to_bytes()),
+            orchard_fvk: Some(vec![0x33; 137]),
+            encrypted_mnemonic: Some(PREVIOUS_MNEMONIC.as_bytes().to_vec()),
+        };
+        let encrypted_key = repo.encrypt_account_key_fields(&previous_key).unwrap();
+        let previous_id = repo.upsert_account_key(&encrypted_key).unwrap();
+
+        let (current_id, replay_required) = repo
+            .reconcile_primary_seed_account_key(&secret, 20)
+            .unwrap();
+
+        assert_ne!(current_id, previous_id);
+        assert!(replay_required);
+        let keys = repo.get_account_keys(account_id).unwrap();
+        assert_eq!(keys.len(), 2);
+        let previous = keys.iter().find(|key| key.id == Some(previous_id)).unwrap();
+        assert_eq!(previous.key_type, KeyType::ImportSpend);
+        assert!(previous.spendable);
+        assert_eq!(previous.sapling_extsk, Some(previous_sapling.to_bytes()));
+        assert_eq!(
+            previous.orchard_fvk,
+            Some(previous_ironwood.to_extended_fvk().to_bytes())
+        );
+        let current = keys.iter().find(|key| key.id == Some(current_id)).unwrap();
+        assert_eq!(current.key_type, KeyType::Seed);
+        assert_eq!(current.sapling_extsk, Some(current_sapling.to_bytes()));
+        assert_eq!(current.orchard_extsk, Some(current_ironwood.to_bytes()));
+
+        let (second_id, second_replay_required) = repo
+            .reconcile_primary_seed_account_key(&secret, 20)
+            .unwrap();
+        assert_eq!(second_id, current_id);
+        assert!(second_replay_required);
+        assert_eq!(repo.get_account_keys(account_id).unwrap().len(), 2);
     }
 }
