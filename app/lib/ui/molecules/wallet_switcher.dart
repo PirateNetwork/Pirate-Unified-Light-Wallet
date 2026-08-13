@@ -20,9 +20,14 @@ import '../molecules/p_dialog.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 
 class WalletSwitcherButton extends ConsumerWidget {
-  const WalletSwitcherButton({super.key, this.compact = false});
+  const WalletSwitcherButton({
+    super.key,
+    this.compact = false,
+    this.fullWidth = false,
+  });
 
   final bool compact;
+  final bool fullWidth;
 
   bool get _isDesktop =>
       Platform.isWindows || Platform.isMacOS || Platform.isLinux;
@@ -32,11 +37,20 @@ class WalletSwitcherButton extends ConsumerWidget {
     final walletMeta = ref.watch(activeWalletMetaProvider);
     final label = walletMeta?.name ?? 'Wallets'.tr;
     final isWatchOnly = walletMeta?.watchOnly ?? false;
+    final labelText = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: (compact ? PTypography.labelSmall : PTypography.labelMedium)(
+        color: AppColors.textPrimary,
+      ),
+    );
 
     return InkWell(
       onTap: () => _showSwitcher(context, ref),
       borderRadius: BorderRadius.circular(PSpacing.radiusMD),
       child: Container(
+        width: fullWidth ? double.infinity : null,
         padding: EdgeInsets.symmetric(
           horizontal: compact ? PSpacing.sm : PSpacing.md,
           vertical: compact ? PSpacing.xs : PSpacing.sm,
@@ -47,7 +61,7 @@ class WalletSwitcherButton extends ConsumerWidget {
           border: Border.all(color: AppColors.borderSubtle),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
           children: [
             Icon(
               Icons.account_balance_wallet_outlined,
@@ -55,17 +69,13 @@ class WalletSwitcherButton extends ConsumerWidget {
               color: AppColors.textSecondary,
             ),
             SizedBox(width: compact ? PSpacing.xs : PSpacing.sm),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 180),
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: (compact
-                    ? PTypography.labelSmall
-                    : PTypography.labelMedium)(color: AppColors.textPrimary),
+            if (fullWidth)
+              Expanded(child: labelText)
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: labelText,
               ),
-            ),
             if (isWatchOnly && !compact) ...[
               const SizedBox(width: PSpacing.xs),
               PBadge(
