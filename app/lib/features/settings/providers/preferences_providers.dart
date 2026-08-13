@@ -535,17 +535,19 @@ class SeedPhraseLanguagePreferenceNotifier extends Notifier<MnemonicLanguage> {
 
 class BiometricsPreferenceNotifier extends Notifier<bool> {
   late final FlutterSecureStorage _storage;
+  Future<void> _initialLoad = Future.value();
   static const String _storageKey = 'ui_biometrics_enabled_v1';
   static const String _fallbackFileName = 'ui_biometrics_enabled_v1.txt';
 
   @override
   bool build() {
     _storage = const FlutterSecureStorage();
-    _load();
+    _initialLoad = _load();
     return false;
   }
 
   Future<void> setEnabled({required bool enabled}) async {
+    await _initialLoad;
     final previous = state;
     if (enabled == previous) {
       return;
@@ -627,33 +629,23 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
   }
 
   Future<void> _load() async {
+    bool? enabled;
     try {
       final raw = await _storage.read(key: _storageKey);
-      final parsed = _parseBool(raw);
-      if (parsed != null) {
-        if (!ref.mounted) {
-          return;
-        }
-        state = parsed;
-        return;
-      }
+      enabled = _parseBool(raw);
     } catch (e) {
       debugPrint(
         'Failed to read biometrics preference from secure storage: $e',
       );
     }
 
-    final fallback = await _readFallbackValue();
+    enabled ??= await _readFallbackValue();
     if (!ref.mounted) {
       return;
     }
-    if (fallback != null) {
-      state = fallback;
-    } else {
-      state = false;
-    }
+    enabled ??= false;
 
-    if (state) {
+    if (enabled) {
       final available = await BiometricAuth.isAvailable();
       if (!ref.mounted) {
         return;
@@ -662,8 +654,10 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
         debugPrint(
           'Biometrics preference was enabled but no biometrics are currently available. Resetting to disabled.',
         );
-        state = false;
         await _persistBestEffort(false);
+        if (ref.mounted) {
+          state = false;
+        }
         return;
       }
 
@@ -676,8 +670,11 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
           debugPrint(
             'Biometrics preference was enabled but no wrapped passphrase cache exists. Resetting to disabled.',
           );
-          state = false;
           await _persistBestEffort(false);
+          if (ref.mounted) {
+            state = false;
+          }
+          return;
         }
       } catch (e) {
         if (!ref.mounted) {
@@ -686,58 +683,22 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
         debugPrint(
           'Failed to verify wrapped passphrase cache for biometrics: $e',
         );
-        state = false;
         await _persistBestEffort(false);
+        if (ref.mounted) {
+          state = false;
+        }
+        return;
       }
+    }
+
+    if (ref.mounted) {
+      state = enabled;
     }
   }
 
   Future<bool> readPersistedValue() async {
-    bool enabled = false;
-    try {
-      final raw = await _storage.read(key: _storageKey);
-      final parsed = _parseBool(raw);
-      if (parsed != null) {
-        enabled = parsed;
-      }
-    } catch (e) {
-      debugPrint(
-        'Failed to read biometrics preference from secure storage: $e',
-      );
-    }
-
-    if (!enabled) {
-      final fallback = await _readFallbackValue();
-      if (fallback != null) {
-        enabled = fallback;
-      }
-    }
-
-    if (!enabled) {
-      return false;
-    }
-
-    final available = await BiometricAuth.isAvailable();
-    if (!available) {
-      await _persistBestEffort(false);
-      return false;
-    }
-
-    try {
-      final hasWrappedPassphrase = await PassphraseCache.exists();
-      if (!hasWrappedPassphrase) {
-        await _persistBestEffort(false);
-        return false;
-      }
-    } catch (e) {
-      debugPrint(
-        'Failed to verify wrapped passphrase cache for persisted biometrics preference: $e',
-      );
-      await _persistBestEffort(false);
-      return false;
-    }
-
-    return true;
+    await _initialLoad;
+    return state;
   }
 
   bool? _parseBool(String? raw) {
@@ -944,6 +905,10 @@ final biometricsEnabledProvider =
     );
 
 final resolvedBiometricsEnabledProvider = FutureProvider<bool>((ref) async {
+  final enabled = ref.watch(biometricsEnabledProvider);
+  if (enabled) {
+    return true;
+  }
   final notifier = ref.read(biometricsEnabledProvider.notifier);
   return notifier.readPersistedValue();
 });
