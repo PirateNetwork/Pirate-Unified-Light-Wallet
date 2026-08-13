@@ -909,11 +909,20 @@ fn ensure_primary_account_key_at_birthday(
     secret: &WalletSecret,
     birthday_height: u32,
 ) -> Result<i64> {
+    if !secret.extsk.is_empty() {
+        let (key_id, _) = repo
+            .reconcile_primary_seed_account_key(secret, i64::from(birthday_height))
+            .map_err(|error| anyhow!(error.to_string()))?;
+        let _ = repo.backfill_address_key_id(secret.account_id, key_id);
+        let _ = repo.backfill_note_key_id(key_id);
+        return Ok(key_id);
+    }
+
     let keys = repo.get_account_keys(secret.account_id)?;
-    if let Some(existing) = keys.iter().find(|key| {
-        matches!(key.key_type, KeyType::Seed | KeyType::ImportView)
-            && key.key_scope == KeyScope::Account
-    }) {
+    if let Some(existing) = keys
+        .iter()
+        .find(|key| key.key_type == KeyType::ImportView && key.key_scope == KeyScope::Account)
+    {
         if let Some(id) = existing.id {
             if existing.birthday_height != birthday_height as i64 {
                 let mut updated = existing.clone();
@@ -927,44 +936,7 @@ fn ensure_primary_account_key_at_birthday(
         }
     }
 
-    let sapling_extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)?;
-    let dfvk_bytes = match secret.dfvk.as_ref() {
-        Some(bytes) => Some(bytes.clone()),
-        None => Some(sapling_extsk.to_extended_fvk().to_bytes()),
-    };
-
-    let orchard_fvk_bytes = match secret.orchard_extsk.as_ref() {
-        Some(bytes) => {
-            let extsk = IronwoodExtendedSpendingKey::from_bytes(bytes)
-                .map_err(|e| anyhow!("Invalid Ironwood spending key bytes: {}", e))?;
-            Some(extsk.to_extended_fvk().to_bytes())
-        }
-        None => None,
-    };
-
-    let key = AccountKey {
-        id: None,
-        account_id: secret.account_id,
-        key_type: KeyType::Seed,
-        key_scope: KeyScope::Account,
-        label: Some("Seed".to_string()),
-        birthday_height: birthday_height as i64,
-        created_at: chrono::Utc::now().timestamp(),
-        spendable: true,
-        sapling_extsk: Some(secret.extsk.clone()),
-        sapling_dfvk: dfvk_bytes,
-        orchard_extsk: secret.orchard_extsk.clone(),
-        orchard_fvk: orchard_fvk_bytes,
-        encrypted_mnemonic: secret.encrypted_mnemonic.clone(),
-    };
-
-    let encrypted_key = repo.encrypt_account_key_fields(&key)?;
-    let key_id = repo
-        .upsert_account_key(&encrypted_key)
-        .map_err(|e| anyhow!(e.to_string()))?;
-    let _ = repo.backfill_address_key_id(secret.account_id, key_id);
-    let _ = repo.backfill_note_key_id(key_id);
-    Ok(key_id)
+    Err(anyhow!("Watch-only account key not found"))
 }
 
 /// Get active wallet ID
