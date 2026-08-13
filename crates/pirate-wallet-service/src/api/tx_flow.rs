@@ -498,6 +498,8 @@ struct BroadcastContext {
     wallet_id: WalletId,
     account_id: i64,
     spent_nullifiers: Vec<Vec<u8>>,
+    sent_amount: u64,
+    fee: u64,
     change_amount: u64,
     created_at_ms: u64,
 }
@@ -1724,18 +1726,18 @@ fn sign_tx_internal(
         .iter()
         .filter_map(|n| n.nullifier.clone())
         .collect();
-    if !spent_nullifiers.is_empty() {
-        store_broadcast_context(
-            &signed_core.txid.to_string(),
-            BroadcastContext {
-                wallet_id: wallet_id.clone(),
-                account_id: secret.account_id,
-                spent_nullifiers,
-                change_amount: pending.change,
-                created_at_ms: unix_timestamp_millis(),
-            },
-        );
-    }
+    store_broadcast_context(
+        &signed_core.txid.to_string(),
+        BroadcastContext {
+            wallet_id: wallet_id.clone(),
+            account_id: secret.account_id,
+            spent_nullifiers,
+            sent_amount: pending.total_amount,
+            fee: pending.fee,
+            change_amount: pending.change,
+            created_at_ms: unix_timestamp_millis(),
+        },
+    );
 
     Ok(SignedTx {
         txid: signed_core.txid.to_string(),
@@ -1763,6 +1765,78 @@ pub(super) fn sign_tx_filtered(
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<SignedTx> {
     sign_tx_internal(wallet_id, pending, key_ids_filter, address_ids_filter)
+}
+
+fn record_accepted_broadcast(signed: &SignedTx) {
+    let Some(ctx) = take_broadcast_context(&signed.txid) else {
+        return;
+    };
+    let txid_bytes: [u8; 32] = {
+        let decoded = hex::decode(&signed.txid).unwrap_or_default();
+        let mut bytes = [0u8; 32];
+        if decoded.len() == 32 {
+            bytes.copy_from_slice(&decoded);
+        }
+        bytes
+    };
+    let Ok((_db, repo)) = open_wallet_db_for(&ctx.wallet_id) else {
+        return;
+    };
+    let entries: Vec<([u8; 32], [u8; 32])> = ctx
+        .spent_nullifiers
+        .iter()
+        .filter_map(|nullifier| {
+            let mut bytes = [0u8; 32];
+            if nullifier.len() == 32 {
+                bytes.copy_from_slice(nullifier);
+                Some((bytes, txid_bytes))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let marked = repo
+        .mark_notes_spent_by_nullifiers_with_txid(ctx.account_id, &entries)
+        .unwrap_or(0);
+    tracing::info!(
+        "Post-broadcast: marked {} notes as spent for tx {}",
+        marked,
+        signed.txid
+    );
+    pirate_core::debug_log::with_locked_file(|file| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_broadcast_post_mark","timestamp":{},"location":"api.rs:broadcast_tx","message":"post-broadcast note marking","data":{{"txid":"{}","wallet":"{}","nullifiers_submitted":{},"notes_marked":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+            ts,
+            signed.txid,
+            ctx.wallet_id,
+            entries.len(),
+            marked
+        );
+    });
+
+    add_pending_change(&ctx.wallet_id, &signed.txid, ctx.change_amount);
+    let broadcast_at = i64::try_from(unix_timestamp_millis() / 1_000).unwrap_or(i64::MAX);
+    if let Err(error) = repo.upsert_outgoing_transaction_intent(
+        ctx.account_id,
+        &signed.txid,
+        ctx.sent_amount,
+        ctx.fee,
+        broadcast_at,
+    ) {
+        // The transaction is already accepted by the network. Never turn a
+        // local history-write failure into a resend prompt.
+        tracing::error!(
+            "Failed to persist outgoing intent for accepted transaction {}: {}",
+            signed.txid,
+            error
+        );
+    }
+    sync_control::clear_wallet_data_caches(&ctx.wallet_id);
 }
 
 pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
@@ -1898,7 +1972,7 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
                     && orchard_remote.is_some()
                     && tx_orchard_anchor == orchard_remote;
                 let anchor_matches_remote = sapling_matches || orchard_matches;
-                if anchor_matches_remote {
+                let retry_succeeded = if anchor_matches_remote {
                     let retry_client =
                         pirate_sync_lightd::LightClient::with_config(client_config_for_retry);
                     if retry_client.connect().await.is_ok()
@@ -1915,33 +1989,42 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
                                 ts, wallet_id, signed.txid
                             );
                         });
-                        return Ok(signed.txid);
+                        true
+                    } else {
+                        false
                     }
-                }
+                } else {
+                    false
+                };
 
-                if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
-                    let spendability_storage = SpendabilityStateStorage::new(&db);
-                    if let Err(queue_err) = spendability_storage.queue_repair_range(
-                        repair_from,
-                        repair_to_exclusive.max(repair_from.saturating_add(1)),
-                        SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
-                    ) {
-                        tracing::warn!(
-                            "Failed to queue unknown-anchor repair for {} ({}..{}): {}",
-                            wallet_id,
+                if retry_succeeded {
+                    record_accepted_broadcast(&signed);
+                    return Ok(signed.txid);
+                } else {
+                    if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
+                        let spendability_storage = SpendabilityStateStorage::new(&db);
+                        if let Err(queue_err) = spendability_storage.queue_repair_range(
                             repair_from,
-                            repair_to_exclusive,
-                            queue_err
-                        );
+                            repair_to_exclusive.max(repair_from.saturating_add(1)),
+                            SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+                        ) {
+                            tracing::warn!(
+                                "Failed to queue unknown-anchor repair for {} ({}..{}): {}",
+                                wallet_id,
+                                repair_from,
+                                repair_to_exclusive,
+                                queue_err
+                            );
+                        }
                     }
+
+                    sync_control::maybe_trigger_compact_sync(wallet_id.clone());
+
+                    return Err(anyhow!(
+                        "{}: Node rejected transaction with unknown anchor. Witness repair was queued; let sync finalize and retry.",
+                        SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED
+                    ));
                 }
-
-                sync_control::maybe_trigger_compact_sync(wallet_id.clone());
-
-                return Err(anyhow!(
-                    "{}: Node rejected transaction with unknown anchor. Witness repair was queued; let sync finalize and retry.",
-                    SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED
-                ));
             }
 
             return Err(anyhow!("Broadcast failed: {}", e));
@@ -1966,58 +2049,7 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
         );
     });
 
-    if let Some(ctx) = take_broadcast_context(&signed.txid) {
-        let txid_bytes: [u8; 32] = {
-            let decoded = hex::decode(&signed.txid).unwrap_or_default();
-            let mut arr = [0u8; 32];
-            if decoded.len() == 32 {
-                arr.copy_from_slice(&decoded);
-            }
-            arr
-        };
-        if let Ok((db, repo)) = open_wallet_db_for(&ctx.wallet_id) {
-            let entries: Vec<([u8; 32], [u8; 32])> = ctx
-                .spent_nullifiers
-                .iter()
-                .filter_map(|nf| {
-                    let mut arr = [0u8; 32];
-                    if nf.len() == 32 {
-                        arr.copy_from_slice(nf);
-                        Some((arr, txid_bytes))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            let marked = repo
-                .mark_notes_spent_by_nullifiers_with_txid(ctx.account_id, &entries)
-                .unwrap_or(0);
-            tracing::info!(
-                "Post-broadcast: marked {} notes as spent for tx {}",
-                marked,
-                signed.txid
-            );
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_broadcast_post_mark","timestamp":{},"location":"api.rs:broadcast_tx","message":"post-broadcast note marking","data":{{"txid":"{}","wallet":"{}","nullifiers_submitted":{},"notes_marked":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    ts,
-                    signed.txid,
-                    ctx.wallet_id,
-                    entries.len(),
-                    marked
-                );
-            });
-
-            add_pending_change(&ctx.wallet_id, &signed.txid, ctx.change_amount);
-
-            let _ = db;
-        }
-    }
+    record_accepted_broadcast(&signed);
 
     Ok(signed.txid)
 }
