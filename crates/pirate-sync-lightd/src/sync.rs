@@ -189,22 +189,25 @@ fn persistence_shardtree_cache_limit(max_batch_memory_bytes: Option<u64>) -> u64
 fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKeyGroup>> {
     let key_id = key.id.unwrap_or(0);
 
-    let sapling_dfvk = if let Some(ref bytes) = key.sapling_dfvk {
-        ExtendedFullViewingKey::from_bytes(bytes)
-    } else if let Some(ref extsk_bytes) = key.sapling_extsk {
+    let sapling_dfvk = if let Some(ref extsk_bytes) = key.sapling_extsk {
         let extsk = ExtendedSpendingKey::from_bytes(extsk_bytes)
             .map_err(|e| Error::Sync(format!("Invalid Sapling spending key bytes: {}", e)))?;
         Some(extsk.to_extended_fvk())
+    } else if let Some(ref bytes) = key.sapling_dfvk {
+        ExtendedFullViewingKey::from_bytes(bytes)
     } else {
         None
     };
 
-    let orchard_fvk = if let Some(ref bytes) = key.orchard_fvk {
-        IronwoodExtendedFullViewingKey::from_bytes(bytes).ok()
-    } else if let Some(ref extsk_bytes) = key.orchard_extsk {
+    let orchard_fvk = if let Some(ref extsk_bytes) = key.orchard_extsk {
         let extsk = IronwoodExtendedSpendingKey::from_bytes(extsk_bytes)
-            .map_err(|e| Error::Sync(format!("Invalid Orchard spending key bytes: {}", e)))?;
+            .map_err(|e| Error::Sync(format!("Invalid Ironwood spending key bytes: {}", e)))?;
         Some(extsk.to_extended_fvk())
+    } else if let Some(ref bytes) = key.orchard_fvk {
+        Some(
+            IronwoodExtendedFullViewingKey::from_bytes(bytes)
+                .map_err(|e| Error::Sync(format!("Invalid Ironwood viewing key bytes: {}", e)))?,
+        )
     } else {
         None
     };
