@@ -13,10 +13,8 @@ import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../ui/atoms/p_text_button.dart';
-import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/transaction_row_v2.dart';
-import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/balance_hero.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../ui/organisms/p_sliver_header.dart';
@@ -33,6 +31,7 @@ import '../../core/providers/price_providers.dart';
 import '../settings/providers/transport_providers.dart';
 import '../settings/providers/preferences_providers.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import 'widgets/home_header_controls.dart';
 
 /// Home screen
 class HomeScreen extends StatefulWidget {
@@ -53,14 +52,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final screenWidth = mediaQuery.size.width;
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
     final gutter = PSpacing.responsiveGutter(screenWidth);
+    final availableHeaderWidth = math.max(0.0, screenWidth - (gutter * 2));
+    final stackedHeaderControls = HomeHeaderControls.shouldStack(
+      availableHeaderWidth,
+    );
     final headerVerticalPadding = PSpacing.isDesktop(screenWidth)
         ? PSpacing.md
         : PSpacing.sm;
-    final baseHeaderExtent = PSpacing.isMobile(screenWidth)
+    final standardHeaderExtent = PSpacing.isMobile(screenWidth)
         ? 280.0
         : PSpacing.isTablet(screenWidth)
         ? 300.0
         : 320.0;
+    final baseHeaderExtent =
+        standardHeaderExtent +
+        (stackedHeaderControls ? PSpacing.xl + PSpacing.sm : 0.0);
     final extraHeaderHeight = textScale > 1.0 ? (textScale - 1.0) * 32.0 : 0.0;
     final headerExtent =
         baseHeaderExtent + mediaQuery.padding.top + extraHeaderHeight;
@@ -256,16 +262,8 @@ class _HomeHeader extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const WalletSwitcherButton(),
-                  const Spacer(),
-                  ConnectionStatusIndicator(
-                    full: true,
-                    compact: true,
-                    onTap: () => context.push('/settings/privacy-shield'),
-                  ),
-                ],
+              HomeHeaderControls(
+                onConnectionTap: () => context.push('/settings/privacy-shield'),
               ),
               const SizedBox(height: PSpacing.sm),
               Expanded(
