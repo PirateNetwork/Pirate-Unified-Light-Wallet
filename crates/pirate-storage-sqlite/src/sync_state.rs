@@ -33,6 +33,8 @@ pub struct SyncStateRow {
     pub target_height: u64,
     /// Last checkpoint height
     pub last_checkpoint_height: u64,
+    /// Chain-derived Ironwood activation height, when resolved.
+    pub ironwood_activation_height: Option<u32>,
     /// Last update timestamp (ISO 8601)
     pub updated_at: String,
 }
@@ -56,6 +58,7 @@ impl Default for SyncStateRow {
             local_height: 0,
             target_height: 0,
             last_checkpoint_height: 0,
+            ironwood_activation_height: None,
             updated_at: chrono::Utc::now().to_rfc3339(),
         }
     }
@@ -145,7 +148,8 @@ impl<'a> SyncStateStorage<'a> {
                 .conn()
                 .query_row(
                     r#"
-                    SELECT local_height, target_height, last_checkpoint_height, updated_at
+                    SELECT local_height, target_height, last_checkpoint_height,
+                           ironwood_activation_height, updated_at
                     FROM sync_state
                     WHERE id = 1
                     "#,
@@ -168,13 +172,35 @@ impl<'a> SyncStateStorage<'a> {
                                         last_checkpoint_height_i64,
                                     )
                                 })?,
-                            updated_at: row.get(3)?,
+                            ironwood_activation_height: row
+                                .get::<_, Option<i64>>(3)?
+                                .map(|height| {
+                                    u32::try_from(height).map_err(|_| {
+                                        rusqlite::Error::IntegralValueOutOfRange(3, height)
+                                    })
+                                })
+                                .transpose()?,
+                            updated_at: row.get(4)?,
                         })
                     },
                 )
                 .optional()?;
 
             Ok(row.unwrap_or_default())
+        })
+    }
+
+    /// Persist the chain-derived Ironwood activation height.
+    pub fn set_ironwood_activation_height(&self, height: Option<u32>) -> Result<()> {
+        let height = height.map(i64::from);
+        let updated_at = chrono::Utc::now().to_rfc3339();
+
+        self.execute_with_retry(|| {
+            self.db.conn().execute(
+                "UPDATE sync_state SET ironwood_activation_height = ?1, updated_at = ?2 WHERE id = 1",
+                params![height, updated_at],
+            )?;
+            Ok(())
         })
     }
 
@@ -1028,6 +1054,25 @@ mod tests {
         assert_eq!(state.local_height, 100);
         assert_eq!(state.target_height, 0);
         assert_eq!(state.last_checkpoint_height, 100);
+    }
+
+    #[test]
+    fn ironwood_activation_height_survives_scan_reset() {
+        let db = test_db();
+        let storage = SyncStateStorage::new(&db);
+
+        storage
+            .set_ironwood_activation_height(Some(4_200_060))
+            .unwrap();
+        storage.reset_sync_state(100).unwrap();
+
+        assert_eq!(
+            storage
+                .load_sync_state()
+                .unwrap()
+                .ironwood_activation_height,
+            Some(4_200_060)
+        );
     }
 
     #[test]

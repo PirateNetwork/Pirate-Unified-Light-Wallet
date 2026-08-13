@@ -216,7 +216,12 @@ impl SemanticOracleSnapshot {
             &[
                 TableSpec::columns(
                     "sync_state",
-                    &["local_height", "target_height", "last_checkpoint_height"],
+                    &[
+                        "local_height",
+                        "target_height",
+                        "last_checkpoint_height",
+                        "ironwood_activation_height",
+                    ],
                 ),
                 TableSpec::all("chain_blocks"),
             ],
