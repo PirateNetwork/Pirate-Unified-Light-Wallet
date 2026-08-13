@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pirate_wallet/design/tokens/spacing.dart';
 import 'package:pirate_wallet/features/settings/panic_pin_screen.dart';
 import '../test_flags.dart';
 
@@ -18,6 +19,14 @@ void main() {
       expect(find.text('Set duress passphrase'), findsOneWidget);
       expect(find.byIcon(Icons.emergency), findsOneWidget);
       expect(find.text('How it works'), findsOneWidget);
+      expect(find.byIcon(Icons.circle), findsNWidgets(4));
+      expect(find.text('-'), findsNothing);
+
+      final bullet = tester.getRect(find.byIcon(Icons.circle).first);
+      final firstItem = tester.getRect(
+        find.text('Opens a decoy wallet with empty data.'),
+      );
+      expect(firstItem.left - bullet.right, PSpacing.sm);
     }, skip: _skipFfiTests);
 
     testWidgets('Shows custom passphrase fields when toggled', (
@@ -29,7 +38,10 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Use a custom duress passphrase'));
+      final customToggle = find.text('Use a custom duress passphrase');
+      await tester.ensureVisible(customToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(customToggle);
       await tester.pumpAndSettle();
 
       expect(find.text('Custom duress passphrase'), findsOneWidget);
@@ -45,7 +57,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('passphrase reversed'), findsOneWidget);
+      expect(find.text('Default is your passphrase reversed.'), findsOneWidget);
     }, skip: _skipFfiTests);
   });
 }

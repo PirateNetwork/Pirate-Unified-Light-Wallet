@@ -350,18 +350,27 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
 
   Widget _buildInfoItem(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: PSpacing.xs),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('-', style: TextStyle(color: AppColors.info, fontSize: 16)),
-          Expanded(
-            child: Text(
-              text,
-              style: PTypography.bodySmall(color: AppColors.textSecondary),
+      padding: const EdgeInsets.only(bottom: PSpacing.sm),
+      child: Semantics(
+        container: true,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 7),
+              child: ExcludeSemantics(
+                child: Icon(Icons.circle, color: AppColors.info, size: 6),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: PSpacing.sm),
+            Expanded(
+              child: Text(
+                text,
+                style: PTypography.bodySmall(color: AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
