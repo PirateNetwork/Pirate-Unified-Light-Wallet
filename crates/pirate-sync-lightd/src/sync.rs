@@ -417,6 +417,8 @@ pub struct SyncEngine {
     config: SyncConfig,
     birthday_height: u32,
     network_type: NetworkType,
+    /// Fixed or chain-derived Ironwood activation height (`0` while unresolved).
+    ironwood_activation_height: Arc<AtomicU64>,
     wallet_id: Option<String>,
     storage: Option<StorageSink>,
     keys: Vec<WalletKeyGroup>,
@@ -1444,11 +1446,50 @@ impl SyncEngine {
         }
     }
 
-    fn validate_server_consensus_branch(&self, info: &LightdInfo) -> Result<()> {
-        let check = crate::consensus::check_consensus_branch(
+    fn resolved_ironwood_activation_height(&self) -> Option<u32> {
+        u32::try_from(self.ironwood_activation_height.load(Ordering::Acquire))
+            .ok()
+            .filter(|height| *height > 0)
+    }
+
+    fn store_ironwood_activation_height(&self, height: Option<u32>) -> Result<()> {
+        if height == self.resolved_ironwood_activation_height() {
+            return Ok(());
+        }
+
+        if let Some(sink) = self.storage.as_ref() {
+            let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            SyncStateStorage::new(&db).set_ironwood_activation_height(height)?;
+        }
+        self.ironwood_activation_height
+            .store(u64::from(height.unwrap_or(0)), Ordering::Release);
+        Ok(())
+    }
+
+    async fn validate_server_consensus_branch(&self, info: &LightdInfo) -> Result<()> {
+        let known_activation_height = self.resolved_ironwood_activation_height();
+        let activation_height = crate::activation::resolve_ironwood_activation_height(
+            &self.client,
             self.network_type,
             info.block_height,
             &info.consensus_branch_id,
+            known_activation_height,
+        )
+        .await?;
+        if activation_height != known_activation_height {
+            self.store_ironwood_activation_height(activation_height)?;
+            tracing::info!(
+                "Resolved Ironwood activation height {:?} for {:?}",
+                activation_height,
+                self.network_type
+            );
+        }
+
+        let check = crate::consensus::check_consensus_branch_with_activation_height(
+            self.network_type,
+            info.block_height,
+            &info.consensus_branch_id,
+            activation_height,
         )?;
         check.require_match()?;
         tracing::debug!(
@@ -1474,7 +1515,7 @@ impl SyncEngine {
                     timeout
                 ))
             })??;
-        self.validate_server_consensus_branch(&info)?;
+        self.validate_server_consensus_branch(&info).await?;
         Ok(info)
     }
 
@@ -1499,6 +1540,7 @@ impl SyncEngine {
             config,
             birthday_height,
             network_type: NetworkType::Mainnet,
+            ironwood_activation_height: Arc::new(AtomicU64::new(0)),
             wallet_id: None,
             storage: None,
             keys: Vec::new(),
@@ -1598,6 +1640,7 @@ impl SyncEngine {
             config,
             birthday_height,
             network_type: NetworkType::Mainnet,
+            ironwood_activation_height: Arc::new(AtomicU64::new(0)),
             wallet_id: None,
             storage: None,
             keys: Vec::new(),
@@ -1637,6 +1680,7 @@ impl SyncEngine {
             config,
             birthday_height,
             network_type: NetworkType::Mainnet,
+            ironwood_activation_height: Arc::new(AtomicU64::new(0)),
             wallet_id: None,
             storage: None,
             keys: Vec::new(),
@@ -1736,6 +1780,12 @@ impl SyncEngine {
 
         let db = Database::open(&db_path, &key, master_key.clone())?;
         let repo = Repository::new(&db);
+        let sync_state = SyncStateStorage::new(&db).load_sync_state()?;
+        let activation_height = PirateParamsNetwork::from_type(network_type)
+            .ironwood_activation_height
+            .or(sync_state.ironwood_activation_height);
+        self.ironwood_activation_height
+            .store(u64::from(activation_height.unwrap_or(0)), Ordering::Release);
 
         // Load wallet secret to know account id (if present)
         let secret = repo
@@ -3324,7 +3374,10 @@ impl SyncEngine {
             // If we somehow exceed u32 range, prefer requiring Orchard tree data.
             return true;
         };
-        PirateParamsNetwork::from_type(self.network_type).is_ironwood_active(height_u32)
+        PirateParamsNetwork::from_type(self.network_type).is_ironwood_active_with_resolved_height(
+            height_u32,
+            self.resolved_ironwood_activation_height(),
+        )
     }
 
     async fn fetch_tree_state_with_retry(
@@ -3824,6 +3877,7 @@ impl SyncEngine {
             let network = PirateParamsNetwork::from_type(self.network_type);
             let fetch_ironwood = network
                 .ironwood_activation_height
+                .or(self.resolved_ironwood_activation_height())
                 .is_some_and(|height| end >= u64::from(height));
             let (local_prefill, remote_request) = prepare_historical_subtree_roots(
                 db.conn(),

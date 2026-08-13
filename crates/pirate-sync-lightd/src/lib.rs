@@ -7,6 +7,7 @@
 #![warn(missing_docs)]
 #![allow(clippy::result_large_err)]
 
+mod activation;
 pub mod background;
 pub mod background_logger;
 mod block_cache;
@@ -25,6 +26,7 @@ pub mod sapling;
 pub mod sync;
 pub mod sync_profile;
 
+pub use activation::resolve_ironwood_activation_height;
 pub use background::{
     BackgroundSyncConfig, BackgroundSyncMode, BackgroundSyncOrchestrator, BackgroundSyncResult,
 };
@@ -38,7 +40,9 @@ pub use client::{
     TlsConfig, TransactionStatus, TransportMode, TreeState, DEFAULT_LIGHTD_HOST,
     DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_SPKI_PIN, DEFAULT_LIGHTD_URL,
 };
-pub use consensus::{check_consensus_branch, ConsensusBranchCheck};
+pub use consensus::{
+    check_consensus_branch, check_consensus_branch_with_activation_height, ConsensusBranchCheck,
+};
 pub use error::{Error, Result};
 pub use pipeline::{
     DecryptedNote, PerfCounters, PerfSnapshot, PipelineConfig, PipelineResult, SyncPipeline,

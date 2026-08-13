@@ -43,9 +43,25 @@ pub fn check_consensus_branch(
     server_height: u64,
     server_branch_id: &str,
 ) -> Result<ConsensusBranchCheck> {
+    check_consensus_branch_with_activation_height(
+        network_type,
+        server_height,
+        server_branch_id,
+        None,
+    )
+}
+
+/// Compares a server branch with a schedule containing a resolved Ironwood height.
+pub fn check_consensus_branch_with_activation_height(
+    network_type: NetworkType,
+    server_height: u64,
+    server_branch_id: &str,
+    ironwood_activation_height: Option<u32>,
+) -> Result<ConsensusBranchCheck> {
     let height = u32::try_from(server_height)
         .map_err(|_| Error::Network(format!("Server height out of range: {server_height}")))?;
-    let network = PirateNetwork::new(network_type);
+    let network =
+        PirateNetwork::with_ironwood_activation_height(network_type, ironwood_activation_height);
     let sdk_branch = BranchId::for_height(&network, BlockHeight::from_u32(height));
 
     Ok(ConsensusBranchCheck {
@@ -135,6 +151,28 @@ mod tests {
             NetworkType::Testnet,
             TESTNET_IRONWOOD_ACTIVATION_HEIGHT as u64,
             &activation_branch,
+        )
+        .unwrap()
+        .is_valid());
+    }
+
+    #[test]
+    fn follows_a_resolved_mainnet_activation_boundary() {
+        let activation_height = 4_200_060;
+        let network = PirateNetwork::with_ironwood_activation_height(
+            NetworkType::Mainnet,
+            Some(activation_height),
+        );
+        let ironwood_branch = format_branch_id(u32::from(BranchId::for_height(
+            &network,
+            BlockHeight::from_u32(activation_height),
+        )));
+
+        assert!(check_consensus_branch_with_activation_height(
+            NetworkType::Mainnet,
+            u64::from(activation_height),
+            &ironwood_branch,
+            Some(activation_height),
         )
         .unwrap()
         .is_valid());
