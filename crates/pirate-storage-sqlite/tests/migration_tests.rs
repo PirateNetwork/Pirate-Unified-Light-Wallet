@@ -102,10 +102,43 @@ fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
         )
         .unwrap();
 
-    assert_eq!(version, 32);
+    assert_eq!(version, 33);
     assert_eq!(sapling_checkpoint, 12345);
     assert_eq!(orchard_checkpoint, 67890);
     assert_eq!(retained_tables, 2);
+}
+
+#[test]
+fn test_v33_adds_durable_outgoing_transaction_intents() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+    migrations::run_migrations(&conn).unwrap();
+
+    conn.execute_batch(
+        "DROP TABLE outgoing_transaction_intents;
+         DELETE FROM schema_version;
+         INSERT INTO schema_version (version) VALUES (32);",
+    )
+    .unwrap();
+
+    migrations::run_migrations(&conn).unwrap();
+
+    let version: i32 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let table_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'table' AND name = 'outgoing_transaction_intents'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(version, 33);
+    assert_eq!(table_count, 1);
 }
 
 #[test]

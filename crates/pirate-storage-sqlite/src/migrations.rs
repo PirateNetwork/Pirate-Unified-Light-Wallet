@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 32;
+const SCHEMA_VERSION: i32 = 33;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -125,6 +125,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 32 {
         migrate_v32(conn)?;
+    }
+    if current_version < 33 {
+        migrate_v33(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -616,6 +619,38 @@ fn migrate_v32(conn: &Connection) -> Result<()> {
 
         INSERT INTO migration_state (key, value, updated_at)
         VALUES ('v32_shardtree_retained_checkpoints', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#,
+    )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v33(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        BEGIN IMMEDIATE;
+
+        -- Wallet-authored payment intent is not chain-derived state. Keep it
+        -- separate from transactions so a rescan can reconstruct confirmations
+        -- without losing the exact amount the user sent.
+        CREATE TABLE IF NOT EXISTS outgoing_transaction_intents (
+            txid TEXT PRIMARY KEY,
+            account_id BLOB NOT NULL,
+            amount BLOB NOT NULL,
+            fee BLOB NOT NULL,
+            broadcast_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_outgoing_transaction_intents_broadcast_at
+            ON outgoing_transaction_intents(broadcast_at DESC);
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v33_outgoing_transaction_intents', 'completed', datetime('now'))
         ON CONFLICT(key) DO UPDATE SET
             value = excluded.value,
             updated_at = excluded.updated_at;
