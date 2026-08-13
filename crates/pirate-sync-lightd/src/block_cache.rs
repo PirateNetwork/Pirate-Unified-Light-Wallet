@@ -130,6 +130,11 @@ impl BlockCache {
     }
 
     #[cfg(test)]
+    pub(crate) fn for_test(path: PathBuf) -> Result<Self> {
+        Self::new(path)
+    }
+
+    #[cfg(test)]
     fn load_range(&self, start: u64, end: u64) -> Result<Vec<CompactBlockData>> {
         self.load_range_for_upgrade(start, end)
             .map(|range| range.blocks)

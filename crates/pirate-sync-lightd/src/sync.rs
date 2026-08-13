@@ -6155,7 +6155,6 @@ impl SyncEngine {
                                 .ok_or_else(|| {
                                     Error::Sync("bounded cache chunk had no end height".to_string())
                                 })?;
-                        Self::validate_compact_block_range(current, chunk_end, &cached.blocks)?;
                         if Self::cached_blocks_are_canonical(
                             &client,
                             &cache,
@@ -11689,6 +11688,32 @@ mod tests {
         let mut malformed = linked_compact_blocks(42, 45);
         malformed[1].hash.truncate(31);
         assert!(SyncEngine::validate_compact_block_range(42, 45, &malformed).is_err());
+    }
+
+    #[tokio::test]
+    async fn disconnected_cached_range_is_evicted_before_network_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = BlockCache::for_test(dir.path().join("blocks.db")).unwrap();
+        let mut disconnected = linked_compact_blocks(42, 45);
+        disconnected[2].prev_hash = vec![0xff; 32];
+        cache.store_blocks(&disconnected).unwrap();
+        let client = LightClient::new("http://127.0.0.1:1".to_string());
+
+        assert!(!SyncEngine::cached_blocks_are_canonical(
+            &client,
+            &cache,
+            42,
+            45,
+            &disconnected,
+            Some(ValidatedCacheRange { start: 42, end: 45 }),
+        )
+        .await
+        .unwrap());
+        assert!(cache
+            .load_range_for_upgrade(42, 45)
+            .unwrap()
+            .blocks
+            .is_empty());
     }
 
     #[test]
