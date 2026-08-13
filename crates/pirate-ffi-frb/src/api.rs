@@ -1788,7 +1788,8 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
 /// List transactions
 ///
 /// Returns transaction history from the database, aggregated by transaction ID.
-/// Transactions are sorted by height descending (newest first).
+/// Pending transactions are returned first, followed by confirmed transactions
+/// in descending block-height order.
 pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<TxInfo>> {
     convert_from_service(service::list_transactions(wallet_id, limit)?)
 }

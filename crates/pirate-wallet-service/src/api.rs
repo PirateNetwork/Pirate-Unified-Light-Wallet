@@ -2627,7 +2627,8 @@ pub fn get_shielded_pool_balances(wallet_id: WalletId) -> Result<ShieldedPoolBal
 /// List transactions
 ///
 /// Returns transaction history from the database, aggregated by transaction ID.
-/// Transactions are sorted by height descending (newest first).
+/// Pending transactions are returned first, followed by confirmed transactions
+/// in descending block-height order.
 pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<TxInfo>> {
     if is_decoy_mode_active() {
         return Ok(Vec::new());
@@ -2916,12 +2917,22 @@ fn transaction_matches_cursor(tx: &TxInfo, cursor: &TransactionCursor) -> bool {
 }
 
 fn transaction_is_after_cursor(tx: &TxInfo, cursor: &TransactionCursor) -> bool {
-    cursor
-        .height
-        .cmp(&tx.height)
-        .then_with(|| cursor.txid.cmp(&tx.txid))
-        .then_with(|| cursor.amount.cmp(&tx.amount))
-        .is_gt()
+    let cursor_pending = cursor.height.is_none();
+    let tx_pending = tx.height.is_none();
+    match (cursor_pending, tx_pending) {
+        // Pending rows are ordered by broadcast time, which is intentionally
+        // absent from the public cursor. If that exact row disappeared, resume
+        // at confirmed history instead of inventing a txid-based order.
+        (true, true) => false,
+        (true, false) => true,
+        (false, true) => false,
+        (false, false) => cursor
+            .height
+            .cmp(&tx.height)
+            .then_with(|| cursor.txid.cmp(&tx.txid))
+            .then_with(|| cursor.amount.cmp(&tx.amount))
+            .is_gt(),
+    }
 }
 
 fn paginate_transaction_snapshot(

@@ -791,6 +791,32 @@ fn missing_transaction_cursor_resumes_at_the_next_ordered_entry() {
 }
 
 #[test]
+fn missing_pending_cursor_resumes_at_confirmed_history() {
+    let history = vec![
+        TxInfo {
+            txid: "pending-newer".to_string(),
+            height: None,
+            timestamp: 60,
+            amount: -10,
+            fee: 1,
+            memo: None,
+            confirmed: false,
+        },
+        history_tx("confirmed-new", 50, 5),
+        history_tx("confirmed-old", 40, 4),
+    ];
+    let removed_pending_cursor = TransactionCursor {
+        height: None,
+        txid: "pending".to_string(),
+        amount: -25,
+    };
+
+    let page = paginate_transaction_snapshot(&history, Some(&removed_pending_cursor), 2);
+
+    assert_eq!(page.transactions, history[1..]);
+}
+
+#[test]
 fn transaction_cursor_follows_an_entry_when_its_height_changes() {
     let cursor = TransactionCursor {
         height: Some(40),
