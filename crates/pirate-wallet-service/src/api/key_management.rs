@@ -213,12 +213,22 @@ pub(super) fn generate_address_for_key(
             // anyhow::Error for this function's own Result.
             use pirate_storage_sqlite::Error as StorageError;
             let (addr_string, address_type) = if use_ironwood {
-                let fvk_bytes = key.orchard_fvk.as_ref().ok_or_else(|| {
-                    StorageError::Storage("Ironwood viewing key not available".to_string())
-                })?;
-                let fvk = IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes).map_err(|e| {
-                    StorageError::Storage(format!("Invalid Ironwood viewing key bytes: {e}"))
-                })?;
+                let fvk = if let Some(extsk_bytes) = key.orchard_extsk.as_deref() {
+                    IronwoodExtendedSpendingKey::from_bytes(extsk_bytes)
+                        .map_err(|e| {
+                            StorageError::Storage(format!(
+                                "Invalid Ironwood spending key bytes: {e}"
+                            ))
+                        })?
+                        .to_extended_fvk()
+                } else {
+                    let fvk_bytes = key.orchard_fvk.as_ref().ok_or_else(|| {
+                        StorageError::Storage("Ironwood viewing key not available".to_string())
+                    })?;
+                    IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes).map_err(|e| {
+                        StorageError::Storage(format!("Invalid Ironwood viewing key bytes: {e}"))
+                    })?
+                };
                 let addr = fvk
                     .address_at(next_index)
                     .encode_for_network(network_type)
