@@ -15,6 +15,7 @@ import 'package:pirate_wallet/features/app_shell/app_shell.dart';
 import 'package:pirate_wallet/features/settings/providers/preferences_providers.dart';
 import 'package:pirate_wallet/features/settings/screens/language_screen.dart';
 import 'package:pirate_wallet/features/settings/settings_screen.dart';
+import 'package:pirate_wallet/ui/molecules/p_list_tile.dart';
 
 class _TestLocalePreferenceNotifier extends LocalePreferenceNotifier {
   @override
@@ -36,13 +37,21 @@ class _DisabledBiometricsNotifier extends BiometricsPreferenceNotifier {
   bool build() => false;
 }
 
-ProviderContainer _createContainer({bool includeShellOverrides = false}) {
+ProviderContainer _createContainer({
+  bool includeShellOverrides = false,
+  bool resolvedBiometricsEnabled = false,
+  bool biometricsAvailable = false,
+}) {
   return ProviderContainer(
     overrides: [
       localePreferenceProvider.overrideWith(_TestLocalePreferenceNotifier.new),
       biometricsEnabledProvider.overrideWith(_DisabledBiometricsNotifier.new),
-      resolvedBiometricsEnabledProvider.overrideWith((ref) async => false),
-      biometricAvailabilityProvider.overrideWith((ref) async => false),
+      resolvedBiometricsEnabledProvider.overrideWith(
+        (ref) async => resolvedBiometricsEnabled,
+      ),
+      biometricAvailabilityProvider.overrideWith(
+        (ref) async => biometricsAvailable,
+      ),
       if (includeShellOverrides) ...[
         transactionWatcherProvider.overrideWith((ref) {}),
         syncCompletionWatcherProvider.overrideWith((ref) {}),
@@ -189,5 +198,38 @@ void main() {
 
     expect(find.text('Keamanan'), findsOneWidget);
     expect(find.text('Security'), findsNothing);
+  });
+
+  testWidgets('settings renders the resolved biometric preference', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 700);
+    addTearDown(tester.view.reset);
+
+    final container = _createContainer(
+      resolvedBiometricsEnabled: true,
+      biometricsAvailable: true,
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      _testApp(
+        container: container,
+        home: const SettingsScreen(useScaffold: false),
+      ),
+    );
+    await tester.pump();
+
+    final biometricsTile = find.widgetWithText(PListTile, 'Biometrics');
+    expect(biometricsTile, findsOneWidget);
+    expect(
+      find.descendant(of: biometricsTile, matching: find.text('On')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: biometricsTile, matching: find.text('Off')),
+      findsNothing,
+    );
   });
 }
