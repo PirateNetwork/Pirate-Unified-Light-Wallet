@@ -32,6 +32,11 @@ class HomeSyncIndicator extends StatelessWidget {
   final bool isComplete;
   final bool reduceMotion;
 
+  static const Key currentHeightKey = Key('sync-current-height');
+  static const Key targetHeightKey = Key('sync-target-height');
+  static const Key etaKey = Key('sync-eta');
+  static const Key speedKey = Key('sync-speed');
+
   @override
   Widget build(BuildContext context) {
     final icon = isSyncing
@@ -42,6 +47,16 @@ class HomeSyncIndicator extends StatelessWidget {
     final iconColor = isSyncing
         ? AppColors.accentPrimary
         : isComplete
+        ? AppColors.success
+        : AppColors.textSecondary;
+    final statusText =
+        eta ??
+        (isComplete
+            ? (stage == 'Monitoring'.tr ? 'Up to date'.tr : 'Synced'.tr)
+            : isSyncing
+            ? 'Calculating...'.tr
+            : null);
+    final statusColor = isComplete && eta == null
         ? AppColors.success
         : AppColors.textSecondary;
 
@@ -76,19 +91,14 @@ class HomeSyncIndicator extends StatelessWidget {
                 Expanded(
                   child: Text(
                     stage,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: PTypography.caption().copyWith(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                if (isSyncing && blocksPerSecond > 0)
-                  Text(
-                    '${blocksPerSecond.toStringAsFixed(1)} blk/s',
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
                 if (targetHeight > 0) ...[
                   const SizedBox(width: PSpacing.sm),
                   Text(
@@ -117,57 +127,135 @@ class HomeSyncIndicator extends StatelessWidget {
               ),
             ],
             const SizedBox(height: PSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    (targetHeight > 0 && currentHeight > 0)
-                        ? 'Block {currentHeight} / {targetHeight}'.trArgs({
-                            'currentHeight': currentHeight,
-                            'targetHeight': targetHeight,
-                          })
-                        : (currentHeight > 0)
-                        ? 'Block {currentHeight}'.trArgs({
-                            'currentHeight': currentHeight,
-                          })
-                        : (targetHeight > 0)
-                        ? 'Block 0 / {targetHeight}'.trArgs({
-                            'targetHeight': targetHeight,
-                          })
-                        : 'Block 0'.tr,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-                if (eta != null)
-                  Text(
-                    eta!,
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  )
-                else if (isComplete)
-                  Text(
-                    stage == 'Monitoring'.tr ? 'Up to date'.tr : 'Synced'.tr,
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.success,
-                    ),
-                  )
-                else if (isSyncing)
-                  Text(
-                    'Calculating...'.tr,
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-              ],
+            _SyncMetrics(
+              currentHeight: currentHeight,
+              targetHeight: targetHeight,
+              statusText: statusText,
+              statusColor: statusColor,
+              blocksPerSecond: blocksPerSecond,
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SyncMetrics extends StatelessWidget {
+  const _SyncMetrics({
+    required this.currentHeight,
+    required this.targetHeight,
+    required this.statusText,
+    required this.statusColor,
+    required this.blocksPerSecond,
+  });
+
+  final int currentHeight;
+  final int targetHeight;
+  final String? statusText;
+  final Color statusColor;
+  final double blocksPerSecond;
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = MaterialLocalizations.of(context);
+    final metrics = <_SyncMetric>[
+      _SyncMetric(
+        label: 'Height'.tr,
+        value: localizations.formatDecimal(currentHeight),
+        valueKey: HomeSyncIndicator.currentHeightKey,
+      ),
+      if (targetHeight > 0)
+        _SyncMetric(
+          label: 'Target'.tr,
+          value: localizations.formatDecimal(targetHeight),
+          valueKey: HomeSyncIndicator.targetHeightKey,
+        ),
+      if (statusText != null)
+        _SyncMetric(
+          label: 'ETA'.tr,
+          value: statusText!,
+          valueColor: statusColor,
+          valueKey: HomeSyncIndicator.etaKey,
+        ),
+      if (blocksPerSecond > 0)
+        _SyncMetric(
+          label: 'blk/s',
+          value: blocksPerSecond.toStringAsFixed(1),
+          valueKey: HomeSyncIndicator.speedKey,
+        ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = PSpacing.md;
+        final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+        final minimumMetricWidth = 120.0 * textScale.clamp(1.0, 2.0);
+        final allMetricsWidth =
+            (minimumMetricWidth * metrics.length) +
+            (gap * math.max(0, metrics.length - 1));
+        final columns = constraints.maxWidth >= allMetricsWidth
+            ? metrics.length
+            : constraints.maxWidth >= (minimumMetricWidth * 2) + gap
+            ? math.min(2, metrics.length)
+            : 1;
+        final itemWidth = columns == 0
+            ? constraints.maxWidth
+            : (constraints.maxWidth - (gap * (columns - 1))) / columns;
+        final orphanedLastMetric = columns > 1 && metrics.length % columns == 1;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: PSpacing.sm,
+          children: [
+            for (var index = 0; index < metrics.length; index++)
+              SizedBox(
+                width: orphanedLastMetric && index == metrics.length - 1
+                    ? constraints.maxWidth
+                    : itemWidth,
+                child: metrics[index],
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SyncMetric extends StatelessWidget {
+  const _SyncMetric({
+    required this.label,
+    required this.value,
+    required this.valueKey,
+    this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final Key valueKey;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: PTypography.labelSmall(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: PSpacing.xxs),
+        Text(
+          value,
+          key: valueKey,
+          style: PTypography.codeSmall(
+            color: valueColor ?? AppColors.textSecondary,
+          ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+        ),
+      ],
     );
   }
 }
