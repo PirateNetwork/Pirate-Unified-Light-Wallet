@@ -6022,6 +6022,194 @@ mod tests {
     }
 
     #[test]
+    fn outgoing_intent_is_encrypted_and_survives_chain_state_clear() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Outgoing intent".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let txid = "ab".repeat(32);
+
+        repo.upsert_outgoing_transaction_intent(
+            account_id,
+            &txid,
+            250_000_000,
+            10_000,
+            1_700_000_000,
+        )
+        .unwrap();
+
+        let encrypted_amount: Vec<u8> = db
+            .conn()
+            .query_row(
+                "SELECT amount FROM outgoing_transaction_intents WHERE txid = ?1",
+                [&txid],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_ne!(encrypted_amount, 250_000_000i64.to_le_bytes());
+        assert_eq!(
+            repo.get_outgoing_transaction_intents(account_id).unwrap(),
+            vec![OutgoingTransactionIntent {
+                txid: txid.clone(),
+                account_id,
+                amount: 250_000_000,
+                fee: 10_000,
+                broadcast_at: 1_700_000_000,
+            }]
+        );
+
+        repo.clear_chain_state().unwrap();
+
+        let intents = repo.get_outgoing_transaction_intents(account_id).unwrap();
+        assert_eq!(intents.len(), 1);
+        assert_eq!(intents[0].txid, txid);
+        assert_eq!(intents[0].amount, 250_000_000);
+    }
+
+    #[test]
+    fn outgoing_intent_excludes_unseen_and_confirmed_change_from_send_amount() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Exact outgoing amount".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let spend_txid = vec![0x55; 32];
+        let spend_txid_hex = txid_hex_from_bytes(&spend_txid);
+        insert_received_note(
+            &repo,
+            account_id,
+            vec![0x11; 32],
+            NoteType::Ironwood,
+            0,
+            500_000_000,
+            100,
+            None,
+            None,
+            false,
+            0x31,
+        );
+        assert!(repo
+            .mark_note_spent_by_nullifier_with_txid(account_id, &[0x31; 32], &spend_txid,)
+            .unwrap());
+        repo.upsert_outgoing_transaction_intent(
+            account_id,
+            &spend_txid_hex,
+            250_000_000,
+            10_000,
+            2_000,
+        )
+        .unwrap();
+
+        let pending = repo
+            .get_transactions_with_options(account_id, None, 100, 1, true)
+            .unwrap();
+        let pending_send = pending
+            .iter()
+            .find(|tx| tx.txid == spend_txid_hex)
+            .expect("pending outgoing transaction");
+        assert_eq!(pending_send.height, 0);
+        assert_eq!(pending_send.amount, -250_000_000);
+
+        let internal_address = Address {
+            id: None,
+            key_id: None,
+            account_id,
+            diversifier_index: 1,
+            address: "pirate1-internal-change".to_string(),
+            address_type: AddressType::Ironwood,
+            label: None,
+            created_at: 2_000,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::Internal,
+        };
+        repo.upsert_address(&internal_address).unwrap();
+        let internal_address_id = repo
+            .get_address_by_string(account_id, &internal_address.address)
+            .unwrap()
+            .and_then(|address| address.id)
+            .unwrap();
+        insert_received_note(
+            &repo,
+            account_id,
+            spend_txid,
+            NoteType::Ironwood,
+            1,
+            249_990_000,
+            101,
+            Some(internal_address_id),
+            None,
+            false,
+            0x41,
+        );
+        repo.upsert_transaction(&spend_txid_hex, 101, 2_100, 10_000)
+            .unwrap();
+
+        let confirmed = repo
+            .get_transactions_with_options(account_id, None, 101, 1, true)
+            .unwrap();
+        let confirmed_send = confirmed
+            .iter()
+            .find(|tx| tx.txid == spend_txid_hex)
+            .expect("confirmed outgoing transaction");
+        assert_eq!(confirmed_send.height, 101);
+        assert_eq!(confirmed_send.amount, -250_000_000);
+        assert_eq!(confirmed_send.fee, 10_000);
+    }
+
+    #[test]
+    fn pending_transactions_sort_before_confirmed_history() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Pending ordering".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let confirmed_txid = vec![0x22; 32];
+        insert_received_note(
+            &repo,
+            account_id,
+            confirmed_txid.clone(),
+            NoteType::Sapling,
+            0,
+            100_000_000,
+            4_000_000,
+            None,
+            None,
+            false,
+            0x22,
+        );
+        repo.upsert_transaction(&txid_hex_from_bytes(&confirmed_txid), 4_000_000, 1_000, 0)
+            .unwrap();
+        let older_pending = "33".repeat(32);
+        let newer_pending = "44".repeat(32);
+        repo.upsert_outgoing_transaction_intent(account_id, &older_pending, 20, 1, 2_000)
+            .unwrap();
+        repo.upsert_outgoing_transaction_intent(account_id, &newer_pending, 30, 1, 3_000)
+            .unwrap();
+
+        let history = repo
+            .get_transactions_with_options(account_id, None, 4_000_000, 1, true)
+            .unwrap();
+
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[0].txid, newer_pending);
+        assert_eq!(history[1].txid, older_pending);
+        assert_eq!(history[2].height, 4_000_000);
+    }
+
+    #[test]
     fn test_transactions_use_tx_memo_when_note_memo_is_empty_payload() {
         let db = test_db();
         let repo = Repository::new(&db);
