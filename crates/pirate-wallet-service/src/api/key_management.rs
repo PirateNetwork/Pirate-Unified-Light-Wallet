@@ -108,7 +108,16 @@ pub(super) fn export_key_group_keys(wallet_id: WalletId, key_id: i64) -> Result<
         None
     };
 
-    let ironwood_viewing_key = if let Some(ref bytes) = key.orchard_fvk {
+    let ironwood_viewing_key = if let Some(ref bytes) = key.orchard_extsk {
+        let extsk = IronwoodExtendedSpendingKey::from_bytes(bytes)
+            .map_err(|e| anyhow!("Invalid Ironwood spending key bytes: {}", e))?;
+        Some(
+            extsk
+                .to_extended_fvk()
+                .to_bech32_for_network(network_type)
+                .map_err(|e| anyhow!("Failed to encode Ironwood viewing key: {}", e))?,
+        )
+    } else if let Some(ref bytes) = key.orchard_fvk {
         let fvk = IronwoodExtendedFullViewingKey::from_bytes(bytes)
             .map_err(|e| anyhow!("Invalid Ironwood viewing key bytes: {}", e))?;
         Some(
