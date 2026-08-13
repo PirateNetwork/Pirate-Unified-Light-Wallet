@@ -1742,21 +1742,34 @@ impl SyncEngine {
             .get_wallet_secret(&wallet_id)?
             .ok_or_else(|| Error::Sync(format!("Wallet secret not found for {}", wallet_id)))?;
 
+        if !secret.extsk.is_empty() {
+            let (_, replay_required) =
+                repo.reconcile_primary_seed_account_key(&secret, i64::from(self.birthday_height))?;
+            if replay_required {
+                let replay_height = truncate_above_height(&db, 0)?;
+                SyncStateStorage::new(&db).reset_sync_state(replay_height)?;
+                ScanQueueStorage::new(&db).clear_all()?;
+                repo.clear_seed_key_scan_replay_required()?;
+                tracing::warn!(
+                    "Reconciled wallet {} seed key material and reset derived scan state",
+                    wallet_id
+                );
+            }
+        }
+
         let mut account_keys = repo.get_account_keys(secret.account_id)?;
         if account_keys.is_empty() {
-            let sapling_dfvk_bytes = if let Some(ref bytes) = secret.dfvk {
-                Some(bytes.clone())
-            } else if !secret.extsk.is_empty() {
+            let sapling_dfvk_bytes = if !secret.extsk.is_empty() {
                 let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
                     .map_err(|e| Error::Sync(format!("Invalid spending key bytes: {}", e)))?;
                 Some(extsk.to_extended_fvk().to_bytes())
             } else {
-                None
+                secret.dfvk.clone()
             };
 
             let orchard_fvk_bytes = if let Some(ref extsk_bytes) = secret.orchard_extsk {
                 let extsk = IronwoodExtendedSpendingKey::from_bytes(extsk_bytes).map_err(|e| {
-                    Error::Sync(format!("Invalid Orchard spending key bytes: {}", e))
+                    Error::Sync(format!("Invalid Ironwood spending key bytes: {}", e))
                 })?;
                 Some(extsk.to_extended_fvk().to_bytes())
             } else {
