@@ -237,12 +237,22 @@ pub(super) fn generate_address_for_key(
                     })?;
                 (addr, AddressType::Ironwood)
             } else {
-                let dfvk_bytes = key.sapling_dfvk.as_ref().ok_or_else(|| {
-                    StorageError::Storage("Sapling viewing key not available".to_string())
-                })?;
-                let dfvk = ExtendedFullViewingKey::from_bytes(dfvk_bytes).ok_or_else(|| {
-                    StorageError::Storage("Invalid Sapling viewing key bytes".to_string())
-                })?;
+                let dfvk = if let Some(extsk_bytes) = key.sapling_extsk.as_deref() {
+                    ExtendedSpendingKey::from_bytes(extsk_bytes)
+                        .map_err(|e| {
+                            StorageError::Storage(format!(
+                                "Invalid Sapling spending key bytes: {e}"
+                            ))
+                        })?
+                        .to_extended_fvk()
+                } else {
+                    let dfvk_bytes = key.sapling_dfvk.as_ref().ok_or_else(|| {
+                        StorageError::Storage("Sapling viewing key not available".to_string())
+                    })?;
+                    ExtendedFullViewingKey::from_bytes(dfvk_bytes).ok_or_else(|| {
+                        StorageError::Storage("Invalid Sapling viewing key bytes".to_string())
+                    })?
+                };
                 let addr = dfvk
                     .derive_address(next_index)
                     .encode_for_network(network_type);
