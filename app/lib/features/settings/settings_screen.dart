@@ -74,10 +74,10 @@ class SettingsScreen extends ConsumerWidget {
                 final resolved = ref.watch(resolvedBiometricsEnabledProvider);
                 final availability = ref.watch(biometricAvailabilityProvider);
                 final subtitle = resolved.when(
-                  data: (_) => availability.when(
+                  data: (resolvedEnabled) => availability.when(
                     data: (available) {
                       if (!available) return 'Unavailable';
-                      return enabled ? 'On' : 'Off';
+                      return resolvedEnabled ? 'On' : 'Off';
                     },
                     loading: () => 'Checking...'.tr,
                     error: (_, _) => enabled ? 'On'.tr : 'Off'.tr,

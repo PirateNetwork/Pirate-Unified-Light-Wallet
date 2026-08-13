@@ -300,8 +300,8 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                       ),
                     ),
                     resolvedBiometricsEnabled.when(
-                      data: (_) => Switch.adaptive(
-                        value: biometricsEnabled,
+                      data: (resolvedEnabled) => Switch.adaptive(
+                        value: resolvedEnabled,
                         onChanged: !_isAvailable || _isLoading
                             ? null
                             : _toggleBiometrics,
