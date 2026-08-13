@@ -3895,10 +3895,21 @@ impl<'a> Repository<'a> {
             }
         });
 
-        // Sort by height descending (newest first), then by txid and amount
+        // Pending entries are actionable current state, so keep them above the
+        // confirmed chain history. Within each group, retain deterministic
+        // newest-first ordering.
         transactions.sort_by(|a, b| {
-            b.height
-                .cmp(&a.height)
+            let a_pending = a.height <= 0;
+            let b_pending = b.height <= 0;
+            b_pending
+                .cmp(&a_pending)
+                .then_with(|| {
+                    if a_pending && b_pending {
+                        b.timestamp.cmp(&a.timestamp)
+                    } else {
+                        b.height.cmp(&a.height)
+                    }
+                })
                 .then_with(|| b.txid.cmp(&a.txid))
                 .then_with(|| b.amount.cmp(&a.amount))
         });
