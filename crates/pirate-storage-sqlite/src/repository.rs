@@ -3471,6 +3471,9 @@ impl<'a> Repository<'a> {
             received_external: i64,
             received_internal: i64,
             sent: i64,
+            intent_amount: Option<i64>,
+            intent_fee: Option<u64>,
+            intent_broadcast_at: Option<i64>,
             memo: Option<Vec<u8>>,
             saw_internal: bool,
             saw_unknown_scope: bool,
@@ -3483,6 +3486,9 @@ impl<'a> Repository<'a> {
                     received_external: 0,
                     received_internal: 0,
                     sent: 0,
+                    intent_amount: None,
+                    intent_fee: None,
+                    intent_broadcast_at: None,
                     memo: None,
                     saw_internal: false,
                     saw_unknown_scope: false,
@@ -3620,6 +3626,27 @@ impl<'a> Repository<'a> {
             }
         }
 
+        for intent in self.get_outgoing_transaction_intents(account_id)? {
+            let intent_amount = i64::try_from(intent.amount).map_err(|_| {
+                Error::Storage("Stored outgoing amount exceeds history range".to_string())
+            })?;
+            let aggregate_txid = if tx_map.contains_key(&intent.txid) {
+                intent.txid.clone()
+            } else if let Some(reversed) =
+                reverse_txid_hex(&intent.txid).filter(|reversed| tx_map.contains_key(reversed))
+            {
+                reversed
+            } else {
+                intent.txid.clone()
+            };
+            let entry = tx_map
+                .entry(aggregate_txid)
+                .or_insert_with(|| TxAggregate::new(0));
+            entry.intent_amount = Some(intent_amount);
+            entry.intent_fee = Some(intent.fee);
+            entry.intent_broadcast_at = Some(intent.broadcast_at);
+        }
+
         let txid_keys: Vec<String> = tx_map.keys().cloned().collect();
         let mut txid_lookup_keys = txid_keys.clone();
         for txid in &txid_keys {
@@ -3702,6 +3729,7 @@ impl<'a> Repository<'a> {
             } else {
                 direct_timestamp.or(alt_timestamp)
             }
+            .or(entry.intent_broadcast_at)
             .unwrap_or_else(|| chrono::Utc::now().timestamp());
 
             let direct_fee = fee_map.get(&txid).copied().unwrap_or(0);
@@ -3709,17 +3737,21 @@ impl<'a> Repository<'a> {
                 .as_ref()
                 .and_then(|alt| fee_map.get(alt).copied())
                 .unwrap_or(0);
-            let stored_fee = direct_fee.max(alt_fee);
+            let stored_fee = direct_fee
+                .max(alt_fee)
+                .max(entry.intent_fee.unwrap_or_default());
             let fee = if stored_fee == 0 && entry.sent > 0 && net_amount < 0 {
                 DEFAULT_FEE
             } else {
                 stored_fee
             };
             let fee_i64 = i64::try_from(fee).unwrap_or(i64::MAX);
-            let outgoing_amount = entry
+            let chain_outgoing_amount = entry
                 .sent
                 .saturating_sub(entry.received_internal)
                 .saturating_sub(fee_i64);
+            let outgoing_amount = entry.intent_amount.unwrap_or(chain_outgoing_amount);
+            let has_outgoing = entry.sent > 0 || entry.intent_amount.is_some();
 
             let can_split = split_transfers
                 && entry.received_external > 0
@@ -3727,7 +3759,7 @@ impl<'a> Repository<'a> {
                 && entry.saw_internal
                 && !entry.saw_unknown_scope;
             let self_transfer = split_transfers
-                && entry.sent > 0
+                && has_outgoing
                 && entry.received_external > 0
                 && entry.received_internal == 0
                 && !entry.saw_unknown_scope
@@ -3779,7 +3811,7 @@ impl<'a> Repository<'a> {
                     memo,
                 });
             } else if self_transfer {
-                let transfer_amount = entry.received_external;
+                let transfer_amount = entry.intent_amount.unwrap_or(entry.received_external);
                 transactions.push(TransactionRecord {
                     txid: txid.clone(),
                     height: entry.height,
@@ -3794,6 +3826,15 @@ impl<'a> Repository<'a> {
                     timestamp,
                     amount: transfer_amount,
                     fee: 0,
+                    memo,
+                });
+            } else if entry.intent_amount.is_some() {
+                transactions.push(TransactionRecord {
+                    txid,
+                    height: entry.height,
+                    timestamp,
+                    amount: -outgoing_amount,
+                    fee,
                     memo,
                 });
             } else {
