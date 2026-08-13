@@ -43,6 +43,7 @@ void main() {
   testWidgets('shows complete sync metrics within a narrow mobile card', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     await tester.binding.setSurfaceSize(const Size(360, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -67,6 +68,11 @@ void main() {
     expect(etaRect.top, greaterThan(currentRect.bottom));
     expect(currentRect.left, greaterThanOrEqualTo(16));
     expect(targetRect.right, lessThanOrEqualTo(344));
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Wallet sync status')).value,
+      'Block 2426013 / 4081234',
+    );
+    semantics.dispose();
     expect(tester.takeException(), isNull);
   });
 
