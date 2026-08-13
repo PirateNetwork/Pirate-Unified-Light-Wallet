@@ -146,10 +146,21 @@ impl ShieldedBuilder {
 
     /// Create new shielded transaction builder for the given network.
     pub fn with_network(network_type: NetworkType) -> Self {
+        Self::with_network_and_ironwood_activation_height(network_type, None)
+    }
+
+    /// Create a builder with a chain-derived Ironwood activation height.
+    pub fn with_network_and_ironwood_activation_height(
+        network_type: NetworkType,
+        ironwood_activation_height: Option<u32>,
+    ) -> Self {
         Self {
             outputs: Vec::new(),
             fee_override: None,
-            network: PirateNetwork::new(network_type),
+            network: PirateNetwork::with_ironwood_activation_height(
+                network_type,
+                ironwood_activation_height,
+            ),
             auto_consolidation_extra_limit: 0,
         }
     }
@@ -338,10 +349,7 @@ impl ShieldedBuilder {
             .outputs
             .iter()
             .any(|o| matches!(o, ShieldedOutput::Sapling { .. }));
-        let use_sapling_internal_change = crate::sapling_internal_change_active(
-            self.network.pirate_network_type(),
-            u64::from(target_height),
-        );
+        let use_sapling_internal_change = self.network.is_ironwood_active(target_height);
 
         // Recalculate fee with actual input count
         let actual_fee = match self.fee_override {

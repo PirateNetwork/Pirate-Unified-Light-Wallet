@@ -24,7 +24,9 @@ pub mod transaction;
 pub mod wallet;
 
 pub use address::{parse_sapling_address, AddressManager, SaplingAddress};
-pub use change_policy::sapling_internal_change_active;
+pub use change_policy::{
+    sapling_internal_change_active, sapling_internal_change_active_with_resolved_height,
+};
 pub use diversifier::{
     AddressUsage, DiversifierIndex, DiversifierRotationService, DiversifierState, RotationPolicy,
     DEFAULT_GAP_LIMIT, MAX_DIVERSIFIER_INDEX,

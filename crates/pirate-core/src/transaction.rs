@@ -29,13 +29,33 @@ use zcash_transparent::builder::TransparentSigningSet;
 #[derive(Clone, Debug)]
 pub struct PirateNetwork {
     network: Network,
+    ironwood_activation_height: Option<u32>,
 }
 
 impl PirateNetwork {
     /// Create parameters for the given network.
     pub fn new(network_type: NetworkType) -> Self {
+        let network = Network::from_type(network_type);
         Self {
-            network: Network::from_type(network_type),
+            ironwood_activation_height: network.ironwood_activation_height,
+            network,
+        }
+    }
+
+    /// Create parameters with a chain-derived Ironwood activation height.
+    ///
+    /// Fixed-height networks retain their configured activation height. This
+    /// override is used for mainnet after resolving its timestamp transition.
+    pub fn with_ironwood_activation_height(
+        network_type: NetworkType,
+        resolved_activation_height: Option<u32>,
+    ) -> Self {
+        let network = Network::from_type(network_type);
+        Self {
+            ironwood_activation_height: network
+                .ironwood_activation_height
+                .or(resolved_activation_height),
+            network,
         }
     }
 
@@ -44,8 +64,9 @@ impl PirateNetwork {
         Self::new(NetworkType::Mainnet)
     }
 
-    pub(crate) fn pirate_network_type(&self) -> NetworkType {
-        self.network.network_type
+    pub(crate) fn is_ironwood_active(&self, height: u32) -> bool {
+        self.ironwood_activation_height
+            .is_some_and(|activation_height| height >= activation_height)
     }
 }
 
@@ -72,10 +93,7 @@ impl Parameters for PirateNetwork {
             NetworkUpgrade::Sapling => Some(BlockHeight::from_u32(
                 self.network.sapling_activation_height,
             )),
-            NetworkUpgrade::Nu6_3 => self
-                .network
-                .ironwood_activation_height
-                .map(BlockHeight::from_u32),
+            NetworkUpgrade::Nu6_3 => self.ironwood_activation_height.map(BlockHeight::from_u32),
             #[allow(unreachable_patterns)]
             _ => None,
         }
@@ -150,10 +168,21 @@ impl TransactionBuilder {
 
     /// Create a transaction builder for the given network.
     pub fn with_network(network_type: NetworkType) -> Self {
+        Self::with_network_and_ironwood_activation_height(network_type, None)
+    }
+
+    /// Create a transaction builder with a resolved Ironwood activation height.
+    pub fn with_network_and_ironwood_activation_height(
+        network_type: NetworkType,
+        ironwood_activation_height: Option<u32>,
+    ) -> Self {
         Self {
             outputs: Vec::new(),
             fee_override: None,
-            network: PirateNetwork::new(network_type),
+            network: PirateNetwork::with_ironwood_activation_height(
+                network_type,
+                ironwood_activation_height,
+            ),
         }
     }
 
@@ -324,10 +353,7 @@ impl TransactionBuilder {
             },
         );
 
-        let use_sapling_internal_change = crate::sapling_internal_change_active(
-            self.network.pirate_network_type(),
-            u64::from(target_height),
-        );
+        let use_sapling_internal_change = self.network.is_ironwood_active(target_height);
         let mut first_legacy_sapling_change: Option<sapling::PaymentAddress> = None;
 
         // Add Sapling spends with witness data
@@ -482,6 +508,24 @@ mod tests {
         assert_eq!(
             TxVersion::suggested_for_branch(BranchId::Nu6_3),
             TxVersion::V6
+        );
+    }
+
+    #[test]
+    fn resolved_mainnet_height_selects_the_ironwood_branch() {
+        let activation_height = 4_200_060;
+        let network = PirateNetwork::with_ironwood_activation_height(
+            NetworkType::Mainnet,
+            Some(activation_height),
+        );
+
+        assert_eq!(
+            BranchId::for_height(&network, BlockHeight::from_u32(activation_height - 1)),
+            BranchId::Sapling
+        );
+        assert_eq!(
+            BranchId::for_height(&network, BlockHeight::from_u32(activation_height)),
+            BranchId::Nu6_3
         );
     }
 
