@@ -11332,6 +11332,153 @@ mod tests {
             .collect()
     }
 
+    fn test_spending_keys(mnemonic: &str) -> (ExtendedSpendingKey, IronwoodExtendedSpendingKey) {
+        let sapling =
+            ExtendedSpendingKey::from_mnemonic_with_account(mnemonic, NetworkType::Mainnet, 0)
+                .unwrap();
+        let seed = ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic).unwrap();
+        let ironwood = IronwoodExtendedSpendingKey::master(&seed)
+            .unwrap()
+            .derive_account(133, 0)
+            .unwrap();
+        (sapling, ironwood)
+    }
+
+    #[test]
+    fn spending_keys_override_stale_cached_viewing_keys() {
+        const MNEMONIC: &str =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        const OTHER_MNEMONIC: &str =
+            "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let (sapling, ironwood) = test_spending_keys(MNEMONIC);
+        let (other_sapling, other_ironwood) = test_spending_keys(OTHER_MNEMONIC);
+        let key = AccountKey {
+            id: Some(7),
+            account_id: 1,
+            key_type: KeyType::Seed,
+            key_scope: KeyScope::Account,
+            label: Some("Seed".to_string()),
+            birthday_height: 1,
+            created_at: 1,
+            spendable: true,
+            sapling_extsk: Some(sapling.to_bytes()),
+            sapling_dfvk: Some(other_sapling.to_extended_fvk().to_bytes()),
+            orchard_extsk: Some(ironwood.to_bytes()),
+            orchard_fvk: Some(other_ironwood.to_extended_fvk().to_bytes()),
+            encrypted_mnemonic: None,
+        };
+
+        let group = build_key_group_from_account_key(&key)
+            .unwrap()
+            .expect("spendable key group");
+
+        assert_eq!(
+            group.sapling_dfvk.unwrap().to_bytes(),
+            sapling.to_extended_fvk().to_bytes()
+        );
+        assert_eq!(
+            group.orchard_fvk.unwrap().to_bytes(),
+            ironwood.to_extended_fvk().to_bytes()
+        );
+    }
+
+    #[test]
+    fn wallet_startup_replays_reconciled_keys_without_deleting_addresses() {
+        const MNEMONIC: &str =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        const OTHER_MNEMONIC: &str =
+            "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let key = EncryptionKey::from_passphrase("seed-repair", &[0x51; 32]).unwrap();
+        let master_key =
+            MasterKey::generate(pirate_storage_sqlite::EncryptionAlgorithm::ChaCha20Poly1305);
+        let db = Database::open(file.path(), &key, master_key.clone()).unwrap();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&pirate_storage_sqlite::Account {
+                id: None,
+                name: "Seed repair".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let (sapling, ironwood) = test_spending_keys(MNEMONIC);
+        let (other_sapling, other_ironwood) = test_spending_keys(OTHER_MNEMONIC);
+        let secret = pirate_storage_sqlite::WalletSecret {
+            wallet_id: "seed-repair-wallet".to_string(),
+            account_id,
+            extsk: sapling.to_bytes(),
+            dfvk: Some(sapling.to_extended_fvk().to_bytes()),
+            orchard_extsk: Some(ironwood.to_bytes()),
+            sapling_ivk: None,
+            orchard_ivk: None,
+            encrypted_mnemonic: Some(MNEMONIC.as_bytes().to_vec()),
+            mnemonic_language: None,
+            created_at: 1,
+        };
+        let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret).unwrap();
+        repo.upsert_wallet_secret(&encrypted_secret).unwrap();
+        let stale_key = AccountKey {
+            id: None,
+            account_id,
+            key_type: KeyType::Seed,
+            key_scope: KeyScope::Account,
+            label: Some("Seed".to_string()),
+            birthday_height: 20,
+            created_at: 1,
+            spendable: true,
+            sapling_extsk: Some(secret.extsk.clone()),
+            sapling_dfvk: Some(other_sapling.to_extended_fvk().to_bytes()),
+            orchard_extsk: secret.orchard_extsk.clone(),
+            orchard_fvk: Some(other_ironwood.to_extended_fvk().to_bytes()),
+            encrypted_mnemonic: secret.encrypted_mnemonic.clone(),
+        };
+        let encrypted_key = repo.encrypt_account_key_fields(&stale_key).unwrap();
+        let key_id = repo.upsert_account_key(&encrypted_key).unwrap();
+        repo.upsert_address(&pirate_storage_sqlite::Address {
+            id: None,
+            key_id: Some(key_id),
+            account_id,
+            diversifier_index: 0,
+            address: "pirate1-preserved-address".to_string(),
+            address_type: pirate_storage_sqlite::AddressType::Ironwood,
+            label: Some("Preserved".to_string()),
+            created_at: 1,
+            color_tag: pirate_storage_sqlite::ColorTag::None,
+            address_scope: pirate_storage_sqlite::AddressScope::External,
+        })
+        .unwrap();
+        SyncStateStorage::new(&db).reset_sync_state(100).unwrap();
+        drop(repo);
+        drop(db);
+
+        let engine = SyncEngine::new("http://127.0.0.1:8067".to_string(), 20)
+            .with_wallet_at_path(
+                secret.wallet_id.clone(),
+                file.path().to_path_buf(),
+                EncryptionKey::from_bytes(*key.as_bytes()),
+                master_key.clone(),
+                NetworkType::Mainnet,
+                NetworkType::Mainnet,
+            )
+            .unwrap();
+        assert_eq!(engine.keys.len(), 1);
+        drop(engine);
+
+        let reopened = Database::open(file.path(), &key, master_key).unwrap();
+        let reopened_repo = Repository::new(&reopened);
+        assert_eq!(
+            SyncStateStorage::new(&reopened)
+                .load_sync_state()
+                .unwrap()
+                .local_height,
+            0
+        );
+        assert!(!reopened_repo.seed_key_scan_replay_required().unwrap());
+        let addresses = reopened_repo.get_all_addresses(account_id).unwrap();
+        assert_eq!(addresses.len(), 1);
+        assert_eq!(addresses[0].label.as_deref(), Some("Preserved"));
+    }
+
     fn canonical_test_commitment(value: u8) -> Vec<u8> {
         let mut commitment = vec![0u8; 32];
         commitment[0] = value;
