@@ -71,6 +71,7 @@ class _PCardState extends State<PCard> {
             ? Duration.zero
             : const Duration(milliseconds: 200),
         decoration: decoration,
+        clipBehavior: Clip.antiAlias,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
