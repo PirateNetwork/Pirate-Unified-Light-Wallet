@@ -44,7 +44,7 @@ use pirate_storage_sqlite::{
     ReceivedNoteRecord, Repository, ScanQueueStorage, SpendabilityStateStorage, WalletSecret,
 };
 use pirate_sync_lightd::client::{LightClient, RetryConfig};
-use pirate_sync_lightd::{check_consensus_branch, SyncEngine};
+use pirate_sync_lightd::SyncEngine;
 use rusqlite::params;
 use sapling::keys::OutgoingViewingKey as SaplingOutgoingViewingKey;
 use sapling::note_encryption::try_sapling_output_recovery;
@@ -1001,7 +1001,10 @@ fn should_generate_ironwood(wallet_id: &WalletId) -> Result<bool> {
         current_height
     };
 
-    Ok(network.is_ironwood_active(effective_height))
+    Ok(network.is_ironwood_active_with_resolved_height(
+        effective_height,
+        sync_state.ironwood_activation_height,
+    ))
 }
 
 /// Whether new receive addresses for this wallet should be Ironwood
@@ -4055,10 +4058,29 @@ pub async fn validate_consensus_branch(wallet_id: WalletId) -> Result<ConsensusB
         .await
         .map_err(|e| anyhow!("Failed to fetch lightwalletd info: {}", e))?;
 
-    let check = check_consensus_branch(
-        wallet_network_type(&wallet_id)?,
+    let network_type = wallet_network_type(&wallet_id)?;
+    let (db, _repo) = open_wallet_db_for(&wallet_id)?;
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
+    let known_activation_height = Network::from_type(network_type)
+        .ironwood_activation_height
+        .or(sync_storage.load_sync_state()?.ironwood_activation_height);
+    let activation_height = pirate_sync_lightd::resolve_ironwood_activation_height(
+        &client,
+        network_type,
         info.block_height,
         &info.consensus_branch_id,
+        known_activation_height,
+    )
+    .await?;
+    if activation_height != known_activation_height {
+        sync_storage.set_ironwood_activation_height(activation_height)?;
+    }
+
+    let check = pirate_sync_lightd::check_consensus_branch_with_activation_height(
+        network_type,
+        info.block_height,
+        &info.consensus_branch_id,
+        activation_height,
     )?;
     let is_valid = check.is_valid();
     let sdk_branch_hex = Some(check.sdk_branch_id);

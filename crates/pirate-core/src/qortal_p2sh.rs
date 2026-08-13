@@ -113,6 +113,7 @@ pub struct QortalP2shFundingPlan<'a> {
     pub ironwood_spending_keys_by_id: HashMap<i64, IronwoodExtendedSpendingKey>,
     pub available_notes: Vec<SelectableNote>,
     pub target_height: u32,
+    pub ironwood_activation_height: Option<u32>,
     pub ironwood_anchor: Option<IronwoodAnchor>,
     pub change_diversifier_index: u32,
     pub recipients: Vec<QortalRecipient>,
@@ -124,6 +125,7 @@ pub struct QortalP2shFundingPlan<'a> {
 pub struct QortalP2shRedeemPlan {
     pub network_type: pirate_params::NetworkType,
     pub target_height: u32,
+    pub ironwood_activation_height: Option<u32>,
     pub ironwood_anchor: Option<IronwoodAnchor>,
     pub funding_txid: [u8; 32],
     pub funding_coin: TxOut,
@@ -359,7 +361,10 @@ pub fn build_qortal_p2sh_funding_transaction(
         })?;
     let effective = apply_dust_policy_add_to_fee(plan.fee, change)?;
     let change = effective.change;
-    let network = PirateNetwork::new(plan.network_type);
+    let network = PirateNetwork::with_ironwood_activation_height(
+        plan.network_type,
+        plan.ironwood_activation_height,
+    );
     let target_height = BlockHeight::from_u32(plan.target_height);
     let sapling_ovk = plan
         .default_sapling_spending_key
@@ -382,8 +387,11 @@ pub fn build_qortal_p2sh_funding_transaction(
         .iter()
         .any(|recipient| matches!(recipient, QortalRecipient::Ironwood { .. }));
     let use_orchard_change = has_orchard_spends || has_orchard_outputs;
-    let use_sapling_internal_change =
-        crate::sapling_internal_change_active(plan.network_type, u64::from(plan.target_height));
+    let use_sapling_internal_change = crate::sapling_internal_change_active_with_resolved_height(
+        plan.network_type,
+        u64::from(plan.target_height),
+        plan.ironwood_activation_height,
+    );
     let branch_id = zcash_protocol::consensus::BranchId::for_height(&network, target_height);
     let tx_version = TxVersion::suggested_for_branch(branch_id);
     if (has_orchard_spends || has_orchard_outputs) && !matches!(tx_version, TxVersion::V6) {
@@ -717,7 +725,10 @@ pub fn build_qortal_p2sh_redeem_transaction(
     } else {
         0xFFFFFFFF
     };
-    let network = PirateNetwork::new(plan.network_type);
+    let network = PirateNetwork::with_ironwood_activation_height(
+        plan.network_type,
+        plan.ironwood_activation_height,
+    );
     let target_height = BlockHeight::from_u32(plan.target_height);
     let branch_id = zcash_protocol::consensus::BranchId::for_height(&network, target_height);
     let tx_version = TxVersion::suggested_for_branch(branch_id);
@@ -968,6 +979,7 @@ mod tests {
         QortalP2shRedeemPlan {
             network_type: pirate_params::NetworkType::Mainnet,
             target_height: 200_000,
+            ironwood_activation_height: None,
             ironwood_anchor: None,
             funding_txid: [4u8; 32],
             funding_coin: funding_coin(50_000),
@@ -997,6 +1009,7 @@ mod tests {
                 0,
             )],
             target_height: 200_000,
+            ironwood_activation_height: None,
             ironwood_anchor: None,
             change_diversifier_index: 0,
             recipients: vec![transparent_recipient(5, 20_000)],

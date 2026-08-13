@@ -947,12 +947,12 @@ pub(super) fn build_consolidation_tx(
     target_address: String,
     fee_opt: Option<u64>,
 ) -> Result<PendingTx> {
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let (db, repo) = open_wallet_db_for(&wallet_id)?;
     let _spendability = sync_control::require_spendability_ready_with_sync_trigger(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
+    let anchors = compute_spend_selection_anchors(db, secret.account_id)?;
     let selectable_notes_raw = load_selectable_notes_for_send(
         &repo,
         secret.account_id,
@@ -1000,12 +1000,12 @@ pub(super) fn build_sweep_tx(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<PendingTx> {
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let (db, repo) = open_wallet_db_for(&wallet_id)?;
     let _spendability = sync_control::require_spendability_ready_with_sync_trigger(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
+    let anchors = compute_spend_selection_anchors(db, secret.account_id)?;
 
     let key_ids_filter = normalize_filter_ids(key_ids_filter);
     let address_ids_filter = normalize_filter_ids(address_ids_filter);
@@ -1123,7 +1123,7 @@ fn sign_tx_internal(
     }
 
     log_step("open_db_start", "");
-    let (_db, repo) = open_wallet_db_for(&wallet_id).map_err(|e| {
+    let (db, repo) = open_wallet_db_for(&wallet_id).map_err(|e| {
         log_step("open_db_error", &format!("{:?}", e));
         e
     })?;
@@ -1142,7 +1142,7 @@ fn sign_tx_internal(
         .checked_add(pending.fee)
         .ok_or_else(|| anyhow!("Amount + fee overflow"))?;
     let spendability = sync_control::require_spendability_ready_with_sync_trigger(&wallet_id)?;
-    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
+    let anchors = compute_spend_selection_anchors(db, secret.account_id)?;
     let anchor_height = anchors.conservative_anchor_height;
     let ironwood_anchor_height = anchors.ironwood_anchor_height;
     log_step(
@@ -1372,8 +1372,16 @@ fn sign_tx_internal(
         "regtest" => NetworkType::Regtest,
         _ => NetworkType::Mainnet,
     };
+    let sync_state = pirate_storage_sqlite::SyncStateStorage::new(&db).load_sync_state()?;
+    let ironwood_activation_height = Network::from_type(network_type)
+        .ironwood_activation_height
+        .or(sync_state.ironwood_activation_height);
 
-    let mut builder = pirate_core::shielded_builder::ShieldedBuilder::with_network(network_type);
+    let mut builder =
+        pirate_core::shielded_builder::ShieldedBuilder::with_network_and_ironwood_activation_height(
+            network_type,
+            ironwood_activation_height,
+        );
     builder.with_fee_per_action(pending.fee);
     if auto_consolidation_extra_limit > 0 {
         builder.with_auto_consolidation_extra_limit(auto_consolidation_extra_limit);
@@ -1446,7 +1454,11 @@ fn sign_tx_internal(
     let target_height = u32::try_from(target_height_u64)
         .map_err(|_| anyhow!("Target height {} exceeds u32 range", target_height_u64))?;
     let use_sapling_internal_change = !use_orchard_change
-        && pirate_core::sapling_internal_change_active(network_type, target_height_u64);
+        && pirate_core::sapling_internal_change_active_with_resolved_height(
+            network_type,
+            target_height_u64,
+            ironwood_activation_height,
+        );
     log_step(
         "load_sync_state_ok",
         &format!(

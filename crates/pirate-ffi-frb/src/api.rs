@@ -867,7 +867,10 @@ fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
         current_height
     };
 
-    Ok(network.is_ironwood_active(effective_height))
+    Ok(network.is_ironwood_active_with_resolved_height(
+        effective_height,
+        sync_state.ironwood_activation_height,
+    ))
 }
 
 /// Get current receive address for wallet

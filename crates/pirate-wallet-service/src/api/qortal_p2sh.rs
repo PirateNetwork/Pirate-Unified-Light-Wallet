@@ -327,7 +327,7 @@ pub async fn qortal_send_p2sh(
     let network_type = active_network_type(&wallet_id)?;
     let script_pubkey = validate_send_request(network_type, &request)?;
 
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let (db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
@@ -417,8 +417,16 @@ pub async fn qortal_send_p2sh(
     let use_orchard_change = has_orchard_spends || has_orchard_outputs;
     let target_height = u32::try_from(spendability.target_height)
         .map_err(|_| anyhow!("Target height exceeds u32"))?;
+    let sync_state = pirate_storage_sqlite::SyncStateStorage::new(&db).load_sync_state()?;
+    let ironwood_activation_height = Network::from_type(network_type)
+        .ironwood_activation_height
+        .or(sync_state.ironwood_activation_height);
     let use_sapling_internal_change = !use_orchard_change
-        && pirate_core::sapling_internal_change_active(network_type, u64::from(target_height));
+        && pirate_core::sapling_internal_change_active_with_resolved_height(
+            network_type,
+            u64::from(target_height),
+            ironwood_activation_height,
+        );
 
     let change_index =
         resolve_fixed_internal_change_index(&repo, secret.account_id, source_key_id)?;
@@ -463,6 +471,7 @@ pub async fn qortal_send_p2sh(
         ironwood_spending_keys_by_id: orchard_keys_by_id,
         available_notes: notes,
         target_height,
+        ironwood_activation_height,
         ironwood_anchor: orchard_anchor,
         change_diversifier_index: change_index,
         recipients,
@@ -480,6 +489,13 @@ pub async fn qortal_redeem_p2sh(
     request: QortalP2shRedeemRequest,
 ) -> Result<String> {
     let network_type = active_network_type(&wallet_id)?;
+    let known_activation_height = {
+        let (db, _repo) = open_wallet_db_for(&wallet_id)?;
+        let sync_state = pirate_storage_sqlite::SyncStateStorage::new(&db).load_sync_state()?;
+        Network::from_type(network_type)
+            .ironwood_activation_height
+            .or(sync_state.ironwood_activation_height)
+    };
     let (redeem_script, txid, secret, privkey_bytes, input_address) =
         validate_redeem_request(network_type, &request)?;
 
@@ -493,9 +509,23 @@ pub async fn qortal_redeem_p2sh(
     let client = pirate_sync_lightd::LightClient::with_config(client_config);
     client.connect().await?;
 
-    let latest_height = client.get_latest_block().await?;
+    let info = client.get_lightd_info().await?;
+    let latest_height = info.block_height;
     let target_height =
         u32::try_from(latest_height).map_err(|_| anyhow!("Latest block height exceeds u32"))?;
+    let ironwood_activation_height = pirate_sync_lightd::resolve_ironwood_activation_height(
+        &client,
+        network_type,
+        latest_height,
+        &info.consensus_branch_id,
+        known_activation_height,
+    )
+    .await?;
+    if ironwood_activation_height != known_activation_height {
+        let (db, _repo) = open_wallet_db_for(&wallet_id)?;
+        pirate_storage_sqlite::SyncStateStorage::new(&db)
+            .set_ironwood_activation_height(ironwood_activation_height)?;
+    }
 
     let funding_raw = client.get_transaction(&txid).await?;
     let funding_tx = read_pirate_transaction(&funding_raw)
@@ -539,6 +569,7 @@ pub async fn qortal_redeem_p2sh(
     let signed = build_qortal_p2sh_redeem_transaction(QortalP2shRedeemPlan {
         network_type,
         target_height,
+        ironwood_activation_height,
         ironwood_anchor: orchard_anchor,
         funding_txid: txid,
         funding_coin: funding_output,
