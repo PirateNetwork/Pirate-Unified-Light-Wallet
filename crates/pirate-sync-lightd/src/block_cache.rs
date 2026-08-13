@@ -195,6 +195,17 @@ impl BlockCache {
         }
 
         let conn = self.open_conn()?;
+        let end = match Self::coverage_end(&conn, start)? {
+            Some(covered_end) => end.min(covered_end),
+            None if Self::has_recorded_coverage(&conn)? => {
+                return Ok(LoadedBlockRange {
+                    blocks: Vec::new(),
+                    legacy_heights: Vec::new(),
+                    encoded_bytes: 0,
+                });
+            }
+            None => end,
+        };
         let mut stmt = conn
             .prepare(
                 "SELECT height, data FROM blocks WHERE height BETWEEN ?1 AND ?2 ORDER BY height ASC",
@@ -244,6 +255,13 @@ impl BlockCache {
         let conn = self.open_conn()?;
         if let Some(covered_end) = Self::coverage_end(&conn, start)? {
             return Ok(Some(end.min(covered_end)));
+        }
+
+        // Once coverage metadata exists, rows outside it are leftovers from an
+        // interrupted replacement or an older cache generation. They must be
+        // fetched again rather than joined to a validated chain interval.
+        if Self::has_recorded_coverage(&conn)? {
+            return Ok(None);
         }
 
         // Caches created before coverage metadata existed pay this ordered scan
@@ -472,6 +490,15 @@ impl BlockCache {
                 .map_err(|_| Error::Storage("Negative block-cache coverage height".to_string()))
         })
         .transpose()
+    }
+
+    fn has_recorded_coverage(conn: &Connection) -> Result<bool> {
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM block_coverage LIMIT 1)",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|e| Error::Storage(e.to_string()))
     }
 
     fn record_coverage_tx(tx: &Transaction<'_>, start: u64, end: u64) -> Result<()> {
@@ -1032,6 +1059,50 @@ mod tests {
             .unwrap();
         assert_eq!(loaded.blocks.len(), 1);
         assert!(loaded.encoded_bytes > 1);
+    }
+
+    #[test]
+    fn coverage_metadata_excludes_untracked_legacy_suffix() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = BlockCache::new(dir.path().join("blocks.db")).unwrap();
+        let tracked = (42..=44)
+            .map(|height| {
+                let mut block = sample_block();
+                block.height = height;
+                block
+            })
+            .collect::<Vec<_>>();
+        cache.store_blocks(&tracked).unwrap();
+
+        let conn = cache.open_conn().unwrap();
+        for height in 45..=47 {
+            let mut stale = sample_block();
+            stale.height = height;
+            conn.execute(
+                "INSERT INTO blocks (height, data) VALUES (?1, ?2)",
+                params![height as i64, serde_json::to_vec(&stale).unwrap()],
+            )
+            .unwrap();
+        }
+        drop(conn);
+
+        let tracked_prefix = cache
+            .load_bounded_range_for_upgrade(42, 47, u64::MAX)
+            .unwrap();
+        assert_eq!(
+            tracked_prefix
+                .blocks
+                .iter()
+                .map(|block| block.height)
+                .collect::<Vec<_>>(),
+            vec![42, 43, 44]
+        );
+        assert!(cache
+            .load_bounded_range_for_upgrade(45, 47, u64::MAX)
+            .unwrap()
+            .blocks
+            .is_empty());
+        assert_eq!(cache.contiguous_end(45, 47).unwrap(), None);
     }
 
     #[test]
