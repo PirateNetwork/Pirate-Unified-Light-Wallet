@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/i18n/arb_text_localizer.dart';
@@ -61,37 +63,58 @@ class PrivacyStatusChip extends StatelessWidget {
             vertical: PSpacing.xs,
           );
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(PSpacing.radiusFull),
-      child: Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const maxLabelWidth = 220.0;
+        final horizontalPadding = padding.horizontal;
+        final availableLabelWidth = constraints.hasBoundedWidth
+            ? math.max(
+                0.0,
+                constraints.maxWidth - horizontalPadding - 8 - PSpacing.xs,
+              )
+            : maxLabelWidth;
+        final labelWidth = math.min(maxLabelWidth, availableLabelWidth);
+
+        return InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(PSpacing.radiusFull),
-          border: Border.all(color: AppColors.borderSubtle),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _dotColor,
-                shape: BoxShape.circle,
-              ),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSurface,
+              borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+              border: Border.all(color: AppColors.borderSubtle),
             ),
-            if (!dotOnly) ...[
-              const SizedBox(width: PSpacing.xs),
-              Text(
-                _label,
-                style: PTypography.labelSmall(color: AppColors.textSecondary),
-              ),
-            ],
-          ],
-        ),
-      ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _dotColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                if (!dotOnly) ...[
+                  const SizedBox(width: PSpacing.xs),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: labelWidth),
+                    child: Text(
+                      _label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PTypography.labelSmall(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
