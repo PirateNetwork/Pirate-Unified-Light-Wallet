@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import '../../core/desktop/windows_version.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
@@ -155,7 +157,7 @@ class _WindowControls extends StatelessWidget {
         ),
         _WindowButton(
           icon: Icons.close,
-          onPressed: () => appWindow.close(),
+          onPressed: () => unawaited(windowManager.close()),
           isClose: true,
         ),
       ],
