@@ -146,7 +146,7 @@ class PirateScrollBehavior extends MaterialScrollBehavior {
     return Scrollbar(
       controller: controller,
       thumbVisibility: true,
-      trackVisibility: platform != TargetPlatform.macOS,
+      trackVisibility: false,
       interactive: true,
       child: child,
     );
