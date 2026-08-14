@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 import 'core/background/background_sync_handler.dart';
 import 'core/background/background_sync_manager.dart';
 import 'core/desktop/adaptive_window.dart';
+import 'core/desktop/desktop_shutdown.dart';
 import 'core/ffi/ffi_bridge.dart';
 import 'core/ffi/generated/models.dart' show SyncMode;
 import 'core/desktop/single_instance.dart';
@@ -173,6 +174,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     with WindowListener, WidgetsBindingObserver {
   bool _closing = false;
   Color? _lastWindowBackground;
+  DesktopShutdownCoordinator? _desktopShutdown;
   ProviderSubscription<AsyncValue<void>>? _rustInitSubscription;
   String? _lastArbLocale;
 
@@ -202,6 +204,14 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
       unawaited(ref.read(backgroundSyncInitProvider.future));
     }
     if (_isDesktop) {
+      _desktopShutdown = DesktopShutdownCoordinator(
+        hideWindow: windowManager.hide,
+        cleanUp: _cleanUpDesktopRuntime,
+        releaseInstanceLock: _releaseSingleInstanceLock,
+        allowWindowClose: () => windowManager.setPreventClose(false),
+        closeWindow: windowManager.close,
+        forceDestroyWindow: windowManager.destroy,
+      );
       windowManager
         ..addListener(this)
         ..setPreventClose(true);
@@ -225,10 +235,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
       windowManager.removeListener(this);
     }
     _rustInitSubscription?.close();
-    final release = _singleInstanceLock?.release();
-    if (release != null) {
-      unawaited(release);
-    }
+    unawaited(_releaseSingleInstanceLock());
     super.dispose();
   }
 
@@ -304,18 +311,28 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     } catch (_) {}
   }
 
+  Future<void> _cleanUpDesktopRuntime() async {
+    disposeBackgroundSyncHandler();
+    await _shutdownTransports();
+  }
+
+  Future<void> _releaseSingleInstanceLock() async {
+    final lock = _singleInstanceLock;
+    _singleInstanceLock = null;
+    if (lock != null) {
+      await lock.release();
+    }
+  }
+
   @override
-  Future<void> onWindowClose() async {
+  void onWindowClose() {
     if (_closing) return;
     _closing = true;
     FfiBridge.setAppActive(false);
-    unawaited(windowManager.hide());
-    unawaited(_shutdownTransports());
-    final release = _singleInstanceLock?.release();
-    if (release != null) {
-      unawaited(release);
+    final shutdown = _desktopShutdown;
+    if (shutdown != null) {
+      unawaited(shutdown.close());
     }
-    unawaited(windowManager.destroy());
   }
 
   @override
