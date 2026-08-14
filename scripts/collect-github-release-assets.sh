@@ -259,7 +259,6 @@ fi
 find "$ARTIFACTS_DIR" -type f \( \
   -name 'pirate-unified-wallet-android-*.apk' \
   -o -name 'pirate-unified-wallet-windows-installer.exe' \
-  -o -name 'pirate-unified-wallet-windows-portable.zip' \
   -o -name 'pirate-unified-wallet-macos.dmg' \
   -o -name 'pirate-unified-wallet-ios.ipa' \
 \) ! -name '*-unsigned*' -print0 |
@@ -272,9 +271,6 @@ find "$ARTIFACTS_DIR" -type f \( \
 # developer bundle because regular users cannot install them safely.
 if [[ ! -f "$RELEASE_DIR/pirate-unified-wallet-windows-installer.exe" ]]; then
   copy_first 'pirate-unified-wallet-windows-installer-unsigned.exe' "$RELEASE_DIR"
-fi
-if [[ ! -f "$RELEASE_DIR/pirate-unified-wallet-windows-portable.zip" ]]; then
-  copy_first 'pirate-unified-wallet-windows-portable-unsigned.zip' "$RELEASE_DIR"
 fi
 if [[ ! -f "$RELEASE_DIR/pirate-unified-wallet-macos.dmg" ]]; then
   if [[ "$macos_notary_pending" == "true" ]]; then
@@ -392,6 +388,8 @@ copy_matching "$DEV_DIR/mobile-store-and-test-builds" \( \
   -o -name 'pirate-unified-wallet-ios-unsigned.ipa' \
 \)
 
+# Portable Windows builds remain available to testers without adding a second
+# Windows distribution path to the normal-user release assets.
 copy_matching "$DEV_DIR/unsigned-desktop-test-builds" \( \
   -name 'pirate-unified-wallet-windows-*-unsigned.*' \
   -o -name 'pirate-unified-wallet-macos-unsigned.dmg' \
