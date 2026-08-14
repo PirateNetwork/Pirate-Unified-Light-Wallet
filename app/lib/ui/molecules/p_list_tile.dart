@@ -76,8 +76,6 @@ class _PListTileState extends State<PListTile> {
                       children: [
                         Text(
                           widget.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: PTypography.titleSmall(
                             color: widget.enabled
                                 ? AppColors.textPrimary
@@ -88,8 +86,6 @@ class _PListTileState extends State<PListTile> {
                           SizedBox(height: PSpacing.xxs),
                           Text(
                             widget.subtitle!,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                             style: PTypography.bodySmall(
                               color: widget.enabled
                                   ? AppColors.textSecondary
