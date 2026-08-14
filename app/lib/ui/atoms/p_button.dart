@@ -261,6 +261,7 @@ class PIconButton extends StatefulWidget {
     required this.icon,
     required this.onPressed,
     this.size = PIconButtonSize.medium,
+    this.shape = PIconButtonShape.rounded,
     this.tooltip,
     super.key,
   });
@@ -268,6 +269,7 @@ class PIconButton extends StatefulWidget {
   final Widget icon;
   final VoidCallback? onPressed;
   final PIconButtonSize size;
+  final PIconButtonShape shape;
   final String? tooltip;
 
   @override
@@ -279,6 +281,7 @@ class _PIconButtonState extends State<PIconButton> {
 
   @override
   Widget build(BuildContext context) {
+    final isCircular = widget.shape == PIconButtonShape.circle;
     final button = MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -289,11 +292,15 @@ class _PIconButtonState extends State<PIconButton> {
         duration: const Duration(milliseconds: 150),
         width: widget.size.size,
         height: widget.size.size,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: _isHovered && widget.onPressed != null
               ? AppColors.hoverOverlay
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+          shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
+          borderRadius: isCircular
+              ? null
+              : BorderRadius.circular(PSpacing.radiusSM),
         ),
         child: IconButton(
           icon: widget.icon,
@@ -314,6 +321,8 @@ class _PIconButtonState extends State<PIconButton> {
     return button;
   }
 }
+
+enum PIconButtonShape { rounded, circle }
 
 /// Icon button sizes
 enum PIconButtonSize {
