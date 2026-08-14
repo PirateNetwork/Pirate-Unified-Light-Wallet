@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design/tokens/colors.dart';
@@ -10,14 +9,8 @@ import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import '../../core/platform/platform_utils.dart';
 import '../../core/swaps/swap_availability.dart';
-
-bool _isDesktopPlatform() {
-  if (kIsWeb) return false;
-  return defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux;
-}
 
 /// Pay entry screen for desktop and deep links.
 class PayScreen extends StatelessWidget {
@@ -28,7 +21,7 @@ class PayScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final isMobile = PSpacing.isMobile(size.width);
+    final isMobile = PSpacing.isHandset(size);
     final appBarActions = [
       ConnectionStatusIndicator(
         full: !isMobile,
@@ -42,10 +35,10 @@ class PayScreen extends StatelessWidget {
       onVerify: () => context.push('/payment-disclosure'),
       onSwap: () => context.push('/swap'),
     );
-    final isDesktopPlatform = _isDesktopPlatform();
+    final desktopPlatform = isDesktopPlatform;
 
     if (!useScaffold) {
-      if (isDesktopPlatform) {
+      if (desktopPlatform) {
         return content;
       }
       return PScaffold(
@@ -62,7 +55,7 @@ class PayScreen extends StatelessWidget {
 
     return PScaffold(
       title: 'Pay'.tr,
-      appBar: isDesktopPlatform
+      appBar: desktopPlatform
           ? null
           : PAppBar(
               title: 'Pay'.tr,
@@ -91,7 +84,9 @@ class PaySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxSheetHeight = MediaQuery.of(context).size.height * 0.75;
+    final screenSize = MediaQuery.sizeOf(context);
+    final compactLandscape = PSpacing.isCompactLandscape(screenSize);
+    final maxSheetHeight = screenSize.height * (compactLandscape ? 0.92 : 0.75);
     return Container(
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
@@ -100,11 +95,11 @@ class PaySheet extends StatelessWidget {
         ),
         border: Border.all(color: AppColors.borderSubtle),
       ),
-      padding: const EdgeInsets.fromLTRB(
-        PSpacing.lg,
+      padding: EdgeInsets.fromLTRB(
+        compactLandscape ? PSpacing.md : PSpacing.lg,
         PSpacing.sm,
-        PSpacing.lg,
-        PSpacing.xl,
+        compactLandscape ? PSpacing.md : PSpacing.lg,
+        compactLandscape ? PSpacing.md : PSpacing.xl,
       ),
       child: SafeArea(
         top: false,
@@ -114,7 +109,9 @@ class PaySheet extends StatelessWidget {
             const spacing = PSpacing.md;
             final tileWidth =
                 (constraints.maxWidth - spacing * (columns - 1)) / columns;
-            final tileHeight = (tileWidth * 0.78).clamp(130.0, 170.0);
+            final tileHeight = compactLandscape
+                ? (tileWidth * 0.48).clamp(112.0, 140.0)
+                : (tileWidth * 0.78).clamp(130.0, 170.0);
             final tiles = [
               _PayActionTile(
                 title: 'Send'.tr,
@@ -196,7 +193,9 @@ class PaySheet extends StatelessWidget {
                       color: AppColors.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: PSpacing.lg),
+                  SizedBox(
+                    height: compactLandscape ? PSpacing.sm : PSpacing.lg,
+                  ),
                   Flexible(
                     child: SingleChildScrollView(
                       child: Wrap(
@@ -239,7 +238,10 @@ class _PayContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktopPlatform = _isDesktopPlatform();
+    final desktopPlatform = isDesktopPlatform;
+    final compactLandscape =
+        !desktopPlatform &&
+        PSpacing.isCompactLandscape(MediaQuery.sizeOf(context));
     final tiles = [
       _PayActionTile(
         title: 'Send'.tr,
@@ -295,7 +297,7 @@ class _PayContent extends StatelessWidget {
               ? PSpacing.lg
               : PSpacing.md;
 
-          if (isDesktopPlatform) {
+          if (desktopPlatform) {
             const crossAxisCount = 2;
             final tileWidth =
                 (constraints.maxWidth - spacing * (crossAxisCount - 1)) /
@@ -336,7 +338,9 @@ class _PayContent extends StatelessWidget {
           final tileWidth =
               (constraints.maxWidth - (spacing * (crossAxisCount - 1))) /
               crossAxisCount;
-          final tileHeight = (tileWidth * 0.86).clamp(168.0, 360.0);
+          final tileHeight = compactLandscape
+              ? (tileWidth * 0.48).clamp(132.0, 176.0)
+              : (tileWidth * 0.86).clamp(168.0, 360.0);
           final aspectRatio = tileWidth / tileHeight;
 
           return SingleChildScrollView(
@@ -358,6 +362,7 @@ class _PayContent extends StatelessWidget {
                   icon: tiles[index].icon,
                   gradient: tiles[index].gradient,
                   onTap: tiles[index].onTap,
+                  compact: compactLandscape,
                 );
               },
             ),
@@ -393,7 +398,7 @@ class _PayActionTile extends StatelessWidget {
     final padding = isDesktop
         ? PSpacing.xl
         : compact
-        ? PSpacing.md
+        ? PSpacing.sm
         : PSpacing.lg;
     final iconSize = isDesktop
         ? 32.0

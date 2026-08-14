@@ -73,4 +73,32 @@ void main() {
     expect(gradient.colors, [AppColors.gradientCStart, AppColors.gradientCEnd]);
     expect(gradient.colors, isNot(contains(AppColors.gradientBEnd)));
   });
+
+  testWidgets('keeps every payment action reachable in phone landscape', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(844, 390);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PaySheet(
+            onSend: () {},
+            onReceive: () {},
+            onVerify: () {},
+            onSwap: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Send'), findsOneWidget);
+    expect(find.text('Receive'), findsOneWidget);
+    expect(find.text('Verify'), findsOneWidget);
+    expect(find.text('Swap'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
