@@ -909,6 +909,23 @@ pub fn set_address_color_tag(
     )
 }
 
+/// Get user-managed display preferences for wallet addresses.
+pub fn list_address_display_preferences(
+    wallet_id: WalletId,
+) -> Result<Vec<AddressDisplayPreferenceInfo>> {
+    convert_from_service(service::list_address_display_preferences(wallet_id)?)
+}
+
+/// Pin or unpin a wallet address in user interfaces.
+pub fn set_address_pinned(wallet_id: WalletId, address_id: i64, is_pinned: bool) -> Result<()> {
+    service::set_address_pinned(wallet_id, address_id, is_pinned)
+}
+
+/// Archive or restore a wallet address in user interfaces.
+pub fn set_address_archived(wallet_id: WalletId, address_id: i64, is_archived: bool) -> Result<()> {
+    service::set_address_archived(wallet_id, address_id, is_archived)
+}
+
 /// Get all addresses for wallet with labels
 pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
     convert_from_service(service::list_addresses(wallet_id)?)

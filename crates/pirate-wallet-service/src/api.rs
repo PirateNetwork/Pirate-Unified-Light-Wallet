@@ -1080,6 +1080,51 @@ pub fn set_address_color_tag(
     Ok(())
 }
 
+/// Get user-managed display preferences for wallet addresses.
+pub fn list_address_display_preferences(
+    wallet_id: WalletId,
+) -> Result<Vec<AddressDisplayPreferenceInfo>> {
+    if is_decoy_mode_active() {
+        return Ok(Vec::new());
+    }
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+
+    Ok(repo
+        .get_address_display_preferences(secret.account_id)?
+        .into_iter()
+        .map(|preference| AddressDisplayPreferenceInfo {
+            address_id: preference.address_id,
+            is_pinned: preference.is_pinned,
+            is_archived: preference.is_archived,
+        })
+        .collect())
+}
+
+/// Pin or unpin a wallet address in user interfaces.
+pub fn set_address_pinned(wallet_id: WalletId, address_id: i64, is_pinned: bool) -> Result<()> {
+    ensure_not_decoy("Pin address")?;
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+    repo.set_address_pinned(secret.account_id, address_id, is_pinned)?;
+    Ok(())
+}
+
+/// Archive or restore a wallet address in user interfaces.
+pub fn set_address_archived(wallet_id: WalletId, address_id: i64, is_archived: bool) -> Result<()> {
+    ensure_not_decoy("Archive address")?;
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+    repo.set_address_archived(secret.account_id, address_id, is_archived)?;
+    Ok(())
+}
+
 /// Get all addresses for wallet with labels
 pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
     addresses::list_addresses(wallet_id)

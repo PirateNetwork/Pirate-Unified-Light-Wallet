@@ -162,6 +162,37 @@ class AddressBookEntryFfi {
           useCount == other.useCount;
 }
 
+/// User-managed display preferences for a wallet address.
+class AddressDisplayPreferenceInfo {
+  /// Address row id.
+  final PlatformInt64 addressId;
+
+  /// Whether the address should sort ahead of other visible addresses.
+  final bool isPinned;
+
+  /// Whether the address is hidden from the default address-history view.
+  final bool isArchived;
+
+  const AddressDisplayPreferenceInfo({
+    required this.addressId,
+    required this.isPinned,
+    required this.isArchived,
+  });
+
+  @override
+  int get hashCode =>
+      addressId.hashCode ^ isPinned.hashCode ^ isArchived.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AddressDisplayPreferenceInfo &&
+          runtimeType == other.runtimeType &&
+          addressId == other.addressId &&
+          isPinned == other.isPinned &&
+          isArchived == other.isArchived;
+}
+
 /// Address with label
 class AddressInfo {
   /// Address string

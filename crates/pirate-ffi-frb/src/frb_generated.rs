@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 329445840;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -872554908;
 
 // Section: executor
 
@@ -2461,6 +2461,30 @@ fn wire__crate__api__list_address_book_impl(
         },
     )
 }
+fn wire__crate__api__list_address_display_preferences_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "list_address_display_preferences",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::list_address_display_preferences(api_wallet_id)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__list_addresses_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -2852,6 +2876,37 @@ fn wire__crate__api__search_address_book_impl(
         },
     )
 }
+fn wire__crate__api__set_address_archived_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    address_id: impl CstDecode<i64>,
+    is_archived: impl CstDecode<bool>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_address_archived",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_address_id = address_id.cst_decode();
+            let api_is_archived = is_archived.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::set_address_archived(
+                            api_wallet_id,
+                            api_address_id,
+                            api_is_archived,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__set_address_color_tag_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -2875,6 +2930,37 @@ fn wire__crate__api__set_address_color_tag_impl(
                             api_wallet_id,
                             api_addr,
                             api_color_tag,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__set_address_pinned_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    address_id: impl CstDecode<i64>,
+    is_pinned: impl CstDecode<bool>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_address_pinned",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_address_id = address_id.cst_decode();
+            let api_is_pinned = is_pinned.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::set_address_pinned(
+                            api_wallet_id,
+                            api_address_id,
+                            api_is_pinned,
                         )?;
                         Ok(output_ok)
                     })(),
@@ -4116,6 +4202,20 @@ impl SseDecode for crate::models::AddressBookEntryFfi {
     }
 }
 
+impl SseDecode for crate::models::AddressDisplayPreferenceInfo {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_addressId = <i64>::sse_decode(deserializer);
+        let mut var_isPinned = <bool>::sse_decode(deserializer);
+        let mut var_isArchived = <bool>::sse_decode(deserializer);
+        return crate::models::AddressDisplayPreferenceInfo {
+            address_id: var_addressId,
+            is_pinned: var_isPinned,
+            is_archived: var_isArchived,
+        };
+    }
+}
+
 impl SseDecode for crate::models::AddressInfo {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4374,6 +4474,20 @@ impl SseDecode for Vec<crate::models::AddressBookEntryFfi> {
         let mut ans_ = vec![];
         for idx_ in 0..len_ {
             ans_.push(<crate::models::AddressBookEntryFfi>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::models::AddressDisplayPreferenceInfo> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<crate::models::AddressDisplayPreferenceInfo>::sse_decode(
                 deserializer,
             ));
         }
@@ -5276,6 +5390,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::models::AddressBookEntryFfi>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::models::AddressDisplayPreferenceInfo {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.address_id.into_into_dart().into_dart(),
+            self.is_pinned.into_into_dart().into_dart(),
+            self.is_archived.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::models::AddressDisplayPreferenceInfo
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::models::AddressDisplayPreferenceInfo>
+    for crate::models::AddressDisplayPreferenceInfo
+{
+    fn into_into_dart(self) -> crate::models::AddressDisplayPreferenceInfo {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::models::AddressInfo {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -6121,6 +6257,15 @@ impl SseEncode for crate::models::AddressBookEntryFfi {
     }
 }
 
+impl SseEncode for crate::models::AddressDisplayPreferenceInfo {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i64>::sse_encode(self.address_id, serializer);
+        <bool>::sse_encode(self.is_pinned, serializer);
+        <bool>::sse_encode(self.is_archived, serializer);
+    }
+}
+
 impl SseEncode for crate::models::AddressInfo {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6304,6 +6449,16 @@ impl SseEncode for Vec<crate::models::AddressBookEntryFfi> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::models::AddressBookEntryFfi>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::models::AddressDisplayPreferenceInfo> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::models::AddressDisplayPreferenceInfo>::sse_encode(item, serializer);
         }
     }
 }
@@ -6971,6 +7126,18 @@ mod io {
             }
         }
     }
+    impl CstDecode<crate::models::AddressDisplayPreferenceInfo>
+        for wire_cst_address_display_preference_info
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::AddressDisplayPreferenceInfo {
+            crate::models::AddressDisplayPreferenceInfo {
+                address_id: self.address_id.cst_decode(),
+                is_pinned: self.is_pinned.cst_decode(),
+                is_archived: self.is_archived.cst_decode(),
+            }
+        }
+    }
     impl CstDecode<crate::models::AddressInfo> for wire_cst_address_info {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> crate::models::AddressInfo {
@@ -7212,6 +7379,18 @@ mod io {
     {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> Vec<crate::models::AddressBookEntryFfi> {
+            let vec = unsafe {
+                let wrap = flutter_rust_bridge::for_generated::box_from_leak_ptr(self);
+                flutter_rust_bridge::for_generated::vec_from_leak_ptr(wrap.ptr, wrap.len)
+            };
+            vec.into_iter().map(CstDecode::cst_decode).collect()
+        }
+    }
+    impl CstDecode<Vec<crate::models::AddressDisplayPreferenceInfo>>
+        for *mut wire_cst_list_address_display_preference_info
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<crate::models::AddressDisplayPreferenceInfo> {
             let vec = unsafe {
                 let wrap = flutter_rust_bridge::for_generated::box_from_leak_ptr(self);
                 flutter_rust_bridge::for_generated::vec_from_leak_ptr(wrap.ptr, wrap.len)
@@ -7645,6 +7824,20 @@ mod io {
         }
     }
     impl Default for wire_cst_address_book_entry_ffi {
+        fn default() -> Self {
+            Self::new_with_null_ptr()
+        }
+    }
+    impl NewWithNullPtr for wire_cst_address_display_preference_info {
+        fn new_with_null_ptr() -> Self {
+            Self {
+                address_id: Default::default(),
+                is_pinned: Default::default(),
+                is_archived: Default::default(),
+            }
+        }
+    }
+    impl Default for wire_cst_address_display_preference_info {
         fn default() -> Self {
             Self::new_with_null_ptr()
         }
@@ -9020,6 +9213,14 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__list_address_display_preferences(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__list_address_display_preferences_impl(port_, wallet_id)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__list_addresses(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
@@ -9155,6 +9356,16 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_address_archived(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        address_id: i64,
+        is_archived: bool,
+    ) {
+        wire__crate__api__set_address_archived_impl(port_, wallet_id, address_id, is_archived)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_address_color_tag(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
@@ -9162,6 +9373,16 @@ mod io {
         color_tag: i32,
     ) {
         wire__crate__api__set_address_color_tag_impl(port_, wallet_id, addr, color_tag)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_address_pinned(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        address_id: i64,
+        is_pinned: bool,
+    ) {
+        wire__crate__api__set_address_pinned_impl(port_, wallet_id, address_id, is_pinned)
     }
 
     #[unsafe(no_mangle)]
@@ -9685,6 +9906,20 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_cst_new_list_address_display_preference_info(
+        len: i32,
+    ) -> *mut wire_cst_list_address_display_preference_info {
+        let wrap = wire_cst_list_address_display_preference_info {
+            ptr: flutter_rust_bridge::for_generated::new_leak_vec_ptr(
+                <wire_cst_address_display_preference_info>::new_with_null_ptr(),
+                len,
+            ),
+            len,
+        };
+        flutter_rust_bridge::for_generated::new_leak_box_ptr(wrap)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_cst_new_list_address_info(
         len: i32,
     ) -> *mut wire_cst_list_address_info {
@@ -9860,6 +10095,13 @@ mod io {
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
+    pub struct wire_cst_address_display_preference_info {
+        address_id: i64,
+        is_pinned: bool,
+        is_archived: bool,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
     pub struct wire_cst_address_info {
         address: *mut wire_cst_list_prim_u_8_strict,
         diversifier_index: u32,
@@ -9966,6 +10208,12 @@ mod io {
     #[derive(Clone, Copy)]
     pub struct wire_cst_list_address_book_entry_ffi {
         ptr: *mut wire_cst_address_book_entry_ffi,
+        len: i32,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct wire_cst_list_address_display_preference_info {
+        ptr: *mut wire_cst_address_display_preference_info,
         len: i32,
     }
     #[repr(C)]
@@ -10345,6 +10593,27 @@ mod web {
             }
         }
     }
+    impl CstDecode<crate::models::AddressDisplayPreferenceInfo>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::AddressDisplayPreferenceInfo {
+            let self_ = self
+                .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap();
+            assert_eq!(
+                self_.length(),
+                3,
+                "Expected 3 elements, got {}",
+                self_.length()
+            );
+            crate::models::AddressDisplayPreferenceInfo {
+                address_id: self_.get(0).cst_decode(),
+                is_pinned: self_.get(1).cst_decode(),
+                is_archived: self_.get(2).cst_decode(),
+            }
+        }
+    }
     impl CstDecode<crate::models::AddressInfo>
         for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
     {
@@ -10602,6 +10871,18 @@ mod web {
     {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> Vec<crate::models::AddressBookEntryFfi> {
+            self.dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap()
+                .iter()
+                .map(CstDecode::cst_decode)
+                .collect()
+        }
+    }
+    impl CstDecode<Vec<crate::models::AddressDisplayPreferenceInfo>>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<crate::models::AddressDisplayPreferenceInfo> {
             self.dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
                 .unwrap()
                 .iter()
@@ -12254,6 +12535,14 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__list_address_display_preferences(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+    ) {
+        wire__crate__api__list_address_display_preferences_impl(port_, wallet_id)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__list_addresses(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
@@ -12393,6 +12682,16 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__set_address_archived(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        address_id: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        is_archived: bool,
+    ) {
+        wire__crate__api__set_address_archived_impl(port_, wallet_id, address_id, is_archived)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__set_address_color_tag(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
@@ -12400,6 +12699,16 @@ mod web {
         color_tag: i32,
     ) {
         wire__crate__api__set_address_color_tag_impl(port_, wallet_id, addr, color_tag)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__set_address_pinned(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        address_id: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        is_pinned: bool,
+    ) {
+        wire__crate__api__set_address_pinned_impl(port_, wallet_id, address_id, is_pinned)
     }
 
     #[wasm_bindgen]

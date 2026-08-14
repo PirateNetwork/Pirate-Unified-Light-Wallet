@@ -199,6 +199,35 @@ Future<void> setAddressColorTag({
   colorTag: colorTag,
 );
 
+/// Get user-managed display preferences for wallet addresses.
+Future<List<AddressDisplayPreferenceInfo>> listAddressDisplayPreferences({
+  required String walletId,
+}) => RustLib.instance.api.crateApiListAddressDisplayPreferences(
+  walletId: walletId,
+);
+
+/// Pin or unpin a wallet address in user interfaces.
+Future<void> setAddressPinned({
+  required String walletId,
+  required PlatformInt64 addressId,
+  required bool isPinned,
+}) => RustLib.instance.api.crateApiSetAddressPinned(
+  walletId: walletId,
+  addressId: addressId,
+  isPinned: isPinned,
+);
+
+/// Archive or restore a wallet address in user interfaces.
+Future<void> setAddressArchived({
+  required String walletId,
+  required PlatformInt64 addressId,
+  required bool isArchived,
+}) => RustLib.instance.api.crateApiSetAddressArchived(
+  walletId: walletId,
+  addressId: addressId,
+  isArchived: isArchived,
+);
+
 /// Get all addresses for wallet with labels
 Future<List<AddressInfo>> listAddresses({required String walletId}) =>
     RustLib.instance.api.crateApiListAddresses(walletId: walletId);
@@ -733,7 +762,8 @@ Future<Balance> getBalance({required String walletId}) =>
 /// List transactions
 ///
 /// Returns transaction history from the database, aggregated by transaction ID.
-/// Transactions are sorted by height descending (newest first).
+/// Pending transactions are returned first, followed by confirmed transactions
+/// in descending block-height order.
 Future<List<TxInfo>> listTransactions({required String walletId, int? limit}) =>
     RustLib.instance.api.crateApiListTransactions(
       walletId: walletId,

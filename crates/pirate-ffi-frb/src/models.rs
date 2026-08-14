@@ -449,6 +449,17 @@ pub struct AddressBalanceInfo {
     pub diversifier_index: u32,
 }
 
+/// User-managed display preferences for a wallet address.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct AddressDisplayPreferenceInfo {
+    /// Address row id.
+    pub address_id: i64,
+    /// Whether the address should sort ahead of other visible addresses.
+    pub is_pinned: bool,
+    /// Whether the address is hidden from the default address-history view.
+    pub is_archived: bool,
+}
+
 /// Key group type for UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum KeyTypeInfo {

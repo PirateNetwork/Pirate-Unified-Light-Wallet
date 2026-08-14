@@ -40,6 +40,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw);
 
   @protected
+  AddressDisplayPreferenceInfo dco_decode_address_display_preference_info(
+    dynamic raw,
+  );
+
+  @protected
   AddressInfo dco_decode_address_info(dynamic raw);
 
   @protected
@@ -140,6 +145,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
+
+  @protected
+  List<AddressDisplayPreferenceInfo>
+  dco_decode_list_address_display_preference_info(dynamic raw);
 
   @protected
   List<AddressInfo> dco_decode_list_address_info(dynamic raw);
@@ -334,6 +343,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  AddressDisplayPreferenceInfo sse_decode_address_display_preference_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   AddressInfo sse_decode_address_info(SseDeserializer deserializer);
 
   @protected
@@ -448,6 +462,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<AddressDisplayPreferenceInfo>
+  sse_decode_list_address_display_preference_info(SseDeserializer deserializer);
 
   @protected
   List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
@@ -820,6 +838,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  ffi.Pointer<wire_cst_list_address_display_preference_info>
+  cst_encode_list_address_display_preference_info(
+    List<AddressDisplayPreferenceInfo> raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_address_display_preference_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_address_display_preference_info(
+        raw[i],
+        ans.ref.ptr[i],
+      );
+    }
+    return ans;
+  }
+
+  @protected
   ffi.Pointer<wire_cst_list_address_info> cst_encode_list_address_info(
     List<AddressInfo> raw,
   ) {
@@ -1080,6 +1114,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     wireObj.updated_at = cst_encode_i_64(apiObj.updatedAt);
     wireObj.last_used_at = cst_encode_opt_box_autoadd_i_64(apiObj.lastUsedAt);
     wireObj.use_count = cst_encode_u_32(apiObj.useCount);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_address_display_preference_info(
+    AddressDisplayPreferenceInfo apiObj,
+    wire_cst_address_display_preference_info wireObj,
+  ) {
+    wireObj.address_id = cst_encode_i_64(apiObj.addressId);
+    wireObj.is_pinned = cst_encode_bool(apiObj.isPinned);
+    wireObj.is_archived = cst_encode_bool(apiObj.isArchived);
   }
 
   @protected
@@ -1630,6 +1674,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_address_display_preference_info(
+    AddressDisplayPreferenceInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
 
   @protected
@@ -1773,6 +1823,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_address_book_entry_ffi(
     List<AddressBookEntryFfi> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_address_display_preference_info(
+    List<AddressDisplayPreferenceInfo> self,
     SseSerializer serializer,
   );
 
@@ -4375,6 +4431,33 @@ class RustLibWire implements BaseWire {
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
           >();
 
+  void wire__crate__api__list_address_display_preferences(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+  ) {
+    return _wire__crate__api__list_address_display_preferences(
+      port_,
+      wallet_id,
+    );
+  }
+
+  late final _wire__crate__api__list_address_display_preferencesPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )
+        >
+      >(
+        'frbgen_pirate_wallet_wire__crate__api__list_address_display_preferences',
+      );
+  late final _wire__crate__api__list_address_display_preferences =
+      _wire__crate__api__list_address_display_preferencesPtr
+          .asFunction<
+            void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
+          >();
+
   void wire__crate__api__list_addresses(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -4744,6 +4827,42 @@ class RustLibWire implements BaseWire {
             )
           >();
 
+  void wire__crate__api__set_address_archived(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    int address_id,
+    bool is_archived,
+  ) {
+    return _wire__crate__api__set_address_archived(
+      port_,
+      wallet_id,
+      address_id,
+      is_archived,
+    );
+  }
+
+  late final _wire__crate__api__set_address_archivedPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Int64,
+            ffi.Bool,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__set_address_archived');
+  late final _wire__crate__api__set_address_archived =
+      _wire__crate__api__set_address_archivedPtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              int,
+              bool,
+            )
+          >();
+
   void wire__crate__api__set_address_color_tag(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -4777,6 +4896,42 @@ class RustLibWire implements BaseWire {
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               int,
+            )
+          >();
+
+  void wire__crate__api__set_address_pinned(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    int address_id,
+    bool is_pinned,
+  ) {
+    return _wire__crate__api__set_address_pinned(
+      port_,
+      wallet_id,
+      address_id,
+      is_pinned,
+    );
+  }
+
+  late final _wire__crate__api__set_address_pinnedPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Int64,
+            ffi.Bool,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__set_address_pinned');
+  late final _wire__crate__api__set_address_pinned =
+      _wire__crate__api__set_address_pinnedPtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              int,
+              bool,
             )
           >();
 
@@ -6008,6 +6163,27 @@ class RustLibWire implements BaseWire {
             ffi.Pointer<wire_cst_list_address_book_entry_ffi> Function(int)
           >();
 
+  ffi.Pointer<wire_cst_list_address_display_preference_info>
+  cst_new_list_address_display_preference_info(int len) {
+    return _cst_new_list_address_display_preference_info(len);
+  }
+
+  late final _cst_new_list_address_display_preference_infoPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Pointer<wire_cst_list_address_display_preference_info> Function(
+            ffi.Int32,
+          )
+        >
+      >('frbgen_pirate_wallet_cst_new_list_address_display_preference_info');
+  late final _cst_new_list_address_display_preference_info =
+      _cst_new_list_address_display_preference_infoPtr
+          .asFunction<
+            ffi.Pointer<wire_cst_list_address_display_preference_info> Function(
+              int,
+            )
+          >();
+
   ffi.Pointer<wire_cst_list_address_info> cst_new_list_address_info(int len) {
     return _cst_new_list_address_info(len);
   }
@@ -6392,6 +6568,24 @@ final class wire_cst_list_address_balance_info extends ffi.Struct {
 
 final class wire_cst_list_address_book_entry_ffi extends ffi.Struct {
   external ffi.Pointer<wire_cst_address_book_entry_ffi> ptr;
+
+  @ffi.Int32()
+  external int len;
+}
+
+final class wire_cst_address_display_preference_info extends ffi.Struct {
+  @ffi.Int64()
+  external int address_id;
+
+  @ffi.Bool()
+  external bool is_pinned;
+
+  @ffi.Bool()
+  external bool is_archived;
+}
+
+final class wire_cst_list_address_display_preference_info extends ffi.Struct {
+  external ffi.Pointer<wire_cst_address_display_preference_info> ptr;
 
   @ffi.Int32()
   external int len;

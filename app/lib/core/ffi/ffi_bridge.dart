@@ -456,6 +456,46 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  static Future<List<AddressDisplayPreferenceInfo>>
+  listAddressDisplayPreferences(WalletId id) async {
+    if (kUseFrbBindings) {
+      return await api.listAddressDisplayPreferences(walletId: id);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<void> setAddressPinned(
+    WalletId id,
+    int addressId,
+    bool isPinned,
+  ) async {
+    if (kUseFrbBindings) {
+      await api.setAddressPinned(
+        walletId: id,
+        addressId: addressId,
+        isPinned: isPinned,
+      );
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<void> setAddressArchived(
+    WalletId id,
+    int addressId,
+    bool isArchived,
+  ) async {
+    if (kUseFrbBindings) {
+      await api.setAddressArchived(
+        walletId: id,
+        addressId: addressId,
+        isArchived: isArchived,
+      );
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   static Future<List<AddressInfo>> listAddresses(WalletId id) async {
     if (kUseFrbBindings) {
       return await api.listAddresses(walletId: id);

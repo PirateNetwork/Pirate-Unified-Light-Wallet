@@ -42,6 +42,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw);
 
   @protected
+  AddressDisplayPreferenceInfo dco_decode_address_display_preference_info(
+    dynamic raw,
+  );
+
+  @protected
   AddressInfo dco_decode_address_info(dynamic raw);
 
   @protected
@@ -142,6 +147,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
+
+  @protected
+  List<AddressDisplayPreferenceInfo>
+  dco_decode_list_address_display_preference_info(dynamic raw);
 
   @protected
   List<AddressInfo> dco_decode_list_address_info(dynamic raw);
@@ -336,6 +345,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  AddressDisplayPreferenceInfo sse_decode_address_display_preference_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   AddressInfo sse_decode_address_info(SseDeserializer deserializer);
 
   @protected
@@ -450,6 +464,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
     SseDeserializer deserializer,
   );
+
+  @protected
+  List<AddressDisplayPreferenceInfo>
+  sse_decode_list_address_display_preference_info(SseDeserializer deserializer);
 
   @protected
   List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
@@ -696,6 +714,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  JSAny cst_encode_address_display_preference_info(
+    AddressDisplayPreferenceInfo raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_i_64(raw.addressId),
+      cst_encode_bool(raw.isPinned),
+      cst_encode_bool(raw.isArchived),
+    ].jsify()!;
+  }
+
+  @protected
   JSAny cst_encode_address_info(AddressInfo raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return [
@@ -923,6 +953,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   JSAny cst_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw.map(cst_encode_address_book_entry_ffi).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_address_display_preference_info(
+    List<AddressDisplayPreferenceInfo> raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw
+        .map(cst_encode_address_display_preference_info)
+        .toList()
+        .jsify()!;
   }
 
   @protected
@@ -1432,6 +1473,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_address_display_preference_info(
+    AddressDisplayPreferenceInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
 
   @protected
@@ -1575,6 +1622,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_address_book_entry_ffi(
     List<AddressBookEntryFfi> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_address_display_preference_info(
+    List<AddressDisplayPreferenceInfo> self,
     SseSerializer serializer,
   );
 
@@ -2529,6 +2582,14 @@ class RustLibWire implements BaseWire {
     String wallet_id,
   ) => wasmModule.wire__crate__api__list_address_book(port_, wallet_id);
 
+  void wire__crate__api__list_address_display_preferences(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__list_address_display_preferences(
+    port_,
+    wallet_id,
+  );
+
   void wire__crate__api__list_addresses(
     NativePortType port_,
     String wallet_id,
@@ -2627,6 +2688,18 @@ class RustLibWire implements BaseWire {
   ) =>
       wasmModule.wire__crate__api__search_address_book(port_, wallet_id, query);
 
+  void wire__crate__api__set_address_archived(
+    NativePortType port_,
+    String wallet_id,
+    JSAny address_id,
+    bool is_archived,
+  ) => wasmModule.wire__crate__api__set_address_archived(
+    port_,
+    wallet_id,
+    address_id,
+    is_archived,
+  );
+
   void wire__crate__api__set_address_color_tag(
     NativePortType port_,
     String wallet_id,
@@ -2637,6 +2710,18 @@ class RustLibWire implements BaseWire {
     wallet_id,
     addr,
     color_tag,
+  );
+
+  void wire__crate__api__set_address_pinned(
+    NativePortType port_,
+    String wallet_id,
+    JSAny address_id,
+    bool is_pinned,
+  ) => wasmModule.wire__crate__api__set_address_pinned(
+    port_,
+    wallet_id,
+    address_id,
+    is_pinned,
   );
 
   void wire__crate__api__set_app_passphrase(
@@ -3429,6 +3514,11 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String wallet_id,
   );
 
+  external void wire__crate__api__list_address_display_preferences(
+    NativePortType port_,
+    String wallet_id,
+  );
+
   external void wire__crate__api__list_addresses(
     NativePortType port_,
     String wallet_id,
@@ -3510,11 +3600,25 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String query,
   );
 
+  external void wire__crate__api__set_address_archived(
+    NativePortType port_,
+    String wallet_id,
+    JSAny address_id,
+    bool is_archived,
+  );
+
   external void wire__crate__api__set_address_color_tag(
     NativePortType port_,
     String wallet_id,
     String addr,
     int color_tag,
+  );
+
+  external void wire__crate__api__set_address_pinned(
+    NativePortType port_,
+    String wallet_id,
+    JSAny address_id,
+    bool is_pinned,
   );
 
   external void wire__crate__api__set_app_passphrase(

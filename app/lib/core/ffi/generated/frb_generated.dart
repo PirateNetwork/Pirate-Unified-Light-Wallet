@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 329445840;
+  int get rustContentHash => -872554908;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -447,6 +447,9 @@ abstract class RustLibApi extends BaseApi {
     required String walletId,
   });
 
+  Future<List<AddressDisplayPreferenceInfo>>
+  crateApiListAddressDisplayPreferences({required String walletId});
+
   Future<List<AddressInfo>> crateApiListAddresses({required String walletId});
 
   Future<List<KeyAddressInfo>> crateApiListAddressesForKey({
@@ -506,10 +509,22 @@ abstract class RustLibApi extends BaseApi {
     required String query,
   });
 
+  Future<void> crateApiSetAddressArchived({
+    required String walletId,
+    required PlatformInt64 addressId,
+    required bool isArchived,
+  });
+
   Future<void> crateApiSetAddressColorTag({
     required String walletId,
     required String addr,
     required AddressBookColorTag colorTag,
+  });
+
+  Future<void> crateApiSetAddressPinned({
+    required String walletId,
+    required PlatformInt64 addressId,
+    required bool isPinned,
   });
 
   Future<void> crateApiSetAppPassphrase({required String passphrase});
@@ -3418,6 +3433,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<List<AddressDisplayPreferenceInfo>>
+  crateApiListAddressDisplayPreferences({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__list_address_display_preferences(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_address_display_preference_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListAddressDisplayPreferencesConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiListAddressDisplayPreferencesConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_address_display_preferences",
+        argNames: ["walletId"],
+      );
+
+  @override
   Future<List<AddressInfo>> crateApiListAddresses({required String walletId}) {
     return handler.executeNormal(
       NormalTask(
@@ -3844,6 +3888,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<void> crateApiSetAddressArchived({
+    required String walletId,
+    required PlatformInt64 addressId,
+    required bool isArchived,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(addressId);
+          var arg2 = cst_encode_bool(isArchived);
+          return wire.wire__crate__api__set_address_archived(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetAddressArchivedConstMeta,
+        argValues: [walletId, addressId, isArchived],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSetAddressArchivedConstMeta => const TaskConstMeta(
+    debugName: "set_address_archived",
+    argNames: ["walletId", "addressId", "isArchived"],
+  );
+
+  @override
   Future<void> crateApiSetAddressColorTag({
     required String walletId,
     required String addr,
@@ -3876,6 +3955,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSetAddressColorTagConstMeta => const TaskConstMeta(
     debugName: "set_address_color_tag",
     argNames: ["walletId", "addr", "colorTag"],
+  );
+
+  @override
+  Future<void> crateApiSetAddressPinned({
+    required String walletId,
+    required PlatformInt64 addressId,
+    required bool isPinned,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(addressId);
+          var arg2 = cst_encode_bool(isPinned);
+          return wire.wire__crate__api__set_address_pinned(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetAddressPinnedConstMeta,
+        argValues: [walletId, addressId, isPinned],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSetAddressPinnedConstMeta => const TaskConstMeta(
+    debugName: "set_address_pinned",
+    argNames: ["walletId", "addressId", "isPinned"],
   );
 
   @override
@@ -5066,6 +5180,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AddressDisplayPreferenceInfo dco_decode_address_display_preference_info(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return AddressDisplayPreferenceInfo(
+      addressId: dco_decode_i_64(arr[0]),
+      isPinned: dco_decode_bool(arr[1]),
+      isArchived: dco_decode_bool(arr[2]),
+    );
+  }
+
+  @protected
   AddressInfo dco_decode_address_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -5356,6 +5485,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>)
         .map(dco_decode_address_book_entry_ffi)
+        .toList();
+  }
+
+  @protected
+  List<AddressDisplayPreferenceInfo>
+  dco_decode_list_address_display_preference_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>)
+        .map(dco_decode_address_display_preference_info)
         .toList();
   }
 
@@ -5990,6 +6128,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AddressDisplayPreferenceInfo sse_decode_address_display_preference_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_addressId = sse_decode_i_64(deserializer);
+    var var_isPinned = sse_decode_bool(deserializer);
+    var var_isArchived = sse_decode_bool(deserializer);
+    return AddressDisplayPreferenceInfo(
+      addressId: var_addressId,
+      isPinned: var_isPinned,
+      isArchived: var_isArchived,
+    );
+  }
+
+  @protected
   AddressInfo sse_decode_address_info(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_address = sse_decode_String(deserializer);
@@ -6327,6 +6480,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <AddressBookEntryFfi>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_address_book_entry_ffi(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<AddressDisplayPreferenceInfo>
+  sse_decode_list_address_display_preference_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <AddressDisplayPreferenceInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_address_display_preference_info(deserializer));
     }
     return ans_;
   }
@@ -7213,6 +7381,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_address_display_preference_info(
+    AddressDisplayPreferenceInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.addressId, serializer);
+    sse_encode_bool(self.isPinned, serializer);
+    sse_encode_bool(self.isArchived, serializer);
+  }
+
+  @protected
   void sse_encode_address_info(AddressInfo self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.address, serializer);
@@ -7506,6 +7685,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_address_book_entry_ffi(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_address_display_preference_info(
+    List<AddressDisplayPreferenceInfo> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_address_display_preference_info(item, serializer);
     }
   }
 
