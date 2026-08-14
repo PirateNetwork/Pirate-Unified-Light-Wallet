@@ -13,6 +13,7 @@ import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/p_bottom_sheet.dart';
+import '../../ui/molecules/p_dialog.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/wallet_switcher.dart';
@@ -20,6 +21,7 @@ import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import 'widgets/address_qr_widget.dart';
 import 'widgets/address_history_list.dart';
+import 'address_history_selection.dart';
 import 'receive_viewmodel.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 
@@ -37,11 +39,13 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   late final TextEditingController _searchController;
   late final TextInputFormatter _amountFormatter;
   final ScrollController _scrollController = ScrollController();
-  _AddressSort _addressSort = _AddressSort.newest;
+  AddressHistorySort _addressSort = AddressHistorySort.newest;
+  AddressHistorySection _historySection = AddressHistorySection.visible;
   String _addressQuery = '';
   Timer? _searchDebounce;
   List<AddressInfo>? _lastAddressSource;
-  _AddressSort? _lastSort;
+  AddressHistorySort? _lastSort;
+  AddressHistorySection? _lastSection;
   String? _lastQuery;
   List<AddressInfo> _sortedCache = const [];
   int? _lastObservedSyncHeight;
@@ -150,6 +154,11 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
               memo: memoText,
             );
       final addressHistory = _sortedAddresses(state.addressHistory);
+      final visibleAddressCount = state.addressHistory
+          .where((address) => !address.isArchived)
+          .length;
+      final archivedAddressCount =
+          state.addressHistory.length - visibleAddressCount;
 
       return PScaffold(
         appBar: PAppBar(
@@ -446,32 +455,34 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                           SizedBox(height: PSpacing.md),
 
                           // Address History Section
-                          Row(
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: PSpacing.md,
+                            runSpacing: PSpacing.sm,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  'Previous addresses'.tr,
-                                  style: PTypography.heading3(),
-                                ),
+                              Text(
+                                'Addresses'.tr,
+                                style: PTypography.heading3(),
                               ),
-                              PopupMenuButton<_AddressSort>(
+                              PopupMenuButton<AddressHistorySort>(
                                 onSelected: (value) =>
                                     setState(() => _addressSort = value),
                                 itemBuilder: (context) => [
                                   PopupMenuItem(
-                                    value: _AddressSort.newest,
+                                    value: AddressHistorySort.newest,
                                     child: Text('Newest to oldest'.tr),
                                   ),
                                   PopupMenuItem(
-                                    value: _AddressSort.oldest,
+                                    value: AddressHistorySort.oldest,
                                     child: Text('Oldest to newest'.tr),
                                   ),
                                   PopupMenuItem(
-                                    value: _AddressSort.balanceHigh,
+                                    value: AddressHistorySort.balanceHigh,
                                     child: Text('Highest balance'.tr),
                                   ),
                                   PopupMenuItem(
-                                    value: _AddressSort.balanceLow,
+                                    value: AddressHistorySort.balanceLow,
                                     child: Text('Lowest balance'.tr),
                                   ),
                                 ],
@@ -511,6 +522,15 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                             ],
                           ),
                           SizedBox(height: PSpacing.sm),
+                          _AddressSectionTabs(
+                            selected: _historySection,
+                            visibleCount: visibleAddressCount,
+                            archivedCount: archivedAddressCount,
+                            onSelected: (section) {
+                              setState(() => _historySection = section);
+                            },
+                          ),
+                          SizedBox(height: PSpacing.sm),
                           PInput(
                             controller: _searchController,
                             hint: 'Search labels or addresses'.tr,
@@ -525,7 +545,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                           ),
                           SizedBox(height: PSpacing.sm),
                           Text(
-                            'Your previously generated addresses. All remain valid.'
+                            'Every address remains monitored, including archived ones.'
                                 .tr,
                             style: PTypography.bodySmall().copyWith(
                               color: AppColors.textSecondary,
@@ -546,12 +566,21 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                     sliver: AddressHistorySliver(
                       addresses: addressHistory,
                       isFiltered: _addressQuery.trim().isNotEmpty,
+                      showArchived:
+                          _historySection == AddressHistorySection.archived,
                       onCopy: (address) =>
                           viewModel.copySpecificAddress(context, address),
                       onLabel: (address) =>
                           _showLabelDialog(context, viewModel, address),
                       onColorTag: (address) =>
                           _showColorTagPicker(context, viewModel, address),
+                      onTogglePin: (address) =>
+                          _toggleAddressPin(context, viewModel, address),
+                      onArchive: (address) => _changeAddressArchiveState(
+                        context,
+                        viewModel,
+                        address,
+                      ),
                       onOpen: (address) => context.go('/activity'),
                     ),
                   ),
@@ -807,54 +836,197 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     }
   }
 
+  Future<void> _toggleAddressPin(
+    BuildContext context,
+    ReceiveViewModel viewModel,
+    AddressInfo address,
+  ) async {
+    try {
+      await viewModel.setAddressPinned(address, isPinned: !address.isPinned);
+    } catch (_) {
+      if (!context.mounted) return;
+      _showAddressPreferenceError(context);
+    }
+  }
+
+  Future<void> _changeAddressArchiveState(
+    BuildContext context,
+    ReceiveViewModel viewModel,
+    AddressInfo address,
+  ) async {
+    if (address.isActive) return;
+
+    if (!address.isArchived) {
+      final confirmed = await PDialog.show<bool>(
+        context: context,
+        title: 'Archive address?'.tr,
+        content: Text(
+          'This hides the address from the main list. It remains monitored for funds and can be restored at any time.'
+              .tr,
+        ),
+        actions: [
+          PDialogAction<bool>(
+            label: 'Cancel'.tr,
+            variant: PButtonVariant.outline,
+            result: false,
+          ),
+          PDialogAction<bool>(
+            label: 'Archive'.tr,
+            variant: PButtonVariant.danger,
+            result: true,
+          ),
+        ],
+      );
+      if (confirmed != true || !context.mounted) return;
+    }
+
+    try {
+      await viewModel.setAddressArchived(
+        address,
+        isArchived: !address.isArchived,
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      _showAddressPreferenceError(context);
+    }
+  }
+
+  void _showAddressPreferenceError(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Failed to save address'.tr),
+        backgroundColor: AppColors.error,
+      ),
+    );
+  }
+
   List<AddressInfo> _sortedAddresses(List<AddressInfo> addresses) {
     final query = _addressQuery.trim().toLowerCase();
     if (identical(addresses, _lastAddressSource) &&
         _lastSort == _addressSort &&
+        _lastSection == _historySection &&
         _lastQuery == query) {
       return _sortedCache;
     }
-    final filtered = query.isEmpty
-        ? addresses
-        : addresses.where((address) {
-            final label = address.label?.toLowerCase() ?? '';
-            final addr = address.address.toLowerCase();
-            return label.contains(query) || addr.contains(query);
-          });
-    final sorted = List<AddressInfo>.from(filtered);
-    switch (_addressSort) {
-      case _AddressSort.newest:
-        sorted.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        break;
-      case _AddressSort.oldest:
-        sorted.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        break;
-      case _AddressSort.balanceHigh:
-        sorted.sort((a, b) => b.balance.compareTo(a.balance));
-        break;
-      case _AddressSort.balanceLow:
-        sorted.sort((a, b) => a.balance.compareTo(b.balance));
-        break;
-    }
+    final sorted = selectAddressHistory(
+      addresses: addresses,
+      section: _historySection,
+      sort: _addressSort,
+      query: query,
+    );
     _lastAddressSource = addresses;
     _lastSort = _addressSort;
+    _lastSection = _historySection;
     _lastQuery = query;
     _sortedCache = sorted;
     return sorted;
   }
 
-  String _sortLabel(_AddressSort sort) {
+  String _sortLabel(AddressHistorySort sort) {
     switch (sort) {
-      case _AddressSort.newest:
+      case AddressHistorySort.newest:
         return 'Newest'.tr;
-      case _AddressSort.oldest:
+      case AddressHistorySort.oldest:
         return 'Oldest'.tr;
-      case _AddressSort.balanceHigh:
+      case AddressHistorySort.balanceHigh:
         return 'Balance high'.tr;
-      case _AddressSort.balanceLow:
+      case AddressHistorySort.balanceLow:
         return 'Balance low'.tr;
     }
   }
 }
 
-enum _AddressSort { newest, oldest, balanceHigh, balanceLow }
+class _AddressSectionTabs extends StatelessWidget {
+  const _AddressSectionTabs({
+    required this.selected,
+    required this.visibleCount,
+    required this.archivedCount,
+    required this.onSelected,
+  });
+
+  final AddressHistorySection selected;
+  final int visibleCount;
+  final int archivedCount;
+  final ValueChanged<AddressHistorySection> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _AddressSectionTab(
+            icon: Icons.account_balance_wallet_outlined,
+            label: '${'Addresses'.tr} ($visibleCount)',
+            selected: selected == AddressHistorySection.visible,
+            onTap: () => onSelected(AddressHistorySection.visible),
+          ),
+          SizedBox(width: PSpacing.sm),
+          _AddressSectionTab(
+            icon: Icons.archive_outlined,
+            label: '${'Archived'.tr} ($archivedCount)',
+            selected: selected == AddressHistorySection.archived,
+            onTap: () => onSelected(AddressHistorySection.archived),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddressSectionTab extends StatelessWidget {
+  const _AddressSectionTab({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected
+            ? AppColors.selectedBackground
+            : AppColors.backgroundSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+          side: BorderSide(
+            color: selected ? AppColors.selectedBorder : AppColors.borderSubtle,
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: PSpacing.md,
+                vertical: PSpacing.xs,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 18, color: foreground),
+                  SizedBox(width: PSpacing.xs),
+                  Text(label, style: PTypography.labelSmall(color: foreground)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

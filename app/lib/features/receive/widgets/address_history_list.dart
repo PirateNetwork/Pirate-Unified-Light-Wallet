@@ -8,92 +8,28 @@ import '../../../ui/molecules/p_card.dart';
 import '../receive_viewmodel.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
 
-/// Widget displaying list of previous addresses
-class AddressHistoryList extends StatelessWidget {
-  final List<AddressInfo> addresses;
-  final bool isFiltered;
-  final ValueChanged<AddressInfo> onCopy;
-  final ValueChanged<AddressInfo> onLabel;
-  final ValueChanged<AddressInfo> onColorTag;
-  final ValueChanged<AddressInfo> onOpen;
-
-  const AddressHistoryList({
-    super.key,
-    required this.addresses,
-    this.isFiltered = false,
-    required this.onCopy,
-    required this.onLabel,
-    required this.onColorTag,
-    required this.onOpen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (addresses.isEmpty) {
-      final emptyTitle = isFiltered
-          ? 'No matches found.'.tr
-          : 'No previous addresses.'.tr;
-      final emptySubtitle = isFiltered
-          ? 'Try a different label or address.'.tr
-          : 'Generate a new address to see it here.'.tr;
-      return PCard(
-        child: Padding(
-          padding: EdgeInsets.all(PSpacing.lg),
-          child: Column(
-            children: [
-              Icon(Icons.history, size: 48, color: AppColors.textTertiary),
-              SizedBox(height: PSpacing.sm),
-              Text(
-                emptyTitle,
-                style: PTypography.bodyMedium(color: AppColors.textPrimary),
-              ),
-              SizedBox(height: PSpacing.xs),
-              Text(
-                emptySubtitle,
-                style: PTypography.bodySmall(color: AppColors.textSecondary),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: addresses.length,
-      separatorBuilder: (context, index) => SizedBox(height: PSpacing.sm),
-      itemBuilder: (context, index) {
-        final address = addresses[index];
-        return _AddressHistoryItem(
-          address: address,
-          onOpen: () => onOpen(address),
-          onCopy: () => onCopy(address),
-          onLabel: () => onLabel(address),
-          onColorTag: () => onColorTag(address),
-        );
-      },
-    );
-  }
-}
-
 /// Sliver version of address history list for lazy rendering
 class AddressHistorySliver extends StatelessWidget {
   final List<AddressInfo> addresses;
   final bool isFiltered;
+  final bool showArchived;
   final ValueChanged<AddressInfo> onCopy;
   final ValueChanged<AddressInfo> onLabel;
   final ValueChanged<AddressInfo> onColorTag;
+  final ValueChanged<AddressInfo> onTogglePin;
+  final ValueChanged<AddressInfo> onArchive;
   final ValueChanged<AddressInfo> onOpen;
 
   const AddressHistorySliver({
     super.key,
     required this.addresses,
     this.isFiltered = false,
+    this.showArchived = false,
     required this.onCopy,
     required this.onLabel,
     required this.onColorTag,
+    required this.onTogglePin,
+    required this.onArchive,
     required this.onOpen,
   });
 
@@ -102,9 +38,13 @@ class AddressHistorySliver extends StatelessWidget {
     if (addresses.isEmpty) {
       final emptyTitle = isFiltered
           ? 'No matches found.'.tr
-          : 'No previous addresses.'.tr;
+          : showArchived
+          ? 'No archived addresses.'.tr
+          : 'No addresses yet.'.tr;
       final emptySubtitle = isFiltered
           ? 'Try a different label or address.'.tr
+          : showArchived
+          ? 'Addresses you archive will appear here.'.tr
           : 'Generate a new address to see it here.'.tr;
       return SliverToBoxAdapter(
         child: PCard(
@@ -112,7 +52,11 @@ class AddressHistorySliver extends StatelessWidget {
             padding: EdgeInsets.all(PSpacing.lg),
             child: Column(
               children: [
-                Icon(Icons.history, size: 48, color: AppColors.textTertiary),
+                Icon(
+                  showArchived ? Icons.archive_outlined : Icons.history,
+                  size: 48,
+                  color: AppColors.textTertiary,
+                ),
                 SizedBox(height: PSpacing.sm),
                 Text(
                   emptyTitle,
@@ -142,6 +86,8 @@ class AddressHistorySliver extends StatelessWidget {
             onCopy: () => onCopy(address),
             onLabel: () => onLabel(address),
             onColorTag: () => onColorTag(address),
+            onTogglePin: () => onTogglePin(address),
+            onArchive: () => onArchive(address),
           ),
         );
       }, childCount: addresses.length),
@@ -156,6 +102,8 @@ class _AddressHistoryItem extends StatelessWidget {
   final VoidCallback onCopy;
   final VoidCallback onLabel;
   final VoidCallback onColorTag;
+  final VoidCallback onTogglePin;
+  final VoidCallback onArchive;
 
   const _AddressHistoryItem({
     required this.address,
@@ -163,6 +111,8 @@ class _AddressHistoryItem extends StatelessWidget {
     required this.onCopy,
     required this.onLabel,
     required this.onColorTag,
+    required this.onTogglePin,
+    required this.onArchive,
   });
 
   @override
@@ -170,32 +120,24 @@ class _AddressHistoryItem extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 380;
-        final actionButtons = [
-          IconButton(
-            onPressed: onColorTag,
-            icon: Icon(Icons.palette_outlined, size: isCompact ? 18 : 20),
-            tooltip: 'Color tag'.tr,
-            visualDensity: VisualDensity.compact,
-            style: IconButton.styleFrom(
-              foregroundColor: AppColors.textSecondary,
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(32, 32),
+        final actionButtons = <Widget>[
+          if (!address.isArchived)
+            IconButton(
+              onPressed: address.addressId == null ? null : onTogglePin,
+              icon: Icon(
+                address.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                size: isCompact ? 18 : 20,
+              ),
+              tooltip: address.isPinned ? 'Unpin address'.tr : 'Pin address'.tr,
+              visualDensity: VisualDensity.compact,
+              style: IconButton.styleFrom(
+                foregroundColor: address.isPinned
+                    ? AppColors.focusRing
+                    : AppColors.textSecondary,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(32, 32),
+              ),
             ),
-          ),
-          IconButton(
-            onPressed: onLabel,
-            icon: Icon(
-              address.label != null ? Icons.edit : Icons.label_outline,
-              size: isCompact ? 18 : 20,
-            ),
-            tooltip: 'Label address'.tr,
-            visualDensity: VisualDensity.compact,
-            style: IconButton.styleFrom(
-              foregroundColor: AppColors.textSecondary,
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(32, 32),
-            ),
-          ),
           IconButton(
             onPressed: onCopy,
             icon: Icon(Icons.copy, size: isCompact ? 18 : 20),
@@ -207,52 +149,119 @@ class _AddressHistoryItem extends StatelessWidget {
               minimumSize: const Size(32, 32),
             ),
           ),
+          PopupMenuButton<_AddressHistoryAction>(
+            tooltip: 'More actions'.tr,
+            icon: Icon(Icons.more_vert, size: isCompact ? 18 : 20),
+            color: AppColors.backgroundElevated,
+            onSelected: (action) {
+              switch (action) {
+                case _AddressHistoryAction.label:
+                  onLabel();
+                  break;
+                case _AddressHistoryAction.color:
+                  onColorTag();
+                  break;
+                case _AddressHistoryAction.archive:
+                  onArchive();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: _AddressHistoryAction.label,
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    address.label != null ? Icons.edit : Icons.label_outline,
+                  ),
+                  title: Text('Label address'.tr),
+                ),
+              ),
+              PopupMenuItem(
+                value: _AddressHistoryAction.color,
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.palette_outlined),
+                  title: Text('Color tag'.tr),
+                ),
+              ),
+              const PopupMenuDivider(),
+              if (!address.isActive)
+                PopupMenuItem(
+                  value: _AddressHistoryAction.archive,
+                  enabled: address.addressId != null,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      address.isArchived
+                          ? Icons.unarchive_outlined
+                          : Icons.archive_outlined,
+                    ),
+                    title: Text(
+                      address.isArchived
+                          ? 'Restore address'.tr
+                          : 'Archive address'.tr,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ];
 
         final statusBadges = <Widget>[];
         if (address.isActive) {
           statusBadges.add(
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: PSpacing.xs,
-                vertical: 2,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.successBackground,
-                borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-                border: Border.all(color: AppColors.successBorder),
-              ),
-              child: Text(
-                'Active'.tr,
-                style: PTypography.labelSmall(color: AppColors.success),
-              ),
+            _AddressStatusBadge(
+              label: 'Active'.tr,
+              foreground: AppColors.success,
+              background: AppColors.successBackground,
+              border: AppColors.successBorder,
+            ),
+          );
+        }
+        if (address.isPinned) {
+          statusBadges.add(
+            _AddressStatusBadge(
+              label: 'Pinned'.tr,
+              icon: Icons.push_pin,
+              foreground: AppColors.focusRing,
+              background: AppColors.selectedBackground,
+              border: AppColors.selectedBorder,
+            ),
+          );
+        }
+        if (address.isArchived) {
+          statusBadges.add(
+            _AddressStatusBadge(
+              label: 'Archived'.tr,
+              icon: Icons.archive_outlined,
+              foreground: AppColors.textSecondary,
+              background: AppColors.backgroundPanel,
+              border: AppColors.borderSubtle,
             ),
           );
         }
         if (address.wasShared && !address.isActive) {
           statusBadges.add(
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: PSpacing.xs,
-                vertical: 2,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundPanel,
-                borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-                border: Border.all(color: AppColors.borderSubtle),
-              ),
-              child: Text(
-                'Shared'.tr,
-                style: PTypography.labelSmall(color: AppColors.textSecondary),
-              ),
+            _AddressStatusBadge(
+              label: 'Shared'.tr,
+              foreground: AppColors.textSecondary,
+              background: AppColors.backgroundPanel,
+              border: AppColors.borderSubtle,
             ),
           );
         }
 
         return PCard(
+          key: ValueKey('address-history-${address.addressId ?? address.address}'),
           onTap: onOpen,
           backgroundColor: address.isActive
               ? AppColors.selectedBackground
+              : address.isArchived
+              ? AppColors.backgroundPanel
               : AppColors.backgroundSurface,
           child: Padding(
             padding: EdgeInsets.all(PSpacing.md),
@@ -275,6 +284,8 @@ class _AddressHistoryItem extends StatelessWidget {
                       child: Icon(
                         address.isActive
                             ? Icons.check_circle
+                            : address.isArchived
+                            ? Icons.archive_outlined
                             : Icons.shield_outlined,
                         color: AppColors.textOnAccent,
                         size: 20,
@@ -423,5 +434,48 @@ class _AddressHistoryItem extends StatelessWidget {
   String _formatArrr(BigInt value) {
     final amount = value.toDouble() / 100000000.0;
     return '${amount.toStringAsFixed(8)} ARRR';
+  }
+}
+
+enum _AddressHistoryAction { label, color, archive }
+
+class _AddressStatusBadge extends StatelessWidget {
+  const _AddressStatusBadge({
+    required this.label,
+    required this.foreground,
+    required this.background,
+    required this.border,
+    this.icon,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color background;
+  final Color border;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: PSpacing.xs,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: foreground),
+            const SizedBox(width: 3),
+          ],
+          Text(label, style: PTypography.labelSmall(color: foreground)),
+        ],
+      ),
+    );
   }
 }
