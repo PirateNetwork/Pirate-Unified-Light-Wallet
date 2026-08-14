@@ -10,6 +10,7 @@ import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/providers/wallet_providers.dart';
 import '../../../core/services/birthday_height_estimator.dart';
 import '../../../design/deep_space_theme.dart';
+import '../../../design/input_decorations.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
 import '../../../ui/atoms/p_text_button.dart';
@@ -337,10 +338,8 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                           child: DropdownMenuFormField<int>(
                             initialSelection: _selectedMonth,
                             label: Text('Month'.tr),
-                            inputDecorationTheme: InputDecorationTheme(
-                              filled: true,
-                              fillColor: AppColors.surfaceElevated,
-                            ),
+                            inputDecorationTheme:
+                                PInputDecorations.elevatedDropdown(context),
                             dropdownMenuEntries: List.generate(
                               _monthLabels.length,
                               (index) => DropdownMenuEntry(
@@ -359,10 +358,8 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                           child: DropdownMenuFormField<int>(
                             initialSelection: _selectedYear,
                             label: Text('Year'.tr),
-                            inputDecorationTheme: InputDecorationTheme(
-                              filled: true,
-                              fillColor: AppColors.surfaceElevated,
-                            ),
+                            inputDecorationTheme:
+                                PInputDecorations.elevatedDropdown(context),
                             dropdownMenuEntries: _yearOptions
                                 .map(
                                   (year) => DropdownMenuEntry(
