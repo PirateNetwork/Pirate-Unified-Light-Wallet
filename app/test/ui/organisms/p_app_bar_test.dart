@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/ui/atoms/p_icon_button.dart';
 import 'package:pirate_wallet/ui/atoms/theme_toggle_button.dart';
 import 'package:pirate_wallet/ui/organisms/p_app_bar.dart';
+import 'package:pirate_wallet/ui/organisms/p_scaffold.dart';
 
 void main() {
   testWidgets('uses a circular back control that fits a narrow app bar', (
@@ -65,5 +66,39 @@ void main() {
     );
 
     expect(find.byType(ThemeToggleButton), findsNothing);
+  });
+
+  testWidgets('compacts short landscape viewports without crowding titles', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(844, 390);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: PScaffold(
+            appBar: PAppBar(
+              title: 'Node Configuration',
+              subtitle: 'Choose your lightwalletd endpoint',
+              showBackButton: true,
+              showThemeToggle: false,
+              actions: [
+                IconButton(onPressed: null, icon: Icon(Icons.wifi)),
+                IconButton(onPressed: null, icon: Icon(Icons.refresh)),
+              ],
+            ),
+            body: SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.getSize(find.byType(PAppBar)).height, 64);
+    expect(find.text('Choose your lightwalletd endpoint'), findsNothing);
+    expect(find.text('Node Configuration'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

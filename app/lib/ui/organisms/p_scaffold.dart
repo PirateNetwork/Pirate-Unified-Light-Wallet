@@ -7,6 +7,7 @@ import '../../core/desktop/windows_version.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
+import 'p_app_bar.dart';
 
 /// Pirate Wallet Scaffold with custom titlebar for desktop
 class PScaffold extends StatelessWidget {
@@ -62,11 +63,15 @@ class PScaffold extends StatelessWidget {
 
     PreferredSizeWidget? resolvedAppBar = appBar;
     if (appBar != null) {
+      final candidate = appBar!;
       final topPadding = MediaQuery.of(context).padding.top;
-      final height = appBar!.preferredSize.height + topPadding;
+      final appBarHeight = candidate is PAppBar
+          ? candidate.preferredHeightFor(context)
+          : candidate.preferredSize.height;
+      final height = appBarHeight + topPadding;
       resolvedAppBar = PreferredSize(
         preferredSize: Size.fromHeight(height),
-        child: appBar!,
+        child: candidate,
       );
     }
 

@@ -38,6 +38,10 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(82);
 
+  double preferredHeightFor(BuildContext context) {
+    return PSpacing.isCompactLandscape(MediaQuery.sizeOf(context)) ? 64 : 82;
+  }
+
   bool _shouldShowBack(BuildContext context) {
     if (showBackButton != null) {
       return showBackButton!;
@@ -67,9 +71,15 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     final mediaQuery = MediaQuery.of(context);
     final topPadding = MediaQuery.of(context).padding.top;
     final isNarrow = mediaQuery.size.width < 360;
-    final isMobile = PSpacing.isMobile(mediaQuery.size.width);
+    final isMobile = PSpacing.isHandset(mediaQuery.size);
+    final compactLandscape = PSpacing.isCompactLandscape(mediaQuery.size);
     final textScale = mediaQuery.textScaler.scale(1);
-    final verticalPadding = isMobile ? PSpacing.sm : PSpacing.md;
+    final verticalPadding = compactLandscape
+        ? PSpacing.xs
+        : isMobile
+        ? PSpacing.sm
+        : PSpacing.md;
+    final horizontalPadding = isMobile ? PSpacing.md : PSpacing.lg;
     final resolvedLeading =
         leading ??
         (_shouldShowBack(context) ? _buildBackButton(context) : null);
@@ -117,7 +127,8 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     final subtitleStyle = PTypography.caption(
       color: AppColors.textSecondary,
     ).copyWith(fontSize: isMobile ? 10 : 11);
-    final showSubtitle = subtitle != null && textScale <= 1.3;
+    final showSubtitle =
+        subtitle != null && textScale <= 1.3 && !compactLandscape;
 
     final titleColumn = Column(
       crossAxisAlignment: centerTitle
@@ -151,25 +162,15 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
             children: effectiveActions
                 .map(
                   (action) => Padding(
-                    padding: const EdgeInsets.only(left: PSpacing.sm),
+                    padding: EdgeInsets.only(
+                      left: compactLandscape ? PSpacing.xs : PSpacing.sm,
+                    ),
                     child: action,
                   ),
                 )
                 .toList(),
           )
         : null;
-
-    final estimatedLeadingWidth = resolvedLeading == null ? 0.0 : 56.0;
-    final estimatedActionWidth = trailing == null
-        ? 0.0
-        : (effectiveActions.length * 44.0);
-    final middleWidth =
-        mediaQuery.size.width -
-        (PSpacing.lg * 2) -
-        estimatedLeadingWidth -
-        estimatedActionWidth -
-        (centerTitle ? (PSpacing.sm * 2) : (PSpacing.md * 2));
-    final safeMiddleWidth = middleWidth < 140 ? 140.0 : middleWidth;
 
     return Material(
       color: Colors.transparent,
@@ -179,12 +180,12 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
         padding: EdgeInsets.only(
           top: topPadding + verticalPadding,
           bottom: verticalPadding,
-          left: PSpacing.lg,
-          right: PSpacing.lg,
+          left: horizontalPadding,
+          right: horizontalPadding,
         ),
         child: NavigationToolbar(
           leading: resolvedLeading,
-          middle: SizedBox(width: safeMiddleWidth, child: titleColumn),
+          middle: titleColumn,
           trailing: trailing,
           centerMiddle: centerTitle,
           middleSpacing: centerTitle ? PSpacing.sm : PSpacing.md,
