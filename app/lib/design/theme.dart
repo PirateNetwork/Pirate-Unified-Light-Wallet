@@ -45,6 +45,24 @@ ScrollbarThemeData _pirateScrollbarTheme({
   );
 }
 
+WidgetStateTextStyle _floatingInputLabelStyle({
+  required Color idleColor,
+  required Color focusedColor,
+  required Color disabledColor,
+  required Color errorColor,
+}) {
+  return WidgetStateTextStyle.resolveWith((states) {
+    final color = states.contains(WidgetState.error)
+        ? errorColor
+        : states.contains(WidgetState.disabled)
+        ? disabledColor
+        : states.contains(WidgetState.focused)
+        ? focusedColor
+        : idleColor;
+    return PTypography.labelMedium(color: color);
+  });
+}
+
 /// Pirate Wallet theme system
 ///
 /// Builds Material ThemeData from design tokens with dark-first approach
@@ -289,10 +307,15 @@ class PTheme {
 
         // Text styles
         labelStyle: PTypography.labelMedium(color: PColors.textSecondary),
-        floatingLabelStyle: PTypography.labelMedium(
-          color: highContrast
+        floatingLabelStyle: _floatingInputLabelStyle(
+          idleColor: highContrast
+              ? PColorsHighContrast.textSecondary
+              : PColors.textSecondary,
+          focusedColor: highContrast
               ? PColorsHighContrast.focusRing
               : PColors.focusRing,
+          disabledColor: PColors.textDisabled,
+          errorColor: PColors.error,
         ),
         hintStyle: PTypography.bodyMedium(color: PColors.textTertiary),
         errorStyle: PTypography.labelSmall(color: PColors.error),
@@ -716,8 +739,11 @@ class PTheme {
 
         // Text styles
         labelStyle: PTypography.labelMedium(color: PColorsLight.textSecondary),
-        floatingLabelStyle: PTypography.labelMedium(
-          color: PColorsLight.focusRing,
+        floatingLabelStyle: _floatingInputLabelStyle(
+          idleColor: PColorsLight.textSecondary,
+          focusedColor: PColorsLight.focusRing,
+          disabledColor: PColorsLight.textDisabled,
+          errorColor: PColorsLight.error,
         ),
         hintStyle: PTypography.bodyMedium(color: PColorsLight.textTertiary),
         errorStyle: PTypography.labelSmall(color: PColorsLight.error),
