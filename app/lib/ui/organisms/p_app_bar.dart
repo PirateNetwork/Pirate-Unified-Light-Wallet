@@ -192,11 +192,14 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   Widget _buildBackButton(BuildContext context) {
-    return PIconButton(
-      icon: Icon(Icons.arrow_back, color: AppColors.textPrimary),
-      onPressed: onBack ?? () => Navigator.of(context).maybePop(),
-      tooltip: 'Back'.tr,
-      size: PIconButtonSize.large,
+    return Center(
+      child: PIconButton(
+        icon: Icon(Icons.arrow_back, color: AppColors.textPrimary),
+        onPressed: onBack ?? () => Navigator.of(context).maybePop(),
+        tooltip: 'Back'.tr,
+        size: PIconButtonSize.medium,
+        shape: PIconButtonShape.circle,
+      ),
     );
   }
 }
