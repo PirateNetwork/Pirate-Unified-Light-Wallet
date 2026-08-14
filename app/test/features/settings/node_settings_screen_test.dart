@@ -66,4 +66,30 @@ void main() {
     expect(tester.getTopLeft(labelFinder).dx, leftEdge);
     expect(tester.getTopLeft(helperFinder).dx, leftEdge);
   });
+
+  testWidgets('keeps endpoint fields usable in phone landscape', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          lightdEndpointConfigProvider.overrideWith(
+            (ref) async =>
+                const LightdEndpointConfig(url: 'https://lightd.example:443'),
+          ),
+        ],
+        child: const MaterialApp(home: NodeSettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final endpoint = find.text('Endpoint (host:port)');
+    expect(endpoint, findsOneWidget);
+    expect(find.text('Choose your lightwalletd endpoint'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }

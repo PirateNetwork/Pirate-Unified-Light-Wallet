@@ -135,7 +135,11 @@ void main() {
     }
   });
 
-  for (final viewport in <Size>[const Size(320, 700), const Size(1024, 768)]) {
+  for (final viewport in <Size>[
+    const Size(320, 700),
+    const Size(844, 390),
+    const Size(1024, 768),
+  ]) {
     testWidgets(
       'language picker fits every locale at ${viewport.width.toInt()}px',
       (tester) async {

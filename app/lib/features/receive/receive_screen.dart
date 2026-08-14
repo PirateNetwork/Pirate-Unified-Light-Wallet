@@ -140,8 +140,9 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
           unawaited(viewModel.refreshAddressHistory());
         });
 
-      final screenWidth = MediaQuery.of(context).size.width;
-      final isMobile = PSpacing.isMobile(screenWidth);
+      final screenSize = MediaQuery.sizeOf(context);
+      final screenWidth = screenSize.width;
+      final isMobile = PSpacing.isHandset(screenSize);
       final gutter = PSpacing.responsiveGutter(screenWidth);
       final amountText = _amountController.text.trim();
       final memoText = _memoController.text.trim();

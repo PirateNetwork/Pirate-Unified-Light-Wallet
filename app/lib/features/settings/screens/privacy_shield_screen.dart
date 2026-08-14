@@ -63,7 +63,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = PirateSpacing.isMobile(MediaQuery.of(context).size.width);
+    final isMobile = PirateSpacing.isHandset(MediaQuery.sizeOf(context));
     final transportConfig = ref.watch(transportConfigProvider);
     final basePadding = PirateSpacing.screenPadding(
       MediaQuery.of(context).size.width,

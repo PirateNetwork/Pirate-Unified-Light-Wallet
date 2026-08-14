@@ -38,8 +38,9 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       title: 'Pirate Chain Unified Wallet',
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final screenWidth = MediaQuery.of(context).size.width;
-          final isMobile = AppSpacing.isMobile(screenWidth);
+          final screenSize = MediaQuery.sizeOf(context);
+          final screenWidth = screenSize.width;
+          final isMobile = AppSpacing.isHandset(screenSize);
           final isCompactHeight = constraints.maxHeight < 680;
           final isVeryCompactHeight = constraints.maxHeight < 540;
           final verticalPadding = isCompactHeight

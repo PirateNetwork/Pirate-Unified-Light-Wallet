@@ -88,8 +88,9 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
     final arrrUsdQuote = ref.watch(arrrUsdPriceQuoteProvider).asData?.value;
     final ltcUsdQuote = ref.watch(ltcUsdPriceQuoteProvider).asData?.value;
     final isWatchOnly = walletMeta?.watchOnly ?? false;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = PSpacing.isMobile(screenWidth);
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenWidth = screenSize.width;
+    final isMobile = PSpacing.isHandset(screenSize);
     final relUsdPrice = _relUsdPrice(
       pair: state.pair,
       arrrUsdPrice: arrrUsdQuote?.pricePerArrr,

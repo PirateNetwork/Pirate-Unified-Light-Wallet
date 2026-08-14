@@ -126,8 +126,8 @@ class _PaymentDisclosureVerifierScreenState
   @override
   Widget build(BuildContext context) {
     final walletId = ref.watch(activeWalletProvider);
-    final width = MediaQuery.of(context).size.width;
-    final isMobile = PSpacing.isMobile(width);
+    final screenSize = MediaQuery.sizeOf(context);
+    final isMobile = PSpacing.isHandset(screenSize);
     final content = _VerifierContent(
       controller: _controller,
       focusNode: _focusNode,

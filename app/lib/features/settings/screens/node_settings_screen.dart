@@ -313,7 +313,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
-    final isMobile = AppSpacing.isMobile(MediaQuery.of(context).size.width);
+    final isMobile = AppSpacing.isHandset(MediaQuery.sizeOf(context));
     final basePadding = AppSpacing.screenPadding(
       MediaQuery.of(context).size.width,
     );

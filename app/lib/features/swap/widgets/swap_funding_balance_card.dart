@@ -62,7 +62,7 @@ class SwapFundingBalanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = PSpacing.isMobile(MediaQuery.of(context).size.width);
+    final isMobile = PSpacing.isHandset(MediaQuery.sizeOf(context));
     final contentAlignment = isMobile
         ? WrapAlignment.center
         : WrapAlignment.start;
