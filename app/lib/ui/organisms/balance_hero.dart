@@ -36,7 +36,7 @@ class BalanceHero extends StatelessWidget {
     final displaySecondaryText = secondaryText == null
         ? null
         : (isHidden ? _maskedBalanceText : secondaryText!);
-    final cardPadding = compact ? PSpacing.md : PSpacing.lg;
+    final cardPadding = compact ? PSpacing.sm : PSpacing.lg;
     final titleStyle = compact
         ? PTypography.heading4(color: AppColors.textPrimary)
         : PTypography.displaySmall(color: AppColors.textPrimary);
@@ -88,7 +88,7 @@ class BalanceHero extends StatelessWidget {
                 ),
             ],
           ),
-          SizedBox(height: compact ? PSpacing.xs : PSpacing.sm),
+          SizedBox(height: compact ? PSpacing.xxs : PSpacing.sm),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 120),
             child: FittedBox(
@@ -104,7 +104,7 @@ class BalanceHero extends StatelessWidget {
             ),
           ),
           if (displaySecondaryText != null) ...[
-            const SizedBox(height: PSpacing.xs),
+            SizedBox(height: compact ? PSpacing.xxs : PSpacing.xs),
             Row(
               children: [
                 Expanded(
@@ -130,7 +130,7 @@ class BalanceHero extends StatelessWidget {
             ),
           ],
           if (helperText != null) ...[
-            SizedBox(height: compact ? PSpacing.xs : PSpacing.sm),
+            SizedBox(height: compact ? PSpacing.xxs : PSpacing.sm),
             Text(
               helperText!,
               style: PTypography.bodySmall(color: AppColors.textSecondary),

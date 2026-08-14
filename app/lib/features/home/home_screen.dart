@@ -4,7 +4,6 @@ library;
 import 'dart:ui';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +12,7 @@ import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/platform/platform_utils.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/transaction_row_v2.dart';
@@ -35,16 +35,12 @@ import '../../core/i18n/arb_text_localizer.dart';
 import 'widgets/home_header_controls.dart';
 import 'widgets/home_sync_indicator.dart';
 
-bool _isDesktopPlatform() {
-  if (kIsWeb) return false;
-  return defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux;
-}
-
 /// Home screen
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.useScaffold = true});
+
+  static const Key headerKey = Key('home-dashboard-header');
+  static const Key recentActivityTitleKey = Key('recent-activity-title');
 
   final bool useScaffold;
 
@@ -58,17 +54,24 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
     final screenWidth = mediaQuery.size.width;
+    final compactLandscape =
+        !isDesktopPlatform && PSpacing.isCompactLandscape(screenSize);
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
     final gutter = PSpacing.responsiveGutter(screenWidth);
     final availableHeaderWidth = math.max(0.0, screenWidth - (gutter * 2));
     final stackedHeaderControls = HomeHeaderControls.shouldStack(
       availableHeaderWidth,
     );
-    final headerVerticalPadding = PSpacing.isDesktop(screenWidth)
+    final headerVerticalPadding = compactLandscape
+        ? PSpacing.xs
+        : PSpacing.isDesktop(screenWidth)
         ? PSpacing.md
         : PSpacing.sm;
-    final standardHeaderExtent = PSpacing.isMobile(screenWidth)
+    final standardHeaderExtent = compactLandscape
+        ? 224.0
+        : PSpacing.isMobile(screenWidth)
         ? 280.0
         : PSpacing.isTablet(screenWidth)
         ? 300.0
@@ -80,12 +83,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final headerExtent =
         baseHeaderExtent + mediaQuery.padding.top + extraHeaderHeight;
     final enableBackdropBlur =
-        !mediaQuery.disableAnimations && !PSpacing.isMobile(screenWidth);
+        !mediaQuery.disableAnimations && !PSpacing.isHandset(screenSize);
 
     final content = CustomScrollView(
       slivers: [
         SliverPersistentHeader(
-          pinned: true,
+          key: HomeScreen.headerKey,
+          pinned: !compactLandscape,
           delegate: PSliverHeaderDelegate(
             maxExtentHeight: headerExtent,
             minExtentHeight: headerExtent,
@@ -104,8 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _hideBalance = !_hideBalance;
                   });
                 },
-                showConnectionStatus:
-                    widget.useScaffold || !_isDesktopPlatform(),
+                showConnectionStatus: widget.useScaffold || !isDesktopPlatform,
               );
             },
           ),
@@ -162,9 +165,8 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Expanded(
                   child: Text(
+                    key: HomeScreen.recentActivityTitleKey,
                     'Recent activity'.tr,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: PTypography.heading3().copyWith(
                       color: AppColors.textPrimary,
                     ),
@@ -268,7 +270,7 @@ class _HomeHeader extends ConsumerWidget {
         color: AppColors.backgroundBase.withValues(alpha: 0.85),
       ),
       child: SafeArea(
-        bottom: true,
+        bottom: false,
         child: Padding(
           padding: padding,
           child: Column(
@@ -283,8 +285,8 @@ class _HomeHeader extends ConsumerWidget {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final isMobile = PSpacing.isMobile(
-                      MediaQuery.sizeOf(context).width,
+                    final isMobile = PSpacing.isHandset(
+                      MediaQuery.sizeOf(context),
                     );
                     final compact = constraints.maxHeight < 240;
                     return Align(
