@@ -16,6 +16,35 @@ const PageTransitionsTheme _piratePageTransitions = PageTransitionsTheme(
   },
 );
 
+ScrollbarThemeData _pirateScrollbarTheme({
+  required Color idleThumbColor,
+  required Color hoveredThumbColor,
+  required Color draggedThumbColor,
+}) {
+  return ScrollbarThemeData(
+    thickness: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.hovered) ||
+          states.contains(WidgetState.dragged)) {
+        return 6.0;
+      }
+      return 4.0;
+    }),
+    thumbColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.dragged)) {
+        return draggedThumbColor;
+      }
+      if (states.contains(WidgetState.hovered)) {
+        return hoveredThumbColor;
+      }
+      return idleThumbColor;
+    }),
+    radius: const Radius.circular(PSpacing.radiusXS),
+    crossAxisMargin: PSpacing.xxs,
+    mainAxisMargin: PSpacing.xs,
+    minThumbLength: 48.0,
+  );
+}
+
 /// Pirate Wallet theme system
 ///
 /// Builds Material ThemeData from design tokens with dark-first approach
@@ -79,6 +108,21 @@ class PTheme {
       highlightColor: PColors.pressedOverlay,
       splashColor: PColors.pressedOverlay,
       disabledColor: PColors.textDisabled,
+      scrollbarTheme: _pirateScrollbarTheme(
+        idleThumbColor:
+            (highContrast
+                    ? PColorsHighContrast.textSecondary
+                    : PColors.textDisabled)
+                .withValues(alpha: highContrast ? 0.56 : 0.46),
+        hoveredThumbColor:
+            (highContrast
+                    ? PColorsHighContrast.textSecondary
+                    : PColors.textDisabled)
+                .withValues(alpha: highContrast ? 0.78 : 0.72),
+        draggedThumbColor: highContrast
+            ? PColorsHighContrast.textSecondary
+            : PColors.textDisabled,
+      ),
 
       // ========================================================================
       // Typography
@@ -497,6 +541,11 @@ class PTheme {
       highlightColor: PColorsLight.pressedOverlay,
       splashColor: PColorsLight.pressedOverlay,
       disabledColor: PColorsLight.textDisabled,
+      scrollbarTheme: _pirateScrollbarTheme(
+        idleThumbColor: PColorsLight.textTertiary.withValues(alpha: 0.34),
+        hoveredThumbColor: PColorsLight.textTertiary.withValues(alpha: 0.54),
+        draggedThumbColor: PColorsLight.textTertiary.withValues(alpha: 0.76),
+      ),
 
       // ========================================================================
       // Typography
