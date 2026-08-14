@@ -1,10 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/platform/platform_utils.dart';
 import '../../core/ffi/generated/models.dart' show WalletMeta;
 import '../../core/providers/wallet_providers.dart';
 import '../../design/tokens/colors.dart';
@@ -28,9 +27,6 @@ class WalletSwitcherButton extends ConsumerWidget {
 
   final bool compact;
   final bool fullWidth;
-
-  bool get _isDesktop =>
-      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,7 +93,7 @@ class WalletSwitcherButton extends ConsumerWidget {
   }
 
   Future<void> _showSwitcher(BuildContext context, WidgetRef ref) async {
-    if (_isDesktop) {
+    if (isDesktopPlatform) {
       await PDialog.show<void>(
         context: context,
         title: 'Wallets'.tr,

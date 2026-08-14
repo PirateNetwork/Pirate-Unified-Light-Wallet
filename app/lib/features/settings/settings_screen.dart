@@ -15,6 +15,7 @@ import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/crypto/mnemonic_language.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/platform/platform_utils.dart';
 import 'providers/preferences_providers.dart';
 import 'providers/transport_providers.dart';
 import '../../ui/molecules/p_list_tile.dart';
@@ -58,9 +59,8 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(localePreferenceProvider);
     final size = MediaQuery.of(context).size;
-    final screenWidth = size.width;
-    final isMobile = AppSpacing.isMobile(screenWidth);
-    final isDesktop = AppSpacing.isDesktop(screenWidth);
+    final isMobile = AppSpacing.isHandset(size);
+    final isDesktop = isDesktopPlatform;
     final content = ListView(
       padding: EdgeInsets.zero,
       children: [

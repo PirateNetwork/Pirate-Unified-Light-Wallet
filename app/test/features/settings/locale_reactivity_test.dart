@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -132,6 +132,8 @@ void main() {
   testWidgets('persistent navigation labels update with the selected locale', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1200, 800);
     addTearDown(tester.view.reset);
@@ -166,11 +168,14 @@ void main() {
     expect(find.byTooltip('Pengaturan'), findsOneWidget);
     expect(find.text('Home'), findsNothing);
     expect(find.text('Settings'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('settings refreshes while covered before returning to it', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1200, 700);
     addTearDown(tester.view.reset);
@@ -211,11 +216,14 @@ void main() {
 
     expect(find.text('Keamanan'), findsOneWidget);
     expect(find.text('Security'), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('settings renders the resolved biometric preference', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1200, 700);
     addTearDown(tester.view.reset);
@@ -244,5 +252,6 @@ void main() {
       find.descendant(of: biometricsTile, matching: find.text('Off')),
       findsNothing,
     );
+    debugDefaultTargetPlatformOverride = null;
   });
 }

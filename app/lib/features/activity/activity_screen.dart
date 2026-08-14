@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/ffi/generated/models.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/platform/platform_utils.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
@@ -257,8 +258,8 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       error: (error, _) => _ActivityErrorState(message: error.toString()),
     );
 
-    final isMobile = PSpacing.isMobile(screenWidth);
-    final isDesktop = PSpacing.isDesktop(screenWidth);
+    final isMobile = PSpacing.isHandset(size);
+    final isDesktop = isDesktopPlatform;
     final appBarActions = [
       ConnectionStatusIndicator(
         full: !isMobile,

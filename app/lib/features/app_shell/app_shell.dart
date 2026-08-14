@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +13,7 @@ import '../pay/pay_screen.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/services/address_rotation_service.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import '../../core/platform/platform_utils.dart';
 import '../../core/swaps/swap_availability.dart';
 import '../settings/providers/preferences_providers.dart';
 import 'desktop_status_bar.dart';
@@ -25,9 +24,6 @@ class AppShell extends ConsumerWidget {
 
   final String location;
   final Widget child;
-
-  bool get _isDesktop =>
-      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
   List<PNavDestination> _destinations() => [
     PNavDestination(
@@ -109,7 +105,7 @@ class AppShell extends ConsumerWidget {
   }
 
   PAppBar? _desktopAppBarFor(String path) {
-    if (!_isDesktop) {
+    if (!isDesktopPlatform) {
       return null;
     }
     if (path.startsWith('/pay')) {
@@ -154,16 +150,16 @@ class AppShell extends ConsumerWidget {
     final nav = PNav(
       currentIndex: currentIndex,
       onDestinationSelected: (index) => _onDestinationSelected(context, index),
-      destinations: _isDesktop
+      destinations: isDesktopPlatform
           ? _destinations().take(3).toList(growable: false)
           : _destinations(),
-      onPayTap: _isDesktop ? null : () => _openPaySheet(context),
+      onPayTap: isDesktopPlatform ? null : () => _openPaySheet(context),
       payIndex: 1,
     );
 
     final content = SafeArea(top: false, child: child);
     final desktopAppBar = _desktopAppBarFor(location);
-    final body = _isDesktop
+    final body = isDesktopPlatform
         ? Column(
             children: [
               Expanded(
@@ -199,7 +195,7 @@ class AppShell extends ConsumerWidget {
       title: 'Pirate Wallet',
       useSafeArea: false,
       body: body,
-      bottomNavigationBar: _isDesktop ? null : nav,
+      bottomNavigationBar: isDesktopPlatform ? null : nav,
     );
   }
 }
