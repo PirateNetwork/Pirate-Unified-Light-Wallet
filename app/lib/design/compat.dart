@@ -31,6 +31,11 @@ class PirateSpacing {
   static bool isTablet(double screenWidth) => PSpacing.isTablet(screenWidth);
 
   static bool isDesktop(double screenWidth) => PSpacing.isDesktop(screenWidth);
+
+  static bool isHandset(Size screenSize) => PSpacing.isHandset(screenSize);
+
+  static bool isCompactLandscape(Size screenSize) =>
+      PSpacing.isCompactLandscape(screenSize);
 }
 
 class PirateTypography {

@@ -257,6 +257,19 @@ class PSpacing {
     return screenWidth >= breakpointDesktop;
   }
 
+  /// Returns true when the current window belongs to a phone-sized device.
+  ///
+  /// The shortest side remains stable when a phone rotates, unlike width-only
+  /// breakpoints that can accidentally select tablet or desktop chrome.
+  static bool isHandset(Size screenSize) {
+    return screenSize.shortestSide < breakpointMobile;
+  }
+
+  /// Returns true for a phone rotated into a height-constrained viewport.
+  static bool isCompactLandscape(Size screenSize) {
+    return isHandset(screenSize) && screenSize.width > screenSize.height;
+  }
+
   /// Returns standard screen padding with responsive gutters.
   static EdgeInsets screenPadding(double screenWidth, {double vertical = lg}) {
     final gutter = responsiveGutter(screenWidth);
