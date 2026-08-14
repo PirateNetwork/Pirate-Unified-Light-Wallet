@@ -49,6 +49,7 @@ class ReceiveState {
 
 /// Address info model with usage tracking
 class AddressInfo {
+  final int? addressId;
   final String address;
   final String? label;
   final DateTime createdAt;
@@ -60,8 +61,11 @@ class AddressInfo {
   final BigInt balance;
   final BigInt spendable;
   final BigInt pending;
+  final bool isPinned;
+  final bool isArchived;
 
   AddressInfo({
+    this.addressId,
     required this.address,
     this.label,
     required this.createdAt,
@@ -73,11 +77,14 @@ class AddressInfo {
     BigInt? balance,
     BigInt? spendable,
     BigInt? pending,
+    this.isPinned = false,
+    this.isArchived = false,
   }) : balance = balance ?? BigInt.zero,
        spendable = spendable ?? BigInt.zero,
        pending = pending ?? BigInt.zero;
 
   AddressInfo copyWith({
+    int? addressId,
     String? address,
     String? label,
     DateTime? createdAt,
@@ -89,8 +96,11 @@ class AddressInfo {
     BigInt? balance,
     BigInt? spendable,
     BigInt? pending,
+    bool? isPinned,
+    bool? isArchived,
   }) {
     return AddressInfo(
+      addressId: addressId ?? this.addressId,
       address: address ?? this.address,
       label: label ?? this.label,
       createdAt: createdAt ?? this.createdAt,
@@ -102,6 +112,8 @@ class AddressInfo {
       balance: balance ?? this.balance,
       spendable: spendable ?? this.spendable,
       pending: pending ?? this.pending,
+      isPinned: isPinned ?? this.isPinned,
+      isArchived: isArchived ?? this.isArchived,
     );
   }
 
@@ -478,6 +490,54 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     }
   }
 
+  Future<void> setAddressPinned(
+    AddressInfo address, {
+    required bool isPinned,
+  }) async {
+    final addressId = address.addressId;
+    if (addressId == null) {
+      throw StateError('Address preferences are unavailable');
+    }
+    final walletId = _requireWallet();
+    await FfiBridge.setAddressPinned(walletId, addressId, isPinned);
+    _replaceAddress(
+      address.copyWith(
+        isPinned: isPinned,
+        isArchived: address.isArchived && !isPinned,
+      ),
+    );
+  }
+
+  Future<void> setAddressArchived(
+    AddressInfo address, {
+    required bool isArchived,
+  }) async {
+    final addressId = address.addressId;
+    if (addressId == null) {
+      throw StateError('Address preferences are unavailable');
+    }
+    final walletId = _requireWallet();
+    await FfiBridge.setAddressArchived(walletId, addressId, isArchived);
+    _replaceAddress(
+      address.copyWith(
+        isArchived: isArchived,
+        isPinned: address.isPinned && !isArchived,
+      ),
+    );
+  }
+
+  void _replaceAddress(AddressInfo replacement) {
+    final updatedHistory = state.addressHistory
+        .map(
+          (address) => address.addressId == replacement.addressId
+              ? replacement
+              : address,
+        )
+        .toList(growable: false);
+    state = state.copyWith(addressHistory: updatedHistory);
+    _lastState = state;
+  }
+
   /// Load address history with diversifier indices
   Future<void> _loadAddressHistory({
     String? currentAddressOverride,
@@ -527,6 +587,12 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
 
       // Get address balances from FFI
       final addresses = await FfiBridge.listAddressBalances(walletId);
+      final preferences = await FfiBridge.listAddressDisplayPreferences(
+        walletId,
+      );
+      final preferencesByAddressId = {
+        for (final preference in preferences) preference.addressId: preference,
+      };
       final currentAddress =
           forceCurrentAddress && currentAddressOverride != null
           ? currentAddressOverride
@@ -541,6 +607,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
               ).toLocal()
             : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true).toLocal();
         return AddressInfo(
+          addressId: ffiAddr.addressId,
           address: ffiAddr.address,
           label: ffiAddr.label,
           createdAt: createdAt,
@@ -551,6 +618,10 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
           balance: ffiAddr.balance,
           spendable: ffiAddr.spendable,
           pending: ffiAddr.pending,
+          isPinned:
+              preferencesByAddressId[ffiAddr.addressId]?.isPinned ?? false,
+          isArchived:
+              preferencesByAddressId[ffiAddr.addressId]?.isArchived ?? false,
         );
       }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
