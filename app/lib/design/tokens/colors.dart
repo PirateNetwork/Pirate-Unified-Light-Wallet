@@ -48,6 +48,12 @@ class PColors {
   /// Gradient B End - Secondary Deep
   static const Color gradientBEnd = Color(0xFF178A5E);
 
+  /// Gradient C Start - Verification (#9B3FD1)
+  static const Color gradientCStart = Color(0xFF9B3FD1);
+
+  /// Gradient C End - Verification Deep (#3730A3)
+  static const Color gradientCEnd = Color(0xFF3730A3);
+
   /// Highlight - Attention without alarm (#F1B24A)
   static const Color highlight = Color(0xFFF1B24A);
 
@@ -193,6 +199,9 @@ class PColors {
   /// Creates a gradient from Gradient B colors
   static const gradientB = [gradientBStart, gradientBEnd];
 
+  /// Creates a gradient for verification actions
+  static const gradientC = [gradientCStart, gradientCEnd];
+
   /// Returns appropriate text color for the given background
   static Color textOnBackground(Color background) {
     final luminance = background.computeLuminance();
@@ -232,6 +241,8 @@ class PColorsLight {
   static const Color gradientAEnd = Color(0xFF1E55C7);
   static const Color gradientBStart = Color(0xFF1FA971);
   static const Color gradientBEnd = Color(0xFF178A5E);
+  static const Color gradientCStart = Color(0xFF9B3FD1);
+  static const Color gradientCEnd = Color(0xFF3730A3);
   static const Color highlight = Color(0xFFF1B24A);
 
   // Text
@@ -281,6 +292,7 @@ class PColorsLight {
 
   static const gradientA = [gradientAStart, gradientAEnd];
   static const gradientB = [gradientBStart, gradientBEnd];
+  static const gradientC = [gradientCStart, gradientCEnd];
 }
 
 /// Theme-aware app colors (switches between dark and light palettes)
@@ -319,6 +331,10 @@ class AppColors {
       _isLight ? PColorsLight.gradientBStart : PColors.gradientBStart;
   static Color get gradientBEnd =>
       _isLight ? PColorsLight.gradientBEnd : PColors.gradientBEnd;
+  static Color get gradientCStart =>
+      _isLight ? PColorsLight.gradientCStart : PColors.gradientCStart;
+  static Color get gradientCEnd =>
+      _isLight ? PColorsLight.gradientCEnd : PColors.gradientCEnd;
   static Color get highlight =>
       _isLight ? PColorsLight.highlight : PColors.highlight;
 
@@ -397,6 +413,8 @@ class AppColors {
       _isLight ? PColorsLight.gradientA : PColors.gradientA;
   static List<Color> get gradientB =>
       _isLight ? PColorsLight.gradientB : PColors.gradientB;
+  static List<Color> get gradientC =>
+      _isLight ? PColorsLight.gradientC : PColors.gradientC;
 
   static LinearGradient get gradientALinear => LinearGradient(
     colors: gradientA,

@@ -145,7 +145,7 @@ class PaySheet extends StatelessWidget {
                 subtitle: 'Verify a single payment'.tr,
                 icon: Icons.verified_user_outlined,
                 gradient: LinearGradient(
-                  colors: [AppColors.info, AppColors.gradientBEnd],
+                  colors: [AppColors.gradientCStart, AppColors.gradientCEnd],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -268,7 +268,7 @@ class _PayContent extends StatelessWidget {
         subtitle: 'Verify a single payment'.tr,
         icon: Icons.verified_user_outlined,
         gradient: LinearGradient(
-          colors: [AppColors.info, AppColors.gradientBEnd],
+          colors: [AppColors.gradientCStart, AppColors.gradientCEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
