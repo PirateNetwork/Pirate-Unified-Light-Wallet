@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design/tokens/colors.dart';
-import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/p_bottom_sheet.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
@@ -18,6 +17,7 @@ import '../../core/services/address_rotation_service.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 import '../../core/swaps/swap_availability.dart';
 import '../settings/providers/preferences_providers.dart';
+import 'desktop_status_bar.dart';
 
 /// App shell with persistent navigation.
 class AppShell extends ConsumerWidget {
@@ -116,29 +116,23 @@ class AppShell extends ConsumerWidget {
       return PAppBar(
         title: 'Pay'.tr,
         subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
-        actions: [
-          ConnectionStatusIndicator(full: true),
-          WalletSwitcherButton(compact: true),
-        ],
+        actions: [WalletSwitcherButton(compact: true)],
+        showThemeToggle: false,
       );
     }
     if (path.startsWith('/activity')) {
       return PAppBar(
         title: 'Activity'.tr,
-        actions: [
-          ConnectionStatusIndicator(full: true),
-          WalletSwitcherButton(compact: true),
-        ],
+        actions: [WalletSwitcherButton(compact: true)],
+        showThemeToggle: false,
       );
     }
     if (path.startsWith('/settings')) {
       return PAppBar(
         title: 'Settings'.tr,
         subtitle: 'Security and privacy controls.'.tr,
-        actions: [
-          ConnectionStatusIndicator(full: true),
-          WalletSwitcherButton(compact: true),
-        ],
+        actions: [WalletSwitcherButton(compact: true)],
+        showThemeToggle: false,
       );
     }
     return null;
@@ -160,7 +154,9 @@ class AppShell extends ConsumerWidget {
     final nav = PNav(
       currentIndex: currentIndex,
       onDestinationSelected: (index) => _onDestinationSelected(context, index),
-      destinations: _destinations(),
+      destinations: _isDesktop
+          ? _destinations().take(3).toList(growable: false)
+          : _destinations(),
       onPayTap: _isDesktop ? null : () => _openPaySheet(context),
       payIndex: 1,
     );
@@ -168,19 +164,33 @@ class AppShell extends ConsumerWidget {
     final content = SafeArea(top: false, child: child);
     final desktopAppBar = _desktopAppBarFor(location);
     final body = _isDesktop
-        ? Row(
+        ? Column(
             children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundSurface,
-                  border: Border(
-                    right: BorderSide(color: AppColors.borderSubtle),
-                  ),
-                ),
-                child: SafeArea(right: false, child: nav),
-              ),
               Expanded(
-                child: DesktopAppPane(appBar: desktopAppBar, child: content),
+                child: Row(
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundSurface,
+                        border: Border(
+                          right: BorderSide(color: AppColors.borderSubtle),
+                        ),
+                      ),
+                      child: SafeArea(right: false, child: nav),
+                    ),
+                    Expanded(
+                      child: DesktopAppPane(
+                        appBar: desktopAppBar,
+                        child: content,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              DesktopStatusBar(
+                settingsSelected: location.startsWith('/settings'),
+                onSettingsTap: () => context.go('/settings'),
+                onConnectionTap: () => context.push('/settings/privacy-shield'),
               ),
             ],
           )

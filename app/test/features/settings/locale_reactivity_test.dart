@@ -7,11 +7,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/core/i18n/arb_text_localizer.dart';
+import 'package:pirate_wallet/core/providers/connection_status_provider.dart';
 import 'package:pirate_wallet/core/providers/wallet_providers.dart';
 import 'package:pirate_wallet/core/services/address_rotation_service.dart';
 import 'package:pirate_wallet/core/swaps/swap_providers.dart';
 import 'package:pirate_wallet/design/theme.dart';
 import 'package:pirate_wallet/features/app_shell/app_shell.dart';
+import 'package:pirate_wallet/features/app_shell/desktop_status_bar.dart';
 import 'package:pirate_wallet/features/settings/providers/preferences_providers.dart';
 import 'package:pirate_wallet/features/settings/screens/language_screen.dart';
 import 'package:pirate_wallet/features/settings/settings_screen.dart';
@@ -37,6 +39,11 @@ class _DisabledBiometricsNotifier extends BiometricsPreferenceNotifier {
   bool build() => false;
 }
 
+class _TestThemeModeNotifier extends ThemeModeNotifier {
+  @override
+  AppThemeMode build() => AppThemeMode.dark;
+}
+
 ProviderContainer _createContainer({
   bool includeShellOverrides = false,
   bool resolvedBiometricsEnabled = false,
@@ -59,6 +66,10 @@ ProviderContainer _createContainer({
         syncCompletionRotationWatcherProvider.overrideWith((ref) {}),
         walletInitRotationWatcherProvider.overrideWith((ref) {}),
         kdfSwapWarmupProvider.overrideWith((ref) {}),
+        connectionStatusLevelProvider.overrideWithValue(
+          ConnectionStatusLevel.secure,
+        ),
+        appThemeModeProvider.overrideWith(_TestThemeModeNotifier.new),
       ],
     ],
   );
@@ -138,7 +149,9 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Pay'), findsOneWidget);
     expect(find.text('Activity'), findsOneWidget);
-    expect(find.text('Settings'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
+    expect(find.byKey(DesktopStatusBar.statusBarKey), findsOneWidget);
+    expect(find.byKey(const ValueKey('desktop-nav-item-3')), findsNothing);
 
     await tester.runAsync(
       () => container
@@ -150,7 +163,7 @@ void main() {
     expect(find.text('Beranda'), findsOneWidget);
     expect(find.text('Bayar'), findsOneWidget);
     expect(find.text('Aktivitas'), findsOneWidget);
-    expect(find.text('Pengaturan'), findsOneWidget);
+    expect(find.byTooltip('Pengaturan'), findsOneWidget);
     expect(find.text('Home'), findsNothing);
     expect(find.text('Settings'), findsNothing);
   });
