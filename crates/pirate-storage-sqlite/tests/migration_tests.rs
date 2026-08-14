@@ -102,7 +102,7 @@ fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
         )
         .unwrap();
 
-    assert_eq!(version, 34);
+    assert_eq!(version, 35);
     assert_eq!(sapling_checkpoint, 12345);
     assert_eq!(orchard_checkpoint, 67890);
     assert_eq!(retained_tables, 2);
@@ -137,7 +137,7 @@ fn test_v33_adds_durable_outgoing_transaction_intents() {
         )
         .unwrap();
 
-    assert_eq!(version, 34);
+    assert_eq!(version, 35);
     assert_eq!(table_count, 1);
 }
 
@@ -189,9 +189,54 @@ fn test_v34_adds_ironwood_activation_height_to_sync_state() {
         )
         .unwrap();
 
-    assert_eq!(version, 34);
+    assert_eq!(version, 35);
     assert_eq!(activation_height, None);
     assert_eq!(migration_marker, "completed");
+}
+
+#[test]
+fn test_v35_adds_address_display_preferences_without_changing_addresses() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+    migrations::run_migrations(&conn).unwrap();
+
+    conn.execute(
+        "INSERT INTO accounts (name, created_at) VALUES ('Test', 1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO addresses (
+             account_id, diversifier_index, address, address_type, created_at
+         ) VALUES (1, 7, 'zs1-test-address', 'Sapling', 2)",
+        [],
+    )
+    .unwrap();
+    let address_id = conn.last_insert_rowid();
+
+    conn.execute(
+        "INSERT INTO address_display_preferences (
+             address_id, is_pinned, is_archived
+         ) VALUES (?1, 1, 0)",
+        [address_id],
+    )
+    .unwrap();
+
+    let address_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM addresses", [], |row| row.get(0))
+        .unwrap();
+    let preferences: (i64, i64) = conn
+        .query_row(
+            "SELECT is_pinned, is_archived
+             FROM address_display_preferences
+             WHERE address_id = ?1",
+            [address_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+
+    assert_eq!(address_count, 1);
+    assert_eq!(preferences, (1, 0));
 }
 
 #[test]

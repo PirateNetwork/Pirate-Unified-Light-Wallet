@@ -58,6 +58,19 @@ pub struct Address {
     pub address_scope: AddressScope,
 }
 
+/// User-managed display preferences for a derived wallet address.
+///
+/// These flags never affect address ownership, note detection, or balances.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AddressDisplayPreference {
+    /// Address row ID.
+    pub address_id: i64,
+    /// Whether the address should sort ahead of other visible addresses.
+    pub is_pinned: bool,
+    /// Whether the address is hidden from the default address-history view.
+    pub is_archived: bool,
+}
+
 /// Note type (Sapling or Ironwood)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NoteType {

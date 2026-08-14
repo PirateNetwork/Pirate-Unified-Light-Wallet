@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 34;
+const SCHEMA_VERSION: i32 = 35;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -131,6 +131,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 34 {
         migrate_v34(conn)?;
+    }
+    if current_version < 35 {
+        migrate_v35(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -696,6 +699,35 @@ fn migrate_v34(conn: &Connection) -> Result<()> {
         COMMIT;
         "#
     ))
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v35(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        BEGIN IMMEDIATE;
+
+        CREATE TABLE IF NOT EXISTS address_display_preferences (
+            address_id INTEGER PRIMARY KEY,
+            is_pinned INTEGER NOT NULL DEFAULT 0 CHECK (is_pinned IN (0, 1)),
+            is_archived INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0, 1)),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(address_id) REFERENCES addresses(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_address_display_preferences_archived_pinned
+            ON address_display_preferences(is_archived, is_pinned);
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v35_address_display_preferences', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#,
+    )
     .map_err(|e| Error::Migration(e.to_string()))?;
 
     Ok(())

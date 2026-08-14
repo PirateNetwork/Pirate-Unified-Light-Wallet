@@ -3393,6 +3393,34 @@ impl<'a> Repository<'a> {
         address::update_address_color_tag(self, account_id, address, color_tag)
     }
 
+    /// Get user-managed display preferences for an account's addresses.
+    pub fn get_address_display_preferences(
+        &self,
+        account_id: i64,
+    ) -> Result<Vec<AddressDisplayPreference>> {
+        address::get_address_display_preferences(self, account_id)
+    }
+
+    /// Pin or unpin an address in wallet interfaces.
+    pub fn set_address_pinned(
+        &self,
+        account_id: i64,
+        address_id: i64,
+        is_pinned: bool,
+    ) -> Result<()> {
+        address::set_address_pinned(self, account_id, address_id, is_pinned)
+    }
+
+    /// Archive or restore an address in wallet interfaces.
+    pub fn set_address_archived(
+        &self,
+        account_id: i64,
+        address_id: i64,
+        is_archived: bool,
+    ) -> Result<()> {
+        address::set_address_archived(self, account_id, address_id, is_archived)
+    }
+
     /// Get transaction history for an account
     ///
     /// Aggregates notes by transaction to determine send/receive and net amounts.
@@ -6664,6 +6692,86 @@ mod tests {
             .unwrap();
         assert_eq!(default_lookup.address, external.address);
         assert_eq!(default_lookup.address_scope, AddressScope::External);
+    }
+
+    #[test]
+    fn address_display_preferences_are_scoped_and_reversible() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Address preferences".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let other_account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Other account".to_string(),
+                created_at: 2,
+            })
+            .unwrap();
+        let address = Address {
+            id: None,
+            key_id: None,
+            account_id,
+            diversifier_index: 3,
+            address: "zs1displaypreferences0000000000000000000000000000000000000000".to_string(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at: 3,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        };
+        repo.upsert_address(&address).unwrap();
+        let address_id = repo
+            .get_address_by_string(account_id, &address.address)
+            .unwrap()
+            .unwrap()
+            .id
+            .unwrap();
+
+        assert!(repo
+            .get_address_display_preferences(account_id)
+            .unwrap()
+            .is_empty());
+
+        repo.set_address_pinned(account_id, address_id, true)
+            .unwrap();
+        assert_eq!(
+            repo.get_address_display_preferences(account_id).unwrap(),
+            vec![AddressDisplayPreference {
+                address_id,
+                is_pinned: true,
+                is_archived: false,
+            }]
+        );
+
+        repo.set_address_archived(account_id, address_id, true)
+            .unwrap();
+        assert_eq!(
+            repo.get_address_display_preferences(account_id).unwrap(),
+            vec![AddressDisplayPreference {
+                address_id,
+                is_pinned: false,
+                is_archived: true,
+            }]
+        );
+
+        repo.set_address_pinned(account_id, address_id, true)
+            .unwrap();
+        assert_eq!(
+            repo.get_address_display_preferences(account_id).unwrap(),
+            vec![AddressDisplayPreference {
+                address_id,
+                is_pinned: true,
+                is_archived: false,
+            }]
+        );
+        assert!(repo
+            .set_address_archived(other_account_id, address_id, true)
+            .is_err());
     }
 
     #[test]

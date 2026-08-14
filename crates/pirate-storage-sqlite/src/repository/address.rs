@@ -1,7 +1,7 @@
 use super::Repository;
 use crate::address_book::ColorTag;
-use crate::models::{Address, AddressScope, AddressType};
-use crate::Result;
+use crate::models::{Address, AddressDisplayPreference, AddressScope, AddressType};
+use crate::{Error, Result};
 use rusqlite::{params, OptionalExtension, Row};
 
 const ADDRESS_SELECT_COLUMNS: &str =
@@ -286,6 +286,88 @@ pub(super) fn update_address_color_tag(
         "UPDATE addresses SET color_tag = ?1 WHERE account_id = ?2 AND address = ?3",
         params![color_tag.as_u8() as i64, account_id, address],
     )?;
+    Ok(())
+}
+
+pub(super) fn get_address_display_preferences(
+    repo: &Repository<'_>,
+    account_id: i64,
+) -> Result<Vec<AddressDisplayPreference>> {
+    let mut stmt = repo.db.conn().prepare(
+        "SELECT preferences.address_id, preferences.is_pinned, preferences.is_archived
+         FROM address_display_preferences preferences
+         INNER JOIN addresses ON addresses.id = preferences.address_id
+         WHERE addresses.account_id = ?1",
+    )?;
+    let preferences = stmt
+        .query_map([account_id], |row| {
+            Ok(AddressDisplayPreference {
+                address_id: row.get(0)?,
+                is_pinned: row.get::<_, i64>(1)? != 0,
+                is_archived: row.get::<_, i64>(2)? != 0,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(preferences)
+}
+
+pub(super) fn set_address_pinned(
+    repo: &Repository<'_>,
+    account_id: i64,
+    address_id: i64,
+    is_pinned: bool,
+) -> Result<()> {
+    let rows = repo.db.conn().execute(
+        "INSERT INTO address_display_preferences (
+             address_id, is_pinned, is_archived, updated_at
+         )
+         SELECT id, ?3, 0, datetime('now')
+         FROM addresses
+         WHERE account_id = ?1 AND id = ?2
+         ON CONFLICT(address_id) DO UPDATE SET
+             is_pinned = excluded.is_pinned,
+             is_archived = CASE
+                 WHEN excluded.is_pinned = 1 THEN 0
+                 ELSE address_display_preferences.is_archived
+             END,
+             updated_at = excluded.updated_at",
+        params![account_id, address_id, is_pinned as i64],
+    )?;
+    if rows == 0 {
+        return Err(Error::NotFound(format!(
+            "address row {address_id} for account {account_id}"
+        )));
+    }
+    Ok(())
+}
+
+pub(super) fn set_address_archived(
+    repo: &Repository<'_>,
+    account_id: i64,
+    address_id: i64,
+    is_archived: bool,
+) -> Result<()> {
+    let rows = repo.db.conn().execute(
+        "INSERT INTO address_display_preferences (
+             address_id, is_pinned, is_archived, updated_at
+         )
+         SELECT id, 0, ?3, datetime('now')
+         FROM addresses
+         WHERE account_id = ?1 AND id = ?2
+         ON CONFLICT(address_id) DO UPDATE SET
+             is_archived = excluded.is_archived,
+             is_pinned = CASE
+                 WHEN excluded.is_archived = 1 THEN 0
+                 ELSE address_display_preferences.is_pinned
+             END,
+             updated_at = excluded.updated_at",
+        params![account_id, address_id, is_archived as i64],
+    )?;
+    if rows == 0 {
+        return Err(Error::NotFound(format!(
+            "address row {address_id} for account {account_id}"
+        )));
+    }
     Ok(())
 }
 
