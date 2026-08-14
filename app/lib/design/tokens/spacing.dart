@@ -192,6 +192,9 @@ class PSpacing {
   /// Desktop navigation rail width
   static const double desktopNavRailWidth = 104.0;
 
+  /// Desktop status bar height
+  static const double desktopStatusBarHeight = 44.0;
+
   /// Desktop content max width
   static const double desktopContentMaxWidth = 1200.0;
 
