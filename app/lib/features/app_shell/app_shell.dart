@@ -180,16 +180,7 @@ class AppShell extends ConsumerWidget {
                 child: SafeArea(right: false, child: nav),
               ),
               Expanded(
-                child: Column(
-                  children: [
-                    if (desktopAppBar != null)
-                      SizedBox(
-                        height: desktopAppBar.preferredSize.height,
-                        child: desktopAppBar,
-                      ),
-                    Expanded(child: content),
-                  ],
-                ),
+                child: DesktopAppPane(appBar: desktopAppBar, child: content),
               ),
             ],
           )
@@ -199,6 +190,28 @@ class AppShell extends ConsumerWidget {
       useSafeArea: false,
       body: body,
       bottomNavigationBar: _isDesktop ? null : nav,
+    );
+  }
+}
+
+/// Keeps desktop header effects inside the content side of the shell.
+class DesktopAppPane extends StatelessWidget {
+  const DesktopAppPane({required this.child, this.appBar, super.key});
+
+  final PreferredSizeWidget? appBar;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      clipBehavior: Clip.hardEdge,
+      child: Column(
+        children: [
+          if (appBar != null)
+            SizedBox(height: appBar!.preferredSize.height, child: appBar),
+          Expanded(child: child),
+        ],
+      ),
     );
   }
 }
