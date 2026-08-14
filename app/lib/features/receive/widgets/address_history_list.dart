@@ -129,29 +129,31 @@ class _AddressHistoryItem extends StatelessWidget {
                 size: isCompact ? 18 : 20,
               ),
               tooltip: address.isPinned ? 'Unpin address'.tr : 'Pin address'.tr,
-              visualDensity: VisualDensity.compact,
+              visualDensity: VisualDensity.standard,
               style: IconButton.styleFrom(
                 foregroundColor: address.isPinned
                     ? AppColors.focusRing
                     : AppColors.textSecondary,
                 padding: EdgeInsets.zero,
-                minimumSize: const Size(32, 32),
+                minimumSize: const Size.square(44),
               ),
             ),
           IconButton(
             onPressed: onCopy,
             icon: Icon(Icons.copy, size: isCompact ? 18 : 20),
             tooltip: 'Copy address'.tr,
-            visualDensity: VisualDensity.compact,
+            visualDensity: VisualDensity.standard,
             style: IconButton.styleFrom(
               foregroundColor: AppColors.textSecondary,
               padding: EdgeInsets.zero,
-              minimumSize: const Size(32, 32),
+              minimumSize: const Size.square(44),
             ),
           ),
           PopupMenuButton<_AddressHistoryAction>(
             tooltip: 'More actions'.tr,
             icon: Icon(Icons.more_vert, size: isCompact ? 18 : 20),
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            padding: EdgeInsets.zero,
             color: AppColors.backgroundElevated,
             onSelected: (action) {
               switch (action) {
@@ -256,7 +258,9 @@ class _AddressHistoryItem extends StatelessWidget {
         }
 
         return PCard(
-          key: ValueKey('address-history-${address.addressId ?? address.address}'),
+          key: ValueKey(
+            'address-history-${address.addressId ?? address.address}',
+          ),
           onTap: onOpen,
           backgroundColor: address.isActive
               ? AppColors.selectedBackground
@@ -457,10 +461,7 @@ class _AddressStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: PSpacing.xs,
-        vertical: 2,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: PSpacing.xs, vertical: 2),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(PSpacing.radiusSM),

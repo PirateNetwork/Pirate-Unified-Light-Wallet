@@ -76,6 +76,21 @@ void main() {
     expect(toggled, same(address));
   });
 
+  testWidgets('keeps address actions large enough for touch input', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_history([_address(7)]));
+    await tester.pump();
+
+    for (final icon in [Icons.push_pin_outlined, Icons.copy]) {
+      final button = find.widgetWithIcon(IconButton, icon);
+      final size = tester.getSize(button);
+      expect(size.width, greaterThanOrEqualTo(44));
+      expect(size.height, greaterThanOrEqualTo(44));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('explains an empty archived view', (tester) async {
     await tester.pumpWidget(_history(const [], showArchived: true));
 
