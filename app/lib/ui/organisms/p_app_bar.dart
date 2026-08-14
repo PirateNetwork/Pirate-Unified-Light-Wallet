@@ -20,6 +20,7 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.useGradientBackground = false,
     this.centerTitle = false,
     this.surfaceColor,
+    this.showThemeToggle = true,
     super.key,
   });
 
@@ -32,6 +33,7 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool useGradientBackground;
   final bool centerTitle;
   final Color? surfaceColor;
+  final bool showThemeToggle;
 
   @override
   Size get preferredSize => const Size.fromHeight(82);
@@ -77,7 +79,7 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     if (actions != null) {
       effectiveActions.addAll(actions!);
     }
-    if (!_isOnboardingRoute(context)) {
+    if (showThemeToggle && !_isOnboardingRoute(context)) {
       effectiveActions.add(const ThemeToggleButton());
     }
 

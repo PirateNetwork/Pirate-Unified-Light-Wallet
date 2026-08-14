@@ -326,12 +326,15 @@ enum PIconButtonShape { rounded, circle }
 
 /// Icon button sizes
 enum PIconButtonSize {
+  compact,
   small,
   medium,
   large;
 
   double get size {
     switch (this) {
+      case PIconButtonSize.compact:
+        return 36.0;
       case PIconButtonSize.small:
         return 48.0;
       case PIconButtonSize.medium:
@@ -343,6 +346,8 @@ enum PIconButtonSize {
 
   double get iconSize {
     switch (this) {
+      case PIconButtonSize.compact:
+        return PSpacing.iconSM;
       case PIconButtonSize.small:
         return PSpacing.iconSM;
       case PIconButtonSize.medium:

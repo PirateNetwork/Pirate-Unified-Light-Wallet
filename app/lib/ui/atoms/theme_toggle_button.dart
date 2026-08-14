@@ -9,7 +9,9 @@ import '../../core/i18n/arb_text_localizer.dart';
 /// Clean theme toggle button that switches between light and dark mode
 /// Toggles between light and dark (skips system mode for quick switching)
 class ThemeToggleButton extends ConsumerWidget {
-  const ThemeToggleButton({super.key});
+  const ThemeToggleButton({this.size = PIconButtonSize.medium, super.key});
+
+  final PIconButtonSize size;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -33,7 +35,7 @@ class ThemeToggleButton extends ConsumerWidget {
         ref.read(appThemeModeProvider.notifier).setThemeMode(newMode);
       },
       tooltip: isDark ? 'Switch to light mode'.tr : 'Switch to dark mode'.tr,
-      size: PIconButtonSize.medium,
+      size: size,
     );
   }
 }

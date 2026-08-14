@@ -51,4 +51,31 @@ void main() {
     expect(decoration.shape, BoxShape.circle);
     expect(decoration.borderRadius, isNull);
   });
+
+  testWidgets('compact icon button fits a desktop utility bar', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: PIconButton(
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () {},
+              size: PIconButtonSize.compact,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final surfaceFinder = find.descendant(
+      of: find.byType(PIconButton),
+      matching: find.byType(AnimatedContainer),
+    );
+
+    expect(tester.getSize(surfaceFinder), const Size.square(36));
+    expect(
+      tester.widget<IconButton>(find.byType(IconButton)).iconSize,
+      PSpacing.iconSM,
+    );
+  });
 }
