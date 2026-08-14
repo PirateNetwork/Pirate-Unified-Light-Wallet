@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart' hide AddressBookColorTag;
 import '../../core/providers/wallet_providers.dart';
+import '../../design/input_decorations.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -339,10 +340,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       initialSelection: _selectedTargetAddress,
       width: double.infinity,
       label: Text('Target wallet address'.tr),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: AppColors.surfaceElevated,
-      ),
+      inputDecorationTheme: PInputDecorations.elevatedDropdown(context),
       dropdownMenuEntries: _addresses
           .map(
             (address) => DropdownMenuEntry<AddressBalanceInfo>(
