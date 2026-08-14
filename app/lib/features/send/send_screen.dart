@@ -190,6 +190,8 @@ enum SendStep {
   error,
 }
 
+enum _SendHeaderAction { addRecipient, resetForm }
+
 /// Send screen with multi-output support
 class SendScreen extends ConsumerStatefulWidget {
   const SendScreen({super.key});
@@ -2091,6 +2093,54 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     }
   }
 
+  void _handleHeaderAction(_SendHeaderAction action) {
+    switch (action) {
+      case _SendHeaderAction.addRecipient:
+        _addOutput();
+        return;
+      case _SendHeaderAction.resetForm:
+        _sendFormKey.currentState?.reset();
+        return;
+    }
+  }
+
+  Widget _buildMobileHeaderMenu() {
+    return SizedBox.square(
+      dimension: 44,
+      child: PopupMenuButton<_SendHeaderAction>(
+        tooltip: 'More actions'.tr,
+        color: AppColors.backgroundElevated,
+        padding: EdgeInsets.zero,
+        icon: const Icon(Icons.more_vert),
+        onSelected: _handleHeaderAction,
+        itemBuilder: (context) => [
+          if (_outputs.length < kMaxRecipients)
+            PopupMenuItem(
+              value: _SendHeaderAction.addRecipient,
+              child: Row(
+                children: [
+                  const Icon(Icons.add_circle_outline),
+                  const SizedBox(width: PSpacing.sm),
+                  Text('Add recipient'.tr),
+                ],
+              ),
+            ),
+          PopupMenuItem(
+            value: _SendHeaderAction.resetForm,
+            enabled: !_isValidating && !_isSending,
+            child: Row(
+              children: [
+                const Icon(Icons.restart_alt),
+                const SizedBox(width: PSpacing.sm),
+                Text('Reset form'.tr),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = _currentStep == SendStep.review
@@ -2098,7 +2148,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         : _currentStep == SendStep.sending
         ? 'Sending'.tr
         : 'Send'.tr;
-    final isMobile = PSpacing.isMobile(MediaQuery.of(context).size.width);
+    final isMobile = PSpacing.isHandset(MediaQuery.sizeOf(context));
 
     return PopScope(
       canPop: !_isSending && _currentStep == SendStep.recipients,
@@ -2119,15 +2169,19 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                     : null),
           onBack: _isSending ? null : _handleBackNavigation,
           showBackButton: true,
+          showThemeToggle: !isMobile,
           actions: [
-            if (_currentStep == SendStep.recipients &&
+            if (isMobile && _currentStep == SendStep.recipients)
+              _buildMobileHeaderMenu(),
+            if (!isMobile &&
+                _currentStep == SendStep.recipients &&
                 _outputs.length < kMaxRecipients)
               PIconButton(
                 icon: const Icon(Icons.add_circle_outline),
                 tooltip: 'Add recipient'.tr,
                 onPressed: _addOutput,
               ),
-            if (_currentStep == SendStep.recipients)
+            if (!isMobile && _currentStep == SendStep.recipients)
               PIconButton(
                 icon: const Icon(Icons.restart_alt),
                 tooltip: 'Reset form'.tr,
