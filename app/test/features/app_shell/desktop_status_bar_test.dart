@@ -99,7 +99,7 @@ void main() {
     await tester.pump();
 
     expect(
-      tester.getSize(find.byKey(DesktopStatusBar.statusBarKey)).height,
+      tester.getSize(find.byKey(DesktopStatusBar.barKey)).height,
       PSpacing.desktopStatusBarHeight,
     );
     expect(find.text('Connected - Secure'), findsOneWidget);

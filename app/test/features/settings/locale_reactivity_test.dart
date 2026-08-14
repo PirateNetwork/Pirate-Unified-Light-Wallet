@@ -150,7 +150,7 @@ void main() {
     expect(find.text('Pay'), findsOneWidget);
     expect(find.text('Activity'), findsOneWidget);
     expect(find.byTooltip('Settings'), findsOneWidget);
-    expect(find.byKey(DesktopStatusBar.statusBarKey), findsOneWidget);
+    expect(find.byKey(DesktopStatusBar.barKey), findsOneWidget);
     expect(find.byKey(const ValueKey('desktop-nav-item-3')), findsNothing);
 
     await tester.runAsync(

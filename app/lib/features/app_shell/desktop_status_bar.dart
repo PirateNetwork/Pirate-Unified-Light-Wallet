@@ -20,7 +20,7 @@ class DesktopStatusBar extends ConsumerWidget {
     super.key,
   });
 
-  static const statusBarKey = Key('desktop-status-bar');
+  static const barKey = Key('desktop-status-bar');
   static const settingsKey = Key('desktop-status-settings');
   static const connectionKey = Key('desktop-status-connection');
   static const transportKey = Key('desktop-status-transport');
@@ -53,7 +53,7 @@ class DesktopStatusBar extends ConsumerWidget {
         : syncStatus?.stageName ?? 'Not synced'.tr;
 
     return Container(
-      key: statusBarKey,
+      key: barKey,
       height: PSpacing.desktopStatusBarHeight,
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
