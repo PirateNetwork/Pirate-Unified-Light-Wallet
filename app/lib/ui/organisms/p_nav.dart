@@ -6,7 +6,7 @@ import '../../design/tokens/typography.dart';
 
 /// Pirate Wallet Navigation
 /// - BottomNavigationBar for mobile
-/// - NavigationRail + AppSidebar for desktop
+/// - Compact navigation rail + AppSidebar for desktop
 class PNav extends StatelessWidget {
   const PNav({
     required this.currentIndex,
@@ -36,22 +36,26 @@ class PNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (_isDesktop) {
-      return NavigationRail(
-        selectedIndex: currentIndex,
-        onDestinationSelected: onDestinationSelected,
-        scrollable: true,
-        backgroundColor: AppColors.backgroundSurface,
-        indicatorColor: AppColors.selectedBackground,
-        labelType: NavigationRailLabelType.all,
-        destinations: destinations
-            .map(
-              (dest) => NavigationRailDestination(
-                icon: Icon(dest.icon),
-                selectedIcon: Icon(dest.selectedIcon ?? dest.icon),
-                label: Text(dest.label),
-              ),
-            )
-            .toList(),
+      return SizedBox(
+        key: const ValueKey('desktop-navigation-rail'),
+        width: PSpacing.desktopNavRailWidth,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(
+            horizontal: PSpacing.sm,
+            vertical: PSpacing.sm,
+          ),
+          itemCount: destinations.length,
+          separatorBuilder: (_, _) => const SizedBox(height: PSpacing.xs),
+          itemBuilder: (context, index) {
+            final destination = destinations[index];
+            return _DesktopNavItem(
+              key: ValueKey('desktop-nav-item-$index'),
+              destination: destination,
+              isSelected: index == currentIndex,
+              onTap: () => onDestinationSelected(index),
+            );
+          },
+        ),
       );
     }
 
@@ -124,6 +128,91 @@ class PNav extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopNavItem extends StatelessWidget {
+  const _DesktopNavItem({
+    required this.destination,
+    required this.isSelected,
+    required this.onTap,
+    super.key,
+  });
+
+  final PNavDestination destination;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(PSpacing.radiusSM);
+    final iconColor = isSelected
+        ? AppColors.focusRing
+        : AppColors.textSecondary;
+    final labelColor = isSelected
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
+    final background = isSelected
+        ? AppColors.selectedBackground
+        : Colors.transparent;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      child: AnimatedContainer(
+        duration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 150),
+        constraints: const BoxConstraints(minHeight: 72),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: radius,
+          border: Border.all(
+            color: isSelected ? AppColors.selectedBorder : Colors.transparent,
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            mouseCursor: SystemMouseCursors.click,
+            borderRadius: radius,
+            hoverColor: AppColors.hoverOverlay,
+            focusColor: AppColors.focusRingSubtle,
+            highlightColor: AppColors.pressedOverlay,
+            splashColor: AppColors.pressedOverlay,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: PSpacing.xs,
+                vertical: PSpacing.xs,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    isSelected
+                        ? destination.selectedIcon ?? destination.icon
+                        : destination.icon,
+                    color: iconColor,
+                    size: PSpacing.iconLG,
+                  ),
+                  const SizedBox(height: PSpacing.xxs),
+                  Text(
+                    destination.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PTypography.caption(color: labelColor),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
