@@ -345,7 +345,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     const relativeCandidates = <String>[
       'dist/windows/pirate-unified-wallet-windows-installer.exe',
       'dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe',
-      'dist/windows/pirate-unified-wallet-windows-portable.zip',
+      'dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip',
       'dist/macos/pirate-unified-wallet-macos.dmg',
       'dist/macos/pirate-unified-wallet-macos-unsigned.dmg',
       'dist/linux/pirate-unified-wallet-linux-x86_64.AppImage',

@@ -187,8 +187,7 @@ Current script outputs are:
 - Windows
   - `pirate-unified-wallet-windows-installer.exe`
   - `pirate-unified-wallet-windows-installer-unsigned.exe`
-  - `pirate-unified-wallet-windows-portable.zip`
-  - `pirate-unified-wallet-windows-portable-unsigned.zip`
+  - `pirate-unified-wallet-windows-portable-unsigned.zip` (CI/test artifact)
 - Linux
   - `pirate-unified-wallet-linux-x86_64.AppImage`
   - `pirate-unified-wallet.flatpak`
@@ -230,7 +229,7 @@ GitHub Releases present assets as one flat list, so the publish workflow keeps o
 
 Top-level release assets are:
 
-- signed Windows installer and portable zip, with unsigned desktop fallbacks only when signing is unavailable
+- signed Windows installer, with an unsigned installer fallback only when signing is unavailable
 - Linux AppImage, deb, and Flatpak packages
 - signed macOS DMG, with an unsigned fallback only when signing is unavailable
 - signed Android split APKs for direct installation
@@ -238,6 +237,10 @@ Top-level release assets are:
 - `PirateWalletNative.xcframework.zip` and `PirateWalletSDK-Package.swift` only when the iOS SDK changes, because Swift Package Manager binary targets need a direct release URL
 - `pirate-unified-wallet-release-metadata.zip`
 - `pirate-unified-wallet-developer-artifacts.zip` when developer artifacts were produced
+
+The unsigned portable Windows build is retained in
+`pirate-unified-wallet-unsigned-desktop-test-builds.zip` for testing and
+reproducible verification. It is not published as a normal-user download.
 
 `pirate-unified-wallet-release-metadata.zip` contains:
 

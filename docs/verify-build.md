@@ -7,10 +7,10 @@ Release artifacts
 
 The project build scripts currently generate these artifact names:
 
-- Windows
+- Windows release installers
   - `pirate-unified-wallet-windows-installer.exe`
   - `pirate-unified-wallet-windows-installer-unsigned.exe`
-  - `pirate-unified-wallet-windows-portable.zip`
+- Windows CI/test build
   - `pirate-unified-wallet-windows-portable-unsigned.zip`
 - Linux
   - `pirate-unified-wallet-linux-x86_64.AppImage`
@@ -43,6 +43,11 @@ The project build scripts currently generate these artifact names:
   - `pirate_wallet_service.h`
 
 Official GitHub Releases keep user installables at the top level. Developer artifacts, store/test builds, SBOMs, provenance, signatures, and checksums are grouped into release bundles so the download list stays readable.
+
+The Windows installer is the normal-user release artifact. The unsigned
+portable build is retained inside
+`pirate-unified-wallet-unsigned-desktop-test-builds.zip` for testing and
+reproducible comparison.
 
 Each top-level release artifact should be covered by `pirate-unified-wallet-release-metadata.zip`, which includes generated checksums for every published top-level asset.
 
