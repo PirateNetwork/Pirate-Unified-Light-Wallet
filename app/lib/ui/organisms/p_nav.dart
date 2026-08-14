@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../core/platform/platform_utils.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -8,6 +8,8 @@ import '../../design/tokens/typography.dart';
 /// - BottomNavigationBar for mobile
 /// - Compact navigation rail + AppSidebar for desktop
 class PNav extends StatelessWidget {
+  static const Key mobileNavigationKey = Key('mobile-navigation-bar');
+
   const PNav({
     required this.currentIndex,
     required this.onDestinationSelected,
@@ -23,9 +25,6 @@ class PNav extends StatelessWidget {
   final VoidCallback? onPayTap;
   final int? payIndex;
 
-  bool get _isDesktop =>
-      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
-
   int? get _resolvedPayIndex {
     final explicit = payIndex;
     if (explicit != null) return explicit;
@@ -35,7 +34,7 @@ class PNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (_isDesktop) {
+    if (isDesktopPlatform) {
       return SizedBox(
         key: const ValueKey('desktop-navigation-rail'),
         width: PSpacing.desktopNavRailWidth,
@@ -84,19 +83,23 @@ class PNav extends StatelessWidget {
     final left = destinations.take(pay).toList();
     final right = destinations.skip(pay + 1).toList();
     final payDest = destinations[pay];
+    final compactLandscape = PSpacing.isCompactLandscape(
+      MediaQuery.sizeOf(context),
+    );
 
     return SafeArea(
       top: false,
       child: Container(
+        key: mobileNavigationKey,
         decoration: BoxDecoration(
           color: AppColors.backgroundSurface,
           border: Border(
             top: BorderSide(color: AppColors.borderSubtle, width: 1.0),
           ),
         ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: PSpacing.md,
-          vertical: PSpacing.sm,
+        padding: EdgeInsets.symmetric(
+          horizontal: compactLandscape ? PSpacing.sm : PSpacing.md,
+          vertical: compactLandscape ? PSpacing.xxs : PSpacing.sm,
         ),
         child: Row(
           children: [
@@ -105,6 +108,7 @@ class PNav extends StatelessWidget {
                 child: _NavItem(
                   destination: dest,
                   isSelected: destinations.indexOf(dest) == currentIndex,
+                  compact: compactLandscape,
                   onTap: () =>
                       onDestinationSelected(destinations.indexOf(dest)),
                 ),
@@ -114,6 +118,7 @@ class PNav extends StatelessWidget {
               child: _PayAction(
                 icon: payDest.selectedIcon ?? payDest.icon,
                 label: payDest.label,
+                compact: compactLandscape,
                 onTap: onPayTap!,
               ),
             ),
@@ -122,6 +127,7 @@ class PNav extends StatelessWidget {
                 child: _NavItem(
                   destination: dest,
                   isSelected: destinations.indexOf(dest) == currentIndex,
+                  compact: compactLandscape,
                   onTap: () =>
                       onDestinationSelected(destinations.indexOf(dest)),
                 ),
@@ -237,31 +243,59 @@ class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.destination,
     required this.isSelected,
+    required this.compact,
     required this.onTap,
   });
 
   final PNavDestination destination;
   final bool isSelected;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final color = isSelected ? AppColors.focusRing : AppColors.textSecondary;
+    final content = compact
+        ? Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(destination.icon, color: color, size: PSpacing.iconMD),
+              const SizedBox(width: PSpacing.xxs),
+              Flexible(
+                child: Text(
+                  destination.label,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  style: PTypography.labelSmall(color: color),
+                ),
+              ),
+            ],
+          )
+        : Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(destination.icon, color: color, size: PSpacing.iconMD),
+              const SizedBox(height: PSpacing.xxs),
+              Text(
+                destination.label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                style: PTypography.labelSmall(color: color),
+              ),
+            ],
+          );
     return InkWell(
       borderRadius: BorderRadius.circular(PSpacing.radiusSM),
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: PSpacing.xs),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(destination.icon, color: color, size: PSpacing.iconMD),
-            const SizedBox(height: PSpacing.xxs),
-            Text(
-              destination.label,
-              style: PTypography.labelSmall(color: color),
-            ),
-          ],
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: compact ? 44 : 56),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            vertical: compact ? PSpacing.xxs : PSpacing.xs,
+          ),
+          child: content,
         ),
       ),
     );
@@ -272,33 +306,69 @@ class _PayAction extends StatelessWidget {
   const _PayAction({
     required this.icon,
     required this.label,
+    required this.compact,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final content = compact
+        ? Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: AppColors.textSecondary,
+                size: PSpacing.iconMD,
+                semanticLabel: label,
+              ),
+              const SizedBox(width: PSpacing.xxs),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  style: PTypography.labelSmall(color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          )
+        : Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: AppColors.textSecondary,
+                size: PSpacing.iconMD,
+                semanticLabel: label,
+              ),
+              const SizedBox(height: PSpacing.xxs),
+              Text(
+                label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                style: PTypography.labelSmall(color: AppColors.textSecondary),
+              ),
+            ],
+          );
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(PSpacing.radiusLG),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: AppColors.textSecondary,
-            size: PSpacing.iconMD,
-            semanticLabel: label,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: compact ? 44 : 56),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            vertical: compact ? PSpacing.xxs : PSpacing.xs,
           ),
-          const SizedBox(height: PSpacing.xxs),
-          Text(
-            label,
-            style: PTypography.labelSmall(color: AppColors.textSecondary),
-          ),
-        ],
+          child: content,
+        ),
       ),
     );
   }

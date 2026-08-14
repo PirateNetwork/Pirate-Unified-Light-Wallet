@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/design/tokens/colors.dart';
@@ -9,6 +10,8 @@ void main() {
   testWidgets('desktop rail selects the complete navigation item', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     var selectedIndex = -1;
     await tester.pumpWidget(
       MaterialApp(
@@ -60,9 +63,12 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('desktop-nav-item-2')));
     expect(selectedIndex, 2);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('desktop destinations expand for large text', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await tester.pumpWidget(
       MaterialApp(
         home: MediaQuery(
@@ -87,5 +93,53 @@ void main() {
 
     expect(tester.getSize(selectedSurfaceFinder).height, greaterThan(72));
     expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('keeps complete mobile labels in compact landscape', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(844, 390);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: const SizedBox.expand(),
+          bottomNavigationBar: PNav(
+            currentIndex: 0,
+            onDestinationSelected: (_) {},
+            onPayTap: () {},
+            payIndex: 1,
+            destinations: const [
+              PNavDestination(icon: Icons.home_outlined, label: 'Home'),
+              PNavDestination(
+                icon: Icons.payments_outlined,
+                label: 'Pay',
+                isPay: true,
+              ),
+              PNavDestination(
+                icon: Icons.receipt_long_outlined,
+                label: 'Recent activity',
+              ),
+              PNavDestination(icon: Icons.settings_outlined, label: 'Settings'),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final navRect = tester.getRect(find.byKey(PNav.mobileNavigationKey));
+    final recentLabel = tester.widget<Text>(find.text('Recent activity'));
+
+    expect(navRect.height, lessThanOrEqualTo(64));
+    expect(recentLabel.maxLines, 2);
+    expect(recentLabel.overflow, isNull);
+    expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
   });
 }
