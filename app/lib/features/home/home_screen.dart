@@ -4,6 +4,7 @@ library;
 import 'dart:ui';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -33,6 +34,13 @@ import '../settings/providers/preferences_providers.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 import 'widgets/home_header_controls.dart';
 import 'widgets/home_sync_indicator.dart';
+
+bool _isDesktopPlatform() {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+}
 
 /// Home screen
 class HomeScreen extends StatefulWidget {
@@ -96,6 +104,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     _hideBalance = !_hideBalance;
                   });
                 },
+                showConnectionStatus:
+                    widget.useScaffold || !_isDesktopPlatform(),
               );
             },
           ),
@@ -202,12 +212,14 @@ class _HomeHeader extends ConsumerWidget {
     required this.enableBackdropBlur,
     required this.hideBalance,
     required this.onToggleVisibility,
+    required this.showConnectionStatus,
   });
 
   final EdgeInsets padding;
   final bool enableBackdropBlur;
   final bool hideBalance;
   final VoidCallback onToggleVisibility;
+  final bool showConnectionStatus;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -265,6 +277,7 @@ class _HomeHeader extends ConsumerWidget {
             children: [
               HomeHeaderControls(
                 onConnectionTap: () => context.push('/settings/privacy-shield'),
+                showConnectionStatus: showConnectionStatus,
               ),
               const SizedBox(height: PSpacing.sm),
               Expanded(
