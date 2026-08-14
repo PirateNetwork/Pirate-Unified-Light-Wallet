@@ -2036,7 +2036,7 @@ jobs:
           if-no-files-found: error
 
   sign-windows:
-    name: Sign - Windows (Installer/Portable)
+    name: Sign - Windows (Installer)
     runs-on: windows-2025-vs2026
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
@@ -2067,7 +2067,7 @@ jobs:
           [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String("${{ secrets.WINDOWS_SIGN_CERT_PFX_B64 }}"))
           "WINDOWS_SIGN_CERT=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding ascii -Append
 
-      - name: Sign Windows artifacts
+      - name: Sign Windows installer
         if: steps.signing.outputs.enabled == 'true'
         shell: pwsh
         run: |
@@ -2127,35 +2127,17 @@ jobs:
 
           $installerUnsigned = "dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe"
           $installerSigned = "dist/windows/pirate-unified-wallet-windows-installer.exe"
-          if (Test-Path $installerUnsigned) {
-            Copy-Item $installerUnsigned $installerSigned -Force
-            & $signtoolPath sign /fd SHA256 /f $cert /p $pass $installerSigned
-            (Get-FileHash -Algorithm SHA256 $installerSigned).Hash | Set-Content -Encoding ascii "$installerSigned.sha256"
-          } else {
-            Write-Host "Unsigned installer not found; skipping installer signing."
-          }
-
-          $zipUnsigned = "dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip"
-          $zipSigned = "dist/windows/pirate-unified-wallet-windows-portable.zip"
-          if (-not (Test-Path $zipUnsigned)) {
-            Write-Error "Unsigned portable zip not found"
+          if (-not (Test-Path $installerUnsigned)) {
+            Write-Error "Unsigned installer not found"
             exit 1
           }
-          $tempDir = Join-Path $env:RUNNER_TEMP "portable"
-          if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
-          Expand-Archive -Path $zipUnsigned -DestinationPath $tempDir
-          Get-ChildItem $tempDir -Recurse -Include *.exe,*.dll | ForEach-Object {
-            & $signtoolPath sign /fd SHA256 /f $cert /p $pass $_.FullName
+          Copy-Item $installerUnsigned $installerSigned -Force
+          & $signtoolPath sign /fd SHA256 /f $cert /p $pass $installerSigned
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Windows installer signing failed"
+            exit $LASTEXITCODE
           }
-          if (Test-Path $zipSigned) { Remove-Item $zipSigned -Force }
-          Compress-Archive -Path (Join-Path $tempDir '*') -DestinationPath $zipSigned
-          (Get-FileHash -Algorithm SHA256 $zipSigned).Hash | Set-Content -Encoding ascii "$zipSigned.sha256"
-
-          $runtimeExe = Get-ChildItem $tempDir -Recurse -Filter *.exe | Sort-Object FullName | Select-Object -First 1
-          if ($runtimeExe) {
-            $runtimeHashPath = "dist/windows/$($runtimeExe.Name).sha256"
-            (Get-FileHash -Algorithm SHA256 $runtimeExe.FullName).Hash | Set-Content -Encoding ascii $runtimeHashPath
-          }
+          (Get-FileHash -Algorithm SHA256 $installerSigned).Hash | Set-Content -Encoding ascii "$installerSigned.sha256"
 
       - name: Upload signed Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
@@ -2164,9 +2146,8 @@ jobs:
           name: windows-signed
           path: |
             dist/windows/pirate-unified-wallet-windows-installer.exe
-            dist/windows/pirate-unified-wallet-windows-portable.zip
-            dist/windows/*.sha256
-          if-no-files-found: warn
+            dist/windows/pirate-unified-wallet-windows-installer.exe.sha256
+          if-no-files-found: error
 
   sign-macos:
     name: Sign - macOS (DMG)
