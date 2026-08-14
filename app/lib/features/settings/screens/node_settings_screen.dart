@@ -462,13 +462,19 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       PInput(
+                        key: const ValueKey('tls-pin-input'),
                         controller: _tlsPinController,
                         label: 'SPKI Pin (base64)'.tr,
-                        hint: 'Leave empty to skip certificate pinning'.tr,
+                        helperText:
+                            'Leave empty to skip certificate pinning'.tr,
                         validator: _validateTlsPin,
                         onChanged: _onTlsPinChanged,
                         prefixIcon: const Icon(Icons.lock_outline),
-                        maxLines: 2,
+                        keyboardType: TextInputType.visiblePassword,
+                        textInputAction: TextInputAction.done,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        monospace: true,
                       ),
 
                       const SizedBox(height: AppSpacing.md),
