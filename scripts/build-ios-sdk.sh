@@ -8,7 +8,7 @@ SDK_DIR="$PROJECT_ROOT/bindings/ios-sdk"
 FRAMEWORKS_DIR="$SDK_DIR/Frameworks"
 CRATE_DIR="$CRATES_DIR/pirate-ffi-native"
 HEADER="$CRATE_DIR/pirate_wallet_service.h"
-IOS_MIN_DEPLOYMENT_TARGET="${IOS_MIN_DEPLOYMENT_TARGET:-13.0}"
+IOS_MIN_DEPLOYMENT_TARGET="${IOS_MIN_DEPLOYMENT_TARGET:-15.0}"
 
 if [[ "$OSTYPE" != "darwin"* ]]; then
   echo "iOS SDK packaging requires macOS." >&2

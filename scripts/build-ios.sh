@@ -7,7 +7,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$PROJECT_ROOT/app"
 IOS_DIR="$APP_DIR/ios"
 CRATES_DIR="$PROJECT_ROOT/crates"
-IOS_MIN_DEPLOYMENT_TARGET="${IOS_MIN_DEPLOYMENT_TARGET:-13.0}"
+IOS_MIN_DEPLOYMENT_TARGET="${IOS_MIN_DEPLOYMENT_TARGET:-15.0}"
 IOS_FFI_FRAMEWORK="$CRATES_DIR/target/ios-frameworks/pirate_ffi_frb.framework"
 
 GREEN='\033[0;32m'
@@ -223,7 +223,7 @@ build_ios_ffi_framework() {
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>MinimumOSVersion</key>
-	<string>13.0</string>
+	<string>15.0</string>
 </dict>
 </plist>
 EOF
