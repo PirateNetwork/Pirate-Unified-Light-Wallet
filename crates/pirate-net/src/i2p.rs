@@ -331,12 +331,28 @@ impl I2pClient {
         self.shutdown_requested.store(false, Ordering::SeqCst);
         let status = { self.status.lock().await.clone() };
         match status {
-            I2pStatus::Ready => return Ok(()),
-            I2pStatus::Starting => {
+            I2pStatus::Ready if self.child_is_running().await => return Ok(()),
+            I2pStatus::Ready => {
+                *self.status.lock().await = I2pStatus::NotStarted;
+                log_debug_event(
+                    "i2p.rs:I2pClient::start",
+                    "i2p_process_missing",
+                    "status=not_started",
+                );
+            }
+            I2pStatus::Starting if self.child_is_running().await => {
                 return self.clone().wait_for_ready().await;
+            }
+            I2pStatus::Starting => {
+                *self.status.lock().await = I2pStatus::NotStarted;
             }
             I2pStatus::NotStarted | I2pStatus::Error(_) => {}
         }
+
+        // A timed-out or crashed startup may leave a native process behind.
+        // Reap it before selecting a port or launching a replacement.
+        self.terminate_child().await;
+        self.remove_ephemeral_dir().await;
 
         let mut config = self.config.lock().await.clone();
         if !config.enabled {
@@ -478,9 +494,7 @@ impl I2pClient {
     /// Stop the embedded router
     pub async fn shutdown(self) {
         self.shutdown_requested.store(true, Ordering::SeqCst);
-        if let Some(mut child) = self.child.lock().await.take() {
-            let _ = child.kill();
-        }
+        self.terminate_child().await;
         *self.status.lock().await = I2pStatus::NotStarted;
         log_debug_event(
             "i2p.rs:I2pClient::shutdown",
@@ -488,6 +502,33 @@ impl I2pClient {
             "status=not_started",
         );
 
+        self.remove_ephemeral_dir().await;
+    }
+
+    async fn child_is_running(&self) -> bool {
+        let mut child = self.child.lock().await;
+        let running = match child.as_mut() {
+            Some(process) => matches!(process.try_wait(), Ok(None)),
+            None => false,
+        };
+        if !running {
+            child.take();
+        }
+        running
+    }
+
+    async fn terminate_child(&self) {
+        let Some(mut child) = self.child.lock().await.take() else {
+            return;
+        };
+        let _ = tokio::task::spawn_blocking(move || {
+            let _ = child.kill();
+            let _ = child.wait();
+        })
+        .await;
+    }
+
+    async fn remove_ephemeral_dir(&self) {
         if let Some(dir) = self.ephemeral_dir.lock().await.take() {
             let _ = std::fs::remove_dir_all(dir);
         }
@@ -523,11 +564,15 @@ impl I2pClient {
                 Ok(())
             }
             Ok(Err(e)) => {
+                self.terminate_child().await;
+                self.remove_ephemeral_dir().await;
                 *self.status.lock().await = I2pStatus::NotStarted;
                 Err(e)
             }
             Err(_) => {
                 let message = "I2P startup timed out".to_string();
+                self.terminate_child().await;
+                self.remove_ephemeral_dir().await;
                 *self.status.lock().await = I2pStatus::Error(message.clone());
                 log_debug_event(
                     "i2p.rs:I2pClient::wait_for_ready",
