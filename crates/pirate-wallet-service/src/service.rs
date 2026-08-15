@@ -998,15 +998,7 @@ impl WalletService {
         // `block_on` returned, which immediately aborted the sync task. A host
         // that drives the service entirely through `execute_blocking` (e.g. the
         // React Native binding) could therefore never make sync progress.
-        static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
-        let runtime = RUNTIME.get_or_init(|| {
-            tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build()
-                .expect("failed to build wallet service runtime")
-        });
-        runtime.block_on(self.execute(request))
+        crate::runtime::block_on(self.execute(request))
     }
 
     pub fn execute_json(&self, request_json: &str, pretty: bool) -> String {

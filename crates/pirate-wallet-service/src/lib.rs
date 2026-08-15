@@ -3,6 +3,7 @@
 pub mod api;
 pub mod background;
 pub mod models;
+mod runtime;
 pub mod service;
 pub mod streams;
 
