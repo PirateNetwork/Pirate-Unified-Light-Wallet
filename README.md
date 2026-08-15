@@ -57,6 +57,8 @@ The Flutter Rust Bridge crate:
 
 is now a thin wrapper surface over that backend for Flutter-specific FFI generation.
 
+The architecture, performance work, and correctness guarantees behind the Supernova shielded-chain sync engine are documented in [`docs/sync-engine.md`](docs/sync-engine.md).
+
 Platform packaging is handled by the scripts in `scripts/`. A plain `flutter build` is useful for development, but it does not replace the release packaging scripts.
 
 Toolchain
@@ -222,6 +224,7 @@ cargo test --all-features --locked
 Documentation index
 -------------------
 
+- Supernova sync engine architecture and performance: `docs/sync-engine.md`
 - Build verification: `docs/verify-build.md`
 - Security notes: `docs/security.md`
 - Release process: `docs/release-process.md`
