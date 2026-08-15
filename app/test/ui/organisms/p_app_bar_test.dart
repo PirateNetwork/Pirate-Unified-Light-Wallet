@@ -46,6 +46,66 @@ void main() {
     expect(backRect.size, const Size.square(48));
     expect(backRect.top, greaterThanOrEqualTo(appBarRect.top));
     expect(backRect.bottom, lessThanOrEqualTo(appBarRect.bottom));
+    expect(backRect.left, lessThan(80));
+  });
+
+  testWidgets('keeps the back control at the leading edge on desktop', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            appBar: PAppBar(
+              title: 'Send',
+              showBackButton: true,
+              actions: [Icon(Icons.add_circle_outline)],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final backButtonFinder = find.byWidgetPredicate(
+      (widget) => widget is PIconButton && widget.tooltip == 'Back',
+    );
+    final backRect = tester.getRect(
+      find.descendant(
+        of: backButtonFinder,
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+    final titleRect = tester.getRect(find.text('Send'));
+
+    expect(backRect.left, lessThan(80));
+    expect(backRect.right, lessThan(titleRect.left));
+  });
+
+  testWidgets('uses a circular surface for the app-bar theme action', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            appBar: PAppBar(title: 'Send', showBackButton: false),
+          ),
+        ),
+      ),
+    );
+
+    final themeButton = tester.widget<PIconButton>(
+      find.descendant(
+        of: find.byType(ThemeToggleButton),
+        matching: find.byType(PIconButton),
+      ),
+    );
+    expect(themeButton.shape, PIconButtonShape.circle);
   });
 
   testWidgets('can defer the theme control to a persistent shell', (

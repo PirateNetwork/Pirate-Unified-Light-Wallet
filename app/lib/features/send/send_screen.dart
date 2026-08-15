@@ -2180,6 +2180,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                 icon: const Icon(Icons.add_circle_outline),
                 tooltip: 'Add recipient'.tr,
                 onPressed: _addOutput,
+                shape: PIconButtonShape.circle,
               ),
             if (!isMobile && _currentStep == SendStep.recipients)
               PIconButton(
@@ -2188,6 +2189,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                 onPressed: _isValidating || _isSending
                     ? null
                     : () => _sendFormKey.currentState?.reset(),
+                shape: PIconButtonShape.circle,
               ),
             ConnectionStatusIndicator(
               full: !isMobile,

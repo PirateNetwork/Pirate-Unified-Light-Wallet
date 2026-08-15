@@ -36,6 +36,7 @@ class ThemeToggleButton extends ConsumerWidget {
       },
       tooltip: isDark ? 'Switch to light mode'.tr : 'Switch to dark mode'.tr,
       size: size,
+      shape: PIconButtonShape.circle,
     );
   }
 }
