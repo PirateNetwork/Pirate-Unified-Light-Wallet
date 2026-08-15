@@ -65,7 +65,6 @@ void main() {
         syncStatusProvider.overrideWith((ref) async => null),
       ],
     );
-    addTearDown(container.dispose);
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -92,5 +91,9 @@ void main() {
       container.read(activityHistoryProvider).requireValue.transactions.length,
       80,
     );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
   });
 }
