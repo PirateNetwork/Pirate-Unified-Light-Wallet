@@ -17,6 +17,7 @@ AddressInfo _address(int index, {bool archived = false}) {
 
 Widget _history(List<AddressInfo> addresses, {bool showArchived = false}) {
   return MaterialApp(
+    theme: ThemeData(splashFactory: InkRipple.splashFactory),
     home: Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -54,6 +55,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(splashFactory: InkRipple.splashFactory),
         home: Scaffold(
           body: CustomScrollView(
             slivers: [
