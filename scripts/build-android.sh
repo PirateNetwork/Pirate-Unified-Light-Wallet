@@ -224,7 +224,7 @@ if [ "$SIGN" = "true" ]; then
                 "$KEY_ALIAS"
         else
             # APK signing with apksigner
-            BUILD_TOOLS_VERSION="${ANDROID_BUILD_TOOLS_VERSION:-34.0.0}"
+            BUILD_TOOLS_VERSION="${ANDROID_BUILD_TOOLS_VERSION:-36.0.0}"
             APKSIGNER_PATH="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
             if [ ! -f "$APKSIGNER_PATH" ]; then
                 error "apksigner not found at $APKSIGNER_PATH"
