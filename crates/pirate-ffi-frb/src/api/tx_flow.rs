@@ -1372,7 +1372,7 @@ fn sign_tx_internal(
         "regtest" => NetworkType::Regtest,
         _ => NetworkType::Mainnet,
     };
-    let sync_state = pirate_storage_sqlite::SyncStateStorage::new(&db).load_sync_state()?;
+    let sync_state = pirate_storage_sqlite::SyncStateStorage::new(db).load_sync_state()?;
     let ironwood_activation_height = Network::from_type(network_type)
         .ironwood_activation_height
         .or(sync_state.ironwood_activation_height);
