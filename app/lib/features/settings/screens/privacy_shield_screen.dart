@@ -602,55 +602,100 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
-              final controls = Wrap(
-                spacing: PirateSpacing.sm,
-                runSpacing: PirateSpacing.xs,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _buildTorStatusIndicator(torStatus),
-                  PTextButton(
-                    text: 'Switch exit node'.tr,
-                    compact: true,
-                    onPressed: torStatus.isReady ? _switchTorExit : null,
-                  ),
-                ],
-              );
               final title = Text(
                 'Tor Status'.tr,
                 style: TextStyle(
                   color: AppColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                 ),
               );
-              if (constraints.maxWidth < 440) {
+              final description = Text(
+                'Tor provides the strongest privacy by routing traffic through multiple relays, making it very difficult to trace.'
+                    .tr,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                  height: 1.45,
+                ),
+              );
+              final isWide = constraints.maxWidth >= 760;
+              final switchExitButton = PTextButton(
+                text: 'Switch exit node'.tr,
+                compact: true,
+                onPressed: torStatus.isReady ? _switchTorExit : null,
+              );
+              final controls = isWide
+                  ? Row(
+                      children: [
+                        _buildTorStatusIndicator(torStatus),
+                        const SizedBox(width: PirateSpacing.sm),
+                        Expanded(child: switchExitButton),
+                      ],
+                    )
+                  : Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: PirateSpacing.sm,
+                      runSpacing: PirateSpacing.xs,
+                      children: [
+                        _buildTorStatusIndicator(torStatus),
+                        switchExitButton,
+                      ],
+                    );
+              final route = Text(
+                routingSummary,
+                textAlign: isWide ? TextAlign.right : TextAlign.left,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              );
+              if (!isWide) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     title,
-                    const SizedBox(height: PirateSpacing.xs),
+                    const SizedBox(height: PirateSpacing.sm),
                     controls,
+                    const SizedBox(height: PirateSpacing.md),
+                    description,
+                    const SizedBox(height: PirateSpacing.xs),
+                    route,
                   ],
                 );
               }
               return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: title),
-                  Flexible(child: controls),
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          title,
+                          const SizedBox(height: PirateSpacing.sm),
+                          description,
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: PirateSpacing.xl),
+                  SizedBox(
+                    width: 320,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        controls,
+                        const SizedBox(height: PirateSpacing.xs),
+                        route,
+                      ],
+                    ),
+                  ),
                 ],
               );
             },
-          ),
-          const SizedBox(height: PirateSpacing.md),
-          Text(
-            'Tor provides the strongest privacy by routing traffic through multiple relays, making it very difficult to trace.'
-                .tr,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-          ),
-          const SizedBox(height: PirateSpacing.xs),
-          Text(
-            routingSummary,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
           if (isBootstrapping) ...[
             const SizedBox(height: PirateSpacing.md),
@@ -685,7 +730,10 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             ),
           ],
           if (_isDesktop) ...[
-            const SizedBox(height: PirateSpacing.md),
+            Divider(
+              height: PirateSpacing.xl,
+              color: AppColors.borderSubtle,
+            ),
             _buildTorAdvancedControls(context, ref),
           ],
         ],
@@ -716,13 +764,14 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     }
 
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 12,
           height: 12,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: PirateSpacing.xs),
         Text(
           label,
           style: TextStyle(
