@@ -95,11 +95,12 @@ impl TransportMode {
 
 struct GlobalTransportState {
     manager: RwLock<Option<Arc<NetTransportManager>>>,
+    initialization: Mutex<()>,
 }
 
 impl GlobalTransportState {
-    async fn get_or_init(&self, config: NetTransportConfig) -> Result<Arc<NetTransportManager>> {
-        let config = resolve_transport_config(config);
+    async fn get_or_init(&self, requested: NetTransportConfig) -> Result<Arc<NetTransportManager>> {
+        let config = resolve_transport_config(requested.clone());
         let existing = {
             let guard = self.manager.read().await;
             guard.as_ref().map(Arc::clone)
@@ -109,27 +110,26 @@ impl GlobalTransportState {
             return Ok(manager);
         }
 
+        // Constructing a manager can start native transports. Serialize the
+        // empty-state path so concurrent bootstrap and connection requests
+        // cannot launch separate embedded routers before either is published.
+        let _initialization_guard = self.initialization.lock().await;
+        let config = resolve_transport_config(requested);
+        if let Some(manager) = {
+            let guard = self.manager.read().await;
+            guard.as_ref().map(Arc::clone)
+        } {
+            manager.update_config(config).await.map_err(map_net_error)?;
+            return Ok(manager);
+        }
+
         let created = Arc::new(
-            NetTransportManager::new(config.clone())
+            NetTransportManager::new(config)
                 .await
                 .map_err(map_net_error)?,
         );
-        let existing = {
-            let mut guard = self.manager.write().await;
-            if let Some(manager) = guard.as_ref() {
-                Some(Arc::clone(manager))
-            } else {
-                *guard = Some(Arc::clone(&created));
-                None
-            }
-        };
-
-        if let Some(manager) = existing {
-            manager.update_config(config).await.map_err(map_net_error)?;
-            Ok(manager)
-        } else {
-            Ok(created)
-        }
+        *self.manager.write().await = Some(Arc::clone(&created));
+        Ok(created)
     }
 
     async fn get(&self) -> Option<Arc<NetTransportManager>> {
@@ -141,6 +141,7 @@ impl GlobalTransportState {
     }
 
     async fn shutdown(&self) {
+        let _initialization_guard = self.initialization.lock().await;
         let manager = {
             let mut guard = self.manager.write().await;
             let manager = guard.as_ref().map(Arc::clone);
@@ -155,6 +156,7 @@ impl GlobalTransportState {
 
 static GLOBAL_TRANSPORT: Lazy<GlobalTransportState> = Lazy::new(|| GlobalTransportState {
     manager: RwLock::new(None),
+    initialization: Mutex::new(()),
 });
 
 static DESIRED_TRANSPORT_CONFIG: Lazy<StdRwLock<Option<NetTransportConfig>>> =
@@ -3010,6 +3012,32 @@ mod tests {
         assert!(TransportMode::I2p.is_private());
         assert!(TransportMode::Socks5.is_private());
         assert!(!TransportMode::Direct.is_private());
+    }
+
+    #[tokio::test]
+    async fn global_transport_initialization_is_single_flight() {
+        clear_desired_transport_config();
+        let state = Arc::new(GlobalTransportState {
+            manager: RwLock::new(None),
+            initialization: Mutex::new(()),
+        });
+        let config = NetTransportConfig {
+            mode: NetTransportMode::Direct,
+            ..NetTransportConfig::default()
+        };
+
+        let first_state = Arc::clone(&state);
+        let first_config = config.clone();
+        let second_state = Arc::clone(&state);
+        let (first, second) = tokio::join!(
+            async move { first_state.get_or_init(first_config).await },
+            async move { second_state.get_or_init(config).await },
+        );
+        let first = first.expect("first transport initialization");
+        let second = second.expect("second transport initialization");
+
+        assert!(Arc::ptr_eq(&first, &second));
+        state.shutdown().await;
     }
 
     #[tokio::test]
