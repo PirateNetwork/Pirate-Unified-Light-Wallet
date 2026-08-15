@@ -62,7 +62,7 @@ Widget _testApp({
       appThemeModeProvider.overrideWith(_TestThemeModeNotifier.new),
     ],
     child: MaterialApp(
-      theme: PTheme.dark(),
+      theme: PTheme.dark().copyWith(splashFactory: InkRipple.splashFactory),
       home: MediaQuery(
         data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
         child: Scaffold(
