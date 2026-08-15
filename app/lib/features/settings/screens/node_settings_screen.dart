@@ -9,6 +9,8 @@ import '../../../design/deep_space_theme.dart';
 import '../../../config/endpoints.dart' as endpoints;
 import '../../../core/ffi/ffi_bridge.dart' as ffi;
 import '../../../core/providers/wallet_providers.dart';
+import '../providers/endpoint_health_provider.dart';
+import '../providers/transport_providers.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
 import '../../../ui/atoms/p_text_button.dart';
@@ -313,6 +315,11 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
+    final endpointHealth = ref.watch(endpointHealthProvider);
+    final transportMode = ref.watch(transportConfigProvider).mode;
+    final suggestedEndpoints = endpoints.LightdEndpoint.presetsForTransport(
+      transportMode,
+    );
     final isMobile = AppSpacing.isHandset(MediaQuery.sizeOf(context));
     final basePadding = AppSpacing.screenPadding(
       MediaQuery.of(context).size.width,
@@ -353,7 +360,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
               children: [
                 // Current status card
                 endpointConfigAsync.when(
-                  data: _buildStatusCard,
+                  data: (config) => _buildStatusCard(config, endpointHealth),
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
                   error: (e, _) => _buildErrorCard(e.toString()),
@@ -371,19 +378,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                Wrap(
-                  spacing: AppSpacing.md,
-                  runSpacing: AppSpacing.sm,
-                  children: [
-                    for (final endpoint in endpoints.LightdEndpoint.suggested)
-                      PButton(
-                        text: endpoint.label ?? endpoint.displayString,
-                        variant: PButtonVariant.ghost,
-                        size: PButtonSize.small,
-                        onPressed: () => _applySuggested(endpoint),
-                      ),
-                  ],
-                ),
+                _buildPresetGrid(suggestedEndpoints, endpointHealth),
 
                 const SizedBox(height: AppSpacing.xl),
 
@@ -574,7 +569,19 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     );
   }
 
-  Widget _buildStatusCard(ffi.LightdEndpointConfig config) {
+  Widget _buildStatusCard(
+    ffi.LightdEndpointConfig config,
+    EndpointHealthState health,
+  ) {
+    final record = health.recordFor(config.url);
+    final isChecking =
+        health.phase == EndpointHealthPhase.checking ||
+        health.phase == EndpointHealthPhase.switching;
+    final statusColor = record == null
+        ? AppColors.textDisabled
+        : record.healthy
+        ? AppColors.success
+        : AppColors.error;
     return PCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -586,14 +593,16 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.success,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.success.withValues(alpha: 0.4),
-                      blurRadius: 8,
-                      spreadRadius: 2,
-                    ),
-                  ],
+                  color: statusColor,
+                  boxShadow: record?.healthy == true
+                      ? [
+                          BoxShadow(
+                            color: statusColor.withValues(alpha: 0.4),
+                            blurRadius: 8,
+                            spreadRadius: 2,
+                          ),
+                        ]
+                      : null,
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
@@ -603,6 +612,22 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   color: AppColors.textPrimary,
                 ),
               ),
+              const Spacer(),
+              if (isChecking)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 19),
+                  onPressed: () => ref
+                      .read(endpointHealthProvider.notifier)
+                      .checkNow(probePool: true),
+                  tooltip: 'Refresh'.tr,
+                  visualDensity: VisualDensity.compact,
+                ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -674,7 +699,161 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
               ],
             ],
           ),
+          const SizedBox(height: AppSpacing.sm),
+          if (record == null || isChecking)
+            Text(
+              'Checking...'.tr,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            )
+          else if (!record.healthy)
+            Text(
+              'Connection failed'.tr,
+              style: AppTypography.bodySmall.copyWith(color: AppColors.error),
+            )
+          else
+            Wrap(
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.xs,
+              children: [
+                if (record.height != null)
+                  Text(
+                    'Block #{height}'.trArgs({'height': record.height}),
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                if (record.responseTimeMs != null)
+                  Text(
+                    '${record.responseTimeMs}ms',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+              ],
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPresetGrid(
+    List<endpoints.LightdEndpoint> presets,
+    EndpointHealthState health,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 900
+            ? 3
+            : constraints.maxWidth >= 560
+            ? 2
+            : 1;
+        const gap = AppSpacing.sm;
+        final tileWidth =
+            (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final endpoint in presets)
+              SizedBox(
+                width: tileWidth,
+                child: _buildPresetTile(endpoint, health),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPresetTile(
+    endpoints.LightdEndpoint endpoint,
+    EndpointHealthState health,
+  ) {
+    final record = health.recordFor(endpoint.url);
+    final selected =
+        _endpointController.text.trim() == endpoint.displayString &&
+        _useTls == endpoint.useTls;
+    final routeIcon = switch (endpoint.route) {
+      endpoints.LightdRoute.tor => Icons.security_outlined,
+      endpoints.LightdRoute.i2p => Icons.router_outlined,
+      endpoints.LightdRoute.clearnet =>
+        endpoint.useTls ? Icons.lock_outline : Icons.dns_outlined,
+    };
+    return PCard(
+      onTap: () => _applySuggested(endpoint),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      backgroundColor: selected
+          ? AppColors.accentPrimary.withValues(alpha: 0.1)
+          : null,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 58),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.accentPrimary.withValues(alpha: 0.14)
+                    : AppColors.backgroundElevated,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                routeIcon,
+                size: 18,
+                color: selected
+                    ? AppColors.accentPrimary
+                    : AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    endpoint.displayLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.labelMedium.copyWith(
+                      color: selected
+                          ? AppColors.accentPrimary
+                          : AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    endpoint.displayString,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            if (selected)
+              Icon(Icons.check_circle, color: AppColors.accentPrimary, size: 18)
+            else if (record != null)
+              Icon(
+                record.healthy ? Icons.check_circle : Icons.error,
+                color: record.healthy ? AppColors.success : AppColors.error,
+                size: 17,
+              )
+            else
+              Icon(
+                Icons.circle_outlined,
+                color: AppColors.textDisabled,
+                size: 16,
+              ),
+          ],
+        ),
       ),
     );
   }

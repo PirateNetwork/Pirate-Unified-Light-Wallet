@@ -126,9 +126,6 @@ class LightdEndpoint {
   static final List<LightdEndpoint> allPresets =
       List<LightdEndpoint>.unmodifiable([...mainnetPresets, ironwoodTestnet]);
 
-  static final List<LightdEndpoint> suggested =
-      List<LightdEndpoint>.unmodifiable([unifiedMainnet, ironwoodTestnet]);
-
   /// Presets that can be reached through the selected transport.
   static List<LightdEndpoint> presetsForTransport(
     String mode, {
