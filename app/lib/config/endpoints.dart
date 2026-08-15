@@ -217,12 +217,12 @@ class LightdEndpoint {
 
   /// Localized preset label, or the user-supplied label for custom servers.
   String get displayLabel => switch (id) {
-    'pirate-unified' => 'Pirate Unified'.tr,
+    'pirate-unified' => 'Dev server Mainnet (no TLS)'.tr,
     'pirate-official' => 'Pirate Chain Mainnet'.tr,
-    'mathnodes' => 'MathNodes'.tr,
+    'mathnodes' => 'Mathnodes Mainnet'.tr,
     'pirate-tor' => 'Tor'.tr,
     'pirate-i2p' => 'I2P'.tr,
-    'ironwood-testnet' => 'Ironwood Testnet'.tr,
+    'ironwood-testnet' => 'Dev server Ironwood testnet (no TLS)'.tr,
     _ => label ?? host,
   };
 

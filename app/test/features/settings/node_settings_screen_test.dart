@@ -171,6 +171,9 @@ void main() {
     expect(find.text('64.23.167.130:9067'), findsWidgets);
     expect(find.text('lightd1.pirate.black:443'), findsOneWidget);
     expect(find.text('pirate.mathnodes.com:443'), findsOneWidget);
+    expect(find.text('Dev server Mainnet (no TLS)'), findsOneWidget);
+    expect(find.text('Pirate Chain Mainnet'), findsOneWidget);
+    expect(find.text('Mathnodes Mainnet'), findsOneWidget);
     expect(find.textContaining('.onion'), findsNothing);
     expect(find.textContaining('.b32.i2p'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -202,9 +205,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('.b32.i2p'), findsWidgets);
-    expect(find.text('Pirate Unified'), findsNothing);
+    expect(find.text('Dev server Mainnet (no TLS)'), findsNothing);
     expect(find.text('Pirate Chain Mainnet'), findsNothing);
-    expect(find.text('MathNodes'), findsNothing);
+    expect(find.text('Mathnodes Mainnet'), findsNothing);
     expect(find.textContaining('.onion'), findsNothing);
     expect(tester.takeException(), isNull);
   });
