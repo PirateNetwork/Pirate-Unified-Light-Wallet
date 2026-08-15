@@ -9,6 +9,13 @@ pub const DEFAULT_LIGHTD_PORT: u16 = service::DEFAULT_LIGHTD_PORT;
 pub const DEFAULT_LIGHTD_USE_TLS: bool = service::DEFAULT_LIGHTD_USE_TLS;
 
 const IP_TLS_SERVER_NAME: &str = "lightd1.piratechain.com";
+const MAINNET_LIGHTD_HOSTS: &[&str] = &[
+    "lightd1.pirate.black",
+    "lightd1.piratechain.com",
+    "pirate.mathnodes.com",
+    "lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion",
+    "rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p",
+];
 
 lazy_static::lazy_static! {
     static ref LIGHTD_ENDPOINTS: Arc<RwLock<HashMap<WalletId, LightdEndpoint>>> =
@@ -166,7 +173,9 @@ pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<Netw
     if host_lower.contains("testnet") {
         return Some(NetworkType::Testnet);
     }
-    if host_lower.contains("piratechain.com")
+    if MAINNET_LIGHTD_HOSTS.contains(&host_lower.as_str())
+        || host_lower.contains("piratechain.com")
+        || host_lower.contains("pirate.black")
         || (host == DEFAULT_LIGHTD_HOST && port == DEFAULT_LIGHTD_PORT)
     {
         return Some(NetworkType::Mainnet);
@@ -193,4 +202,20 @@ pub(super) fn tls_server_name(endpoint: &LightdEndpoint) -> Option<String> {
         return Some(IP_TLS_SERVER_NAME.to_string());
     }
     Some(endpoint.host.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn curated_routes_are_detected_as_mainnet() {
+        for host in MAINNET_LIGHTD_HOSTS {
+            assert_eq!(
+                detect_network_from_endpoint(host, DEFAULT_LIGHTD_PORT),
+                Some(NetworkType::Mainnet),
+                "{host} should use mainnet key derivation"
+            );
+        }
+    }
 }

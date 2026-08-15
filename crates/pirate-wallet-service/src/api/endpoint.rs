@@ -7,6 +7,13 @@ use std::time::Duration;
 const IP_TLS_SERVER_NAME: &str = "lightd1.piratechain.com";
 const CUSTOM_ENDPOINT_LABEL: &str = "Custom";
 const OFFICIAL_ENDPOINT_LABEL: &str = "Pirate Chain Mainnet";
+const MAINNET_LIGHTD_HOSTS: &[&str] = &[
+    "lightd1.pirate.black",
+    "lightd1.piratechain.com",
+    "pirate.mathnodes.com",
+    "lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion",
+    "rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p",
+];
 
 /// Default lightwalletd endpoint (known-working mainnet)
 pub const DEFAULT_LIGHTD_HOST: &str = "64.23.167.130";
@@ -209,8 +216,7 @@ pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<Netw
         return Some(NetworkType::Testnet);
     }
 
-    if host_lower == "lightd1.pirate.black"
-        || host_lower == "lightd1.piratechain.com"
+    if MAINNET_LIGHTD_HOSTS.contains(&host_lower.as_str())
         || host_lower.contains("piratechain.com")
         || host_lower.contains("pirate.black")
     {
@@ -309,5 +315,16 @@ mod tests {
         let mut endpoint = tls_endpoint("pirate.mathnodes.com");
         endpoint.use_tls = false;
         assert_eq!(tls_server_name(&endpoint), None);
+    }
+
+    #[test]
+    fn curated_routes_are_detected_as_mainnet() {
+        for host in MAINNET_LIGHTD_HOSTS {
+            assert_eq!(
+                detect_network_from_endpoint(host, DEFAULT_LIGHTD_PORT),
+                Some(NetworkType::Mainnet),
+                "{host} should use mainnet key derivation"
+            );
+        }
     }
 }
