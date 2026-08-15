@@ -66,6 +66,14 @@ if [[ -n "$FLUTTER_EXPECTED" ]]; then
   fi
 fi
 
+DART_EXPECTED="${DART_VERSION:-}"
+if [[ -n "$DART_EXPECTED" ]]; then
+  if ! command -v dart &> /dev/null; then
+    fail "Dart not found on PATH"
+  fi
+  expect_prefix "Dart" "$(dart --version 2>&1)" "$DART_EXPECTED"
+fi
+
 JAVA_EXPECTED="${JAVA_VERSION:-}"
 if [[ -n "$JAVA_EXPECTED" ]] && command -v java &> /dev/null; then
   # Capture full output to avoid broken pipe on Windows
