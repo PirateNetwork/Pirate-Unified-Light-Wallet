@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../../config/endpoints.dart' as endpoints;
 import '../../../core/background/background_sync_manager.dart' as bg;
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/ffi/generated/models.dart'
@@ -142,9 +143,10 @@ class TorStatusNotifier extends Notifier<TorStatusDetails> {
   }
 }
 
-final torStatusProvider = NotifierProvider<TorStatusNotifier, TorStatusDetails>(
-  TorStatusNotifier.new,
-);
+final torStatusProvider =
+    NotifierProvider.autoDispose<TorStatusNotifier, TorStatusDetails>(
+      TorStatusNotifier.new,
+    );
 
 const String _defaultSocks5Host = 'localhost';
 const String _defaultSocks5Port = '1080';
@@ -265,11 +267,14 @@ class TransportConfig {
 
   factory TransportConfig.fromJson(Map<String, dynamic> json) {
     final torBridgeJson = json['tor_bridge'] as Map<String, dynamic>? ?? {};
+    final storedI2pEndpoint = (json['i2p_endpoint'] as String?)?.trim();
     return TransportConfig(
       mode: json['mode'] as String? ?? 'tor',
       dnsProvider: json['dns_provider'] as String? ?? 'cloudflare_doh',
       socks5Config: Map<String, String?>.from(json['socks5'] as Map? ?? {}),
-      i2pEndpoint: json['i2p_endpoint'] as String? ?? '',
+      i2pEndpoint: storedI2pEndpoint == null || storedI2pEndpoint.isEmpty
+          ? endpoints.kDefaultI2pLightdUrl
+          : storedI2pEndpoint,
       tlsPins: List<Map<String, String>>.from(
         (json['tls_pins'] as List?)?.map(
               (pin) => Map<String, String>.from(pin as Map),
@@ -315,7 +320,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
       'username': null,
       'password': null,
     },
-    i2pEndpoint: '',
+    i2pEndpoint: endpoints.kDefaultI2pLightdUrl,
     tlsPins: [],
     torBridge: TorBridgeConfig(
       useBridges: false,
@@ -331,6 +336,11 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   @override
   TransportConfig build() {
     _storage = const FlutterSecureStorage();
+    ref.listen<WalletId?>(activeWalletProvider, (previous, next) {
+      if (next != null && next != previous) {
+        unawaited(_applyTunnel(state));
+      }
+    });
     _load();
     return _defaultConfig;
   }
@@ -369,10 +379,13 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> setI2pEndpoint(String endpoint) async {
-    state = state.copyWith(i2pEndpoint: endpoint.trim());
+    final trimmed = endpoint.trim();
+    state = state.copyWith(
+      i2pEndpoint: trimmed.isEmpty ? endpoints.kDefaultI2pLightdUrl : trimmed,
+    );
     await _persist();
     if (state.mode == 'i2p') {
-      await _applyI2pEndpoint(state.i2pEndpoint);
+      await _ensureEndpointCompatibleWithMode('i2p', state.i2pEndpoint);
     }
   }
 
@@ -475,15 +488,20 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
       }
       final mode = config.mode.toLowerCase();
       final tunnelNotifier = ref.read(tunnelModeProvider.notifier);
-      if (mode != 'i2p') {
+      if (mode == 'i2p') {
         try {
-          await _restoreNonI2pEndpointIfNeeded();
+          await _storeNonI2pEndpointIfNeeded();
         } catch (_) {
-          // Endpoint restoration is best-effort; keep applying transport.
+          // Endpoint snapshots are best-effort; keep applying transport.
         }
-        if (requestId != _applyRequestId) {
-          return;
-        }
+      }
+      try {
+        await _ensureEndpointCompatibleWithMode(mode, config.i2pEndpoint);
+      } catch (_) {
+        // Keep applying the transport; connection status will surface failures.
+      }
+      if (requestId != _applyRequestId) {
+        return;
       }
       if (mode == 'socks5') {
         final url = _buildSocks5Url(config.socks5Config);
@@ -492,22 +510,6 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
         return;
       }
       if (mode == 'i2p') {
-        try {
-          await _storeNonI2pEndpointIfNeeded();
-        } catch (_) {
-          // Keep applying i2p mode even if endpoint snapshot fails.
-        }
-        if (requestId != _applyRequestId) {
-          return;
-        }
-        try {
-          await _applyI2pEndpoint(config.i2pEndpoint);
-        } catch (_) {
-          // Keep applying i2p mode even if endpoint apply fails.
-        }
-        if (requestId != _applyRequestId) {
-          return;
-        }
         await tunnelNotifier.setI2p();
         applied = true;
         return;
@@ -568,13 +570,11 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
 
   Future<void> _storeNonI2pEndpointIfNeeded() async {
     try {
-      final currentTunnel = await FfiBridge.getTunnel();
-      if (currentTunnel.name == 'i2p') {
-        return;
-      }
       final endpointConfig = await ref.read(
         lightdEndpointConfigProvider.future,
       );
+      final parsed = endpoints.LightdEndpoint.tryParse(endpointConfig.url);
+      if (parsed == null || parsed.route == endpoints.LightdRoute.i2p) return;
       await _storage.write(
         key: _storageNonI2pEndpointKey,
         value: endpointConfig.url,
@@ -586,38 +586,48 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     } catch (_) {}
   }
 
-  Future<void> _restoreNonI2pEndpointIfNeeded() async {
-    try {
-      final currentTunnel = await FfiBridge.getTunnel();
-      if (currentTunnel.name != 'i2p') {
-        return;
-      }
-      final endpoint = (await _storage.read(
-        key: _storageNonI2pEndpointKey,
-      ))?.trim();
-      final tlsPin = (await _storage.read(
-        key: _storageNonI2pTlsPinKey,
-      ))?.trim();
-      final restoreUrl = (endpoint == null || endpoint.isEmpty)
-          ? FfiBridge.defaultLightdUrl
-          : endpoint;
-      await ref.read(setLightdEndpointProvider)(
-        url: restoreUrl,
-        tlsPin: (tlsPin == null || tlsPin.isEmpty) ? null : tlsPin,
-      );
-    } catch (_) {}
-  }
-
-  Future<void> _applyI2pEndpoint(String endpoint) async {
-    final trimmed = endpoint.trim();
-    if (trimmed.isEmpty) {
-      return;
-    }
+  Future<void> _ensureEndpointCompatibleWithMode(
+    String mode,
+    String configuredI2pEndpoint,
+  ) async {
     final walletId = ref.read(activeWalletProvider);
-    if (walletId == null) {
-      return;
+    if (walletId == null) return;
+
+    final current = await ref.read(lightdEndpointConfigProvider.future);
+    final currentEndpoint = endpoints.LightdEndpoint.tryParse(
+      current.url,
+      tlsPin: current.tlsPin,
+    );
+    final configuredI2p = endpoints.LightdEndpoint.tryParse(
+      configuredI2pEndpoint,
+    );
+    endpoints.LightdEndpoint? storedEndpoint;
+    if (mode != 'i2p') {
+      String? storedUrl;
+      String? storedPin;
+      try {
+        storedUrl = (await _storage.read(key: _storageNonI2pEndpointKey))
+            ?.trim();
+        storedPin = (await _storage.read(key: _storageNonI2pTlsPinKey))?.trim();
+      } catch (_) {
+        // Unsigned desktop builds may not have secure storage available.
+        // Continue with the curated fallback instead of retaining an I2P URL.
+      }
+      storedEndpoint = storedUrl == null || storedUrl.isEmpty
+          ? null
+          : endpoints.LightdEndpoint.tryParse(storedUrl, tlsPin: storedPin);
     }
-    await ref.read(setLightdEndpointProvider)(url: trimmed, tlsPin: null);
+    final target = endpoints.LightdEndpoint.replacementForTransport(
+      mode: mode,
+      current: currentEndpoint,
+      storedNonI2p: storedEndpoint,
+      configuredI2p: configuredI2p,
+    );
+    if (target == null || currentEndpoint?.url == target.url) return;
+    await ref.read(setLightdEndpointProvider)(
+      url: target.url,
+      tlsPin: target.tlsPin,
+    );
   }
 
   void _invalidateSyncProviders() {
