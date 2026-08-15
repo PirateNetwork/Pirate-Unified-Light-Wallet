@@ -126,12 +126,10 @@ pub(super) fn endpoint_from_url(
         parts[1]
             .parse::<u16>()
             .map_err(|_| anyhow!("Invalid port number"))?
+    } else if use_tls {
+        443
     } else {
-        if use_tls {
-            443
-        } else {
-            DEV_LIGHTD_PORT
-        }
+        DEV_LIGHTD_PORT
     };
 
     Ok(LightdEndpoint {

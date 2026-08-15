@@ -107,12 +107,10 @@ fn normalize_endpoint_url(url: &str, default_use_tls: bool) -> Result<(String, u
         parts[1]
             .parse::<u16>()
             .map_err(|_| anyhow!("Invalid port number"))?
+    } else if use_tls {
+        443
     } else {
-        if use_tls {
-            443
-        } else {
-            DEV_LIGHTD_PORT
-        }
+        DEV_LIGHTD_PORT
     };
 
     Ok((host, port, use_tls))
