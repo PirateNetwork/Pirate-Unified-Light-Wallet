@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../../../design/compat.dart';
 import '../../../design/tokens/colors.dart';
 import '../../../ui/atoms/p_button.dart';
@@ -41,8 +42,10 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   final _storage = const FlutterSecureStorage();
   static const String _i2pWarningKey = 'i2p_first_use_ack';
   bool _isTestingConnection = false;
+  bool _isChangingTransport = false;
   bool _torBridgeFieldsInitialized = false;
   bool _i2pFieldsInitialized = false;
+  String? _loadedI2pEndpoint;
   bool _isSavingI2pEndpoint = false;
   bool _useTorBridges = false;
   bool _fallbackToTorBridges = true;
@@ -83,8 +86,13 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       _torTransportPathController.text = torBridgeConfig.transportPath ?? '';
       _torBridgeFieldsInitialized = true;
     }
-    if (!_i2pFieldsInitialized) {
+    final canRefreshI2pField =
+        !_i2pFieldsInitialized ||
+        (_loadedI2pEndpoint != transportConfig.i2pEndpoint &&
+            _i2pEndpointController.text == (_loadedI2pEndpoint ?? ''));
+    if (canRefreshI2pField) {
       _i2pEndpointController.text = transportConfig.i2pEndpoint;
+      _loadedI2pEndpoint = transportConfig.i2pEndpoint;
       _i2pFieldsInitialized = true;
     }
 
@@ -104,7 +112,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             if (transportMode == 'direct')
               _buildWarningCard(
                 'Privacy Warning'.tr,
-                'Direct connection mode is NOT PRIVATE. All network traffic can be monitored. Use Tor or SOCKS5 for privacy.'
+                'Direct mode exposes your IP address to the selected server.'
                     .tr,
                 Icons.warning,
                 Colors.red,
@@ -233,110 +241,112 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     WidgetRef ref,
     String currentMode,
   ) {
+    final choices = <_TransportChoice>[
+      _TransportChoice('tor', 'Tor'.tr, Icons.security_outlined),
+      if (_isDesktop) _TransportChoice('i2p', 'I2P'.tr, Icons.router_outlined),
+      _TransportChoice('socks5', 'SOCKS5'.tr, Icons.vpn_lock_outlined),
+      _TransportChoice('direct', 'Direct'.tr, Icons.public_outlined),
+    ];
+
     return PCard(
-      child: Column(
-        children: [
-          _buildModeOption(
-            context,
-            ref,
-            'tor',
-            'Tor (Most Private)'.tr,
-            'All traffic routed through Tor network. Slowest but most private.'
-                .tr,
-            Icons.security,
-            AppColors.accentPrimary,
-            currentMode == 'tor',
-          ),
-          if (_isDesktop) ...[
-            Divider(height: 1, color: AppColors.borderDefault),
-            _buildModeOption(
-              context,
-              ref,
-              'i2p',
-              'I2P (Desktop Only)'.tr,
-              'Embedded I2P router with ephemeral identity. First startup may take a few minutes.'
-                  .tr,
-              Icons.router,
-              AppColors.accentSecondary,
-              currentMode == 'i2p',
+      padding: EdgeInsets.zero,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth / choices.length < 116;
+          return SizedBox(
+            height: compact ? 68 : 54,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var index = 0; index < choices.length; index++) ...[
+                  if (index > 0)
+                    Container(width: 1, color: AppColors.borderDefault),
+                  Expanded(
+                    child: _buildTransportSegment(
+                      context,
+                      ref,
+                      choices[index],
+                      compact: compact,
+                      selected: currentMode == choices[index].mode,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
-          Divider(height: 1, color: AppColors.borderDefault),
-          _buildModeOption(
-            context,
-            ref,
-            'socks5',
-            'SOCKS5 Proxy'.tr,
-            'Route traffic through custom SOCKS5 proxy. Privacy depends on proxy.'
-                .tr,
-            Icons.vpn_lock,
-            AppColors.accentSecondary,
-            currentMode == 'socks5',
-          ),
-          Divider(height: 1, color: AppColors.borderDefault),
-          _buildModeOption(
-            context,
-            ref,
-            'direct',
-            'Direct (Not Private)'.tr,
-            'Direct connection without privacy protection. NOT RECOMMENDED.'.tr,
-            Icons.warning,
-            Colors.red,
-            currentMode == 'direct',
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildModeOption(
+  Widget _buildTransportSegment(
     BuildContext context,
     WidgetRef ref,
-    String mode,
-    String title,
-    String description,
-    IconData icon,
-    Color color,
-    bool isSelected,
-  ) {
-    return InkWell(
-      onTap: () {
-        _handleTransportSelection(context, ref, mode);
-      },
-      child: Padding(
-        padding: const EdgeInsets.all(PirateSpacing.md),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: isSelected
-                          ? AppColors.accentPrimary
-                          : AppColors.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+    _TransportChoice choice, {
+    required bool compact,
+    required bool selected,
+  }) {
+    final foreground = selected
+        ? AppColors.accentPrimary
+        : choice.mode == 'direct'
+        ? AppColors.warning
+        : AppColors.textSecondary;
+    final content = compact
+        ? Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(choice.icon, color: foreground, size: 19),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  choice.label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-            if (isSelected)
-              Icon(Icons.check_circle, color: AppColors.accentPrimary),
-          ],
+            ],
+          )
+        : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(choice.icon, color: foreground, size: 20),
+              const SizedBox(width: PirateSpacing.xs),
+              Flexible(
+                child: Text(
+                  choice.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          );
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: choice.label,
+      child: Material(
+        color: selected
+            ? AppColors.accentPrimary.withValues(alpha: 0.12)
+            : Colors.transparent,
+        child: InkWell(
+          onTap: selected || _isChangingTransport
+              ? null
+              : () => _handleTransportSelection(context, ref, choice.mode),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: PirateSpacing.xs),
+            child: content,
+          ),
         ),
       ),
     );
@@ -347,11 +357,17 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     WidgetRef ref,
     String mode,
   ) async {
+    if (_isChangingTransport) return;
     if (mode == 'i2p') {
       final proceed = await _confirmI2pFirstUse(context);
       if (!proceed) return;
     }
-    await ref.read(transportConfigProvider.notifier).setMode(mode);
+    setState(() => _isChangingTransport = true);
+    try {
+      await ref.read(transportConfigProvider.notifier).setMode(mode);
+    } finally {
+      if (mounted) setState(() => _isChangingTransport = false);
+    }
   }
 
   Future<bool> _confirmI2pFirstUse(BuildContext context) async {
@@ -584,20 +600,11 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Tor Status'.tr,
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              Wrap(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final controls = Wrap(
                 spacing: PirateSpacing.sm,
+                runSpacing: PirateSpacing.xs,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   _buildTorStatusIndicator(torStatus),
@@ -607,8 +614,32 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                     onPressed: torStatus.isReady ? _switchTorExit : null,
                   ),
                 ],
-              ),
-            ],
+              );
+              final title = Text(
+                'Tor Status'.tr,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+              if (constraints.maxWidth < 440) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    title,
+                    const SizedBox(height: PirateSpacing.xs),
+                    controls,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: title),
+                  Flexible(child: controls),
+                ],
+              );
+            },
           ),
           const SizedBox(height: PirateSpacing.md),
           Text(
@@ -1373,4 +1404,12 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       ),
     );
   }
+}
+
+class _TransportChoice {
+  const _TransportChoice(this.mode, this.label, this.icon);
+
+  final String mode;
+  final String label;
+  final IconData icon;
 }
