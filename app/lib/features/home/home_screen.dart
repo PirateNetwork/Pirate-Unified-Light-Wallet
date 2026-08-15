@@ -36,7 +36,7 @@ import 'widgets/home_header_controls.dart';
 import 'widgets/home_sync_indicator.dart';
 
 /// Home screen
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, this.useScaffold = true});
 
   static const Key headerKey = Key('home-dashboard-header');
@@ -45,10 +45,10 @@ class HomeScreen extends StatefulWidget {
   final bool useScaffold;
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _hideBalance = false;
 
   @override
@@ -58,6 +58,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final screenWidth = mediaQuery.size.width;
     final compactLandscape =
         !isDesktopPlatform && PSpacing.isCompactLandscape(screenSize);
+    final balance = ref.watch(balanceStreamProvider).asData?.value;
+    final hasBalanceHelper =
+        balance == null ||
+        balance.total <= BigInt.zero ||
+        balance.pending > BigInt.zero;
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
     final gutter = PSpacing.responsiveGutter(screenWidth);
     final availableHeaderWidth = math.max(0.0, screenWidth - (gutter * 2));
@@ -75,7 +80,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ? 280.0
         : PSpacing.isTablet(screenWidth)
         ? 300.0
-        : 320.0;
+        : hasBalanceHelper
+        ? 320.0
+        : 284.0;
     final baseHeaderExtent =
         standardHeaderExtent +
         (stackedHeaderControls ? PSpacing.xl + PSpacing.sm : 0.0);

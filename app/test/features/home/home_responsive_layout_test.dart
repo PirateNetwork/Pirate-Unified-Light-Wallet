@@ -9,6 +9,7 @@ import 'package:pirate_wallet/core/providers/wallet_providers.dart';
 import 'package:pirate_wallet/design/theme.dart';
 import 'package:pirate_wallet/features/home/home_screen.dart';
 import 'package:pirate_wallet/features/settings/providers/transport_providers.dart';
+import 'package:pirate_wallet/ui/organisms/p_sliver_header.dart';
 
 class _TestTunnelModeNotifier extends TunnelModeNotifier {
   @override
@@ -38,7 +39,7 @@ class _TestTransportConfigNotifier extends TransportConfigNotifier {
   );
 }
 
-Widget _testApp() {
+Widget _testApp({BigInt? total, BigInt? pending, Key? key}) {
   final syncedStatus = SyncStatus(
     localHeight: BigInt.from(4100000),
     targetHeight: BigInt.from(4100000),
@@ -52,6 +53,7 @@ Widget _testApp() {
   );
 
   return ProviderScope(
+    key: key,
     overrides: [
       activeWalletMetaProvider.overrideWithValue(
         WalletMeta(
@@ -66,9 +68,9 @@ Widget _testApp() {
       balanceStreamProvider.overrideWith(
         (ref) => Stream.value(
           Balance(
-            total: BigInt.from(100000000),
+            total: total ?? BigInt.from(100000000),
             spendable: BigInt.from(100000000),
-            pending: BigInt.zero,
+            pending: pending ?? BigInt.zero,
           ),
         ),
       ),
@@ -95,6 +97,43 @@ Widget _testApp() {
 }
 
 void main() {
+  testWidgets('reserves balance helper height only when it is needed', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      _testApp(key: const ValueKey('settled-balance')),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    final settledHeader = tester.widget<SliverPersistentHeader>(
+      find.byKey(HomeScreen.headerKey),
+    );
+    final settledExtent =
+        (settledHeader.delegate as PSliverHeaderDelegate).maxExtent;
+
+    await tester.pumpWidget(
+      _testApp(
+        pending: BigInt.from(50000000),
+        key: const ValueKey('pending-balance'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    final pendingHeader = tester.widget<SliverPersistentHeader>(
+      find.byKey(HomeScreen.headerKey),
+    );
+    final pendingExtent =
+        (pendingHeader.delegate as PSliverHeaderDelegate).maxExtent;
+
+    expect(pendingExtent - settledExtent, 36);
+    expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('lets the dashboard header scroll away in phone landscape', (
     tester,
   ) async {
