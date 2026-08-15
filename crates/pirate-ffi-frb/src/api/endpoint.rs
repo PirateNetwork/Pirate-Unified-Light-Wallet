@@ -9,6 +9,9 @@ pub const DEFAULT_LIGHTD_PORT: u16 = service::DEFAULT_LIGHTD_PORT;
 pub const DEFAULT_LIGHTD_USE_TLS: bool = service::DEFAULT_LIGHTD_USE_TLS;
 
 const IP_TLS_SERVER_NAME: &str = "lightd1.piratechain.com";
+const DEV_LIGHTD_HOST: &str = "64.23.167.130";
+const DEV_LIGHTD_PORT: u16 = 9067;
+const IRONWOOD_TESTNET_PORT: u16 = 8067;
 const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "lightd1.pirate.black",
     "lightd1.piratechain.com",
@@ -124,7 +127,11 @@ pub(super) fn endpoint_from_url(
             .parse::<u16>()
             .map_err(|_| anyhow!("Invalid port number"))?
     } else {
-        DEFAULT_LIGHTD_PORT
+        if use_tls {
+            443
+        } else {
+            DEV_LIGHTD_PORT
+        }
     };
 
     Ok(LightdEndpoint {
@@ -177,6 +184,7 @@ pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<Netw
         || host_lower.contains("piratechain.com")
         || host_lower.contains("pirate.black")
         || (host == DEFAULT_LIGHTD_HOST && port == DEFAULT_LIGHTD_PORT)
+        || (host == DEV_LIGHTD_HOST && port == DEV_LIGHTD_PORT)
     {
         return Some(NetworkType::Mainnet);
     }
@@ -187,7 +195,7 @@ pub(super) fn address_prefix_network_type_for_endpoint(
     endpoint: &LightdEndpoint,
     default_network: NetworkType,
 ) -> NetworkType {
-    if endpoint.host == DEFAULT_LIGHTD_HOST && endpoint.port == 8067 {
+    if endpoint.host == DEV_LIGHTD_HOST && endpoint.port == IRONWOOD_TESTNET_PORT {
         NetworkType::Mainnet
     } else {
         default_network
@@ -198,7 +206,7 @@ pub(super) fn tls_server_name(endpoint: &LightdEndpoint) -> Option<String> {
     if !endpoint.use_tls {
         return None;
     }
-    if endpoint.host.parse::<IpAddr>().is_ok() {
+    if endpoint.host == DEV_LIGHTD_HOST && endpoint.host.parse::<IpAddr>().is_ok() {
         return Some(IP_TLS_SERVER_NAME.to_string());
     }
     Some(endpoint.host.clone())
@@ -217,5 +225,27 @@ mod tests {
                 "{host} should use mainnet key derivation"
             );
         }
+        assert_eq!(
+            detect_network_from_endpoint(DEV_LIGHTD_HOST, DEV_LIGHTD_PORT),
+            Some(NetworkType::Mainnet)
+        );
+    }
+
+    #[test]
+    fn default_endpoint_uses_the_official_tls_server() {
+        let endpoint = LightdEndpoint::default();
+        assert_eq!(endpoint.url(), "https://lightd1.pirate.black:443");
+    }
+
+    #[test]
+    fn custom_tls_ip_uses_its_own_server_name() {
+        let endpoint = LightdEndpoint {
+            host: "192.0.2.10".to_string(),
+            port: 443,
+            use_tls: true,
+            tls_pin: None,
+            label: None,
+        };
+        assert_eq!(tls_server_name(&endpoint).as_deref(), Some("192.0.2.10"));
     }
 }

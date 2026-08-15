@@ -37,16 +37,16 @@ use proto::{
     SubtreeRoot, TxFilter,
 };
 
-/// Default lightwalletd endpoint (known-working mainnet)
-pub const DEFAULT_LIGHTD_HOST: &str = "64.23.167.130";
+/// Default official Pirate Chain mainnet endpoint.
+pub const DEFAULT_LIGHTD_HOST: &str = "lightd1.pirate.black";
 /// Default lightwalletd port
-pub const DEFAULT_LIGHTD_PORT: u16 = 9067;
+pub const DEFAULT_LIGHTD_PORT: u16 = 443;
 /// Default TLS usage for the default endpoint
-pub const DEFAULT_LIGHTD_USE_TLS: bool = false;
+pub const DEFAULT_LIGHTD_USE_TLS: bool = true;
 /// Default SPKI pin for the official lightwalletd endpoint.
 pub const DEFAULT_LIGHTD_SPKI_PIN: &str = "";
 /// Default endpoint URL
-pub const DEFAULT_LIGHTD_URL: &str = "http://64.23.167.130:9067";
+pub const DEFAULT_LIGHTD_URL: &str = "https://lightd1.pirate.black:443";
 
 /// Retry configuration for network operations
 #[derive(Debug, Clone)]
@@ -280,7 +280,7 @@ pub struct EndpointHealth {
 /// Client configuration
 #[derive(Debug, Clone)]
 pub struct LightClientConfig {
-    /// Endpoint URL (e.g., "http://64.23.167.130:9067")
+    /// Endpoint URL (e.g., "https://lightd1.pirate.black:443")
     pub endpoint: String,
     /// Transport mode (Tor, I2P, SOCKS5, or Direct)
     pub transport: TransportMode,
@@ -1222,7 +1222,7 @@ impl LightClient {
 
     /// Create new client with default configuration
     ///
-    /// Default: uses DEFAULT_LIGHTD_URL via Tor (TLS disabled unless enabled in config)
+    /// Default: uses the TLS-enabled DEFAULT_LIGHTD_URL via Tor.
     pub fn new(endpoint: String) -> Self {
         Self {
             config: LightClientConfig {
