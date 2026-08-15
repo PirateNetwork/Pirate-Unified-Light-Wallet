@@ -10,7 +10,7 @@ repository.workspace = true
 pirate-core = { path = "../pirate-core" }
 
 # Tor/Arti for privacy-first networking
-arti-client = { workspace = true, features = ["bridge-client", "pt-client"] }
+arti-client = { workspace = true, features = ["bridge-client", "onion-service-client", "pt-client"] }
 tor-rtcompat = { workspace = true }
 
 tokio = { workspace = true }
