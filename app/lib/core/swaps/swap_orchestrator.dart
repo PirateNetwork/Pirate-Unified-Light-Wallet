@@ -22,7 +22,7 @@ class SwapOrchestratorException implements Exception {
 }
 
 class SwapOrchestrator {
-  SwapOrchestrator({required AtomicSwapService service}) : _service = service;
+  SwapOrchestrator({required this._service});
 
   final AtomicSwapService _service;
 

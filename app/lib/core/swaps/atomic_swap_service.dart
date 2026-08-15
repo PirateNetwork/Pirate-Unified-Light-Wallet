@@ -9,14 +9,11 @@ import 'swap_quote_engine.dart';
 
 class AtomicSwapService {
   AtomicSwapService({
-    required KdfSwapEngine engine,
-    required SwapIntentStore intentStore,
-    SwapQuoteEngine quoteEngine = const SwapQuoteEngine(),
-    Uuid uuid = const Uuid(),
-  }) : _engine = engine,
-       _intentStore = intentStore,
-       _quoteEngine = quoteEngine,
-       _uuid = uuid;
+    required this._engine,
+    required this._intentStore,
+    this._quoteEngine = const SwapQuoteEngine(),
+    this._uuid = const Uuid(),
+  });
 
   final KdfSwapEngine _engine;
   final SwapIntentStore _intentStore;

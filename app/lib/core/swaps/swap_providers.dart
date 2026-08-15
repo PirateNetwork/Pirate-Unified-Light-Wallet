@@ -125,7 +125,7 @@ final kdfSwapWarmupProvider = Provider<void>((ref) {
 });
 
 class KdfSwapWarmupService {
-  KdfSwapWarmupService({required KdfSwapEngine engine}) : _engine = engine;
+  KdfSwapWarmupService({required this._engine});
 
   final KdfSwapEngine _engine;
 

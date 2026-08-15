@@ -98,11 +98,9 @@ bool _hasInsufficientBalance(Object? value, String? normalizedCoin) {
 class KdfSwapEngine {
   KdfSwapEngine({
     FlutterSecureStorage? storage,
-    KdfSwapNetworkPolicyReader? networkPolicyReader,
-    KdfSwapStartupForTesting? startupForTesting,
-  }) : _storage = storage ?? const FlutterSecureStorage(),
-       _networkPolicyReader = networkPolicyReader,
-       _startupForTesting = startupForTesting;
+    this._networkPolicyReader,
+    this._startupForTesting,
+  }) : _storage = storage ?? const FlutterSecureStorage();
 
   static const supportedBase = 'ARRR';
   static const supportedRel = 'LTC';

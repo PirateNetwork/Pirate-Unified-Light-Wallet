@@ -3,18 +3,13 @@ typedef DesktopShutdownStep = Future<void> Function();
 /// Orders desktop cleanup before the native window and Flutter engine exit.
 class DesktopShutdownCoordinator {
   DesktopShutdownCoordinator({
-    required DesktopShutdownStep hideWindow,
-    required DesktopShutdownStep cleanUp,
-    required DesktopShutdownStep releaseInstanceLock,
-    required DesktopShutdownStep allowWindowClose,
-    required DesktopShutdownStep closeWindow,
-    required DesktopShutdownStep forceDestroyWindow,
-  }) : _hideWindow = hideWindow,
-       _cleanUp = cleanUp,
-       _releaseInstanceLock = releaseInstanceLock,
-       _allowWindowClose = allowWindowClose,
-       _closeWindow = closeWindow,
-       _forceDestroyWindow = forceDestroyWindow;
+    required this._hideWindow,
+    required this._cleanUp,
+    required this._releaseInstanceLock,
+    required this._allowWindowClose,
+    required this._closeWindow,
+    required this._forceDestroyWindow,
+  });
 
   final DesktopShutdownStep _hideWindow;
   final DesktopShutdownStep _cleanUp;
