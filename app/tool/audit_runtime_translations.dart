@@ -133,11 +133,17 @@ final class _TranslationVisitor extends RecursiveAstVisitor<void> {
   }
 
   bool isUiCandidate(AstNode node) {
+    if (isInsideWidgetKey(node)) return false;
+
     AstNode? current = node.parent;
     while (current != null && current is! Statement) {
       if (current is NamedExpression &&
           uiArgumentNames.contains(current.name.label.name)) {
         return true;
+      }
+      if (current is VariableDeclaration &&
+          current.name.lexeme.endsWith('Key')) {
+        return false;
       }
       if (current is VariableDeclaration && isUiName(current.name.lexeme)) {
         return true;
@@ -165,6 +171,30 @@ final class _TranslationVisitor extends RecursiveAstVisitor<void> {
         if (uiInvocationNames.any(
           (candidate) => name == candidate || name.endsWith('.$candidate'),
         )) {
+          return true;
+        }
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  bool isInsideWidgetKey(AstNode node) {
+    AstNode? current = node.parent;
+    while (current != null && current is! Statement) {
+      if (current is InstanceCreationExpression) {
+        final typeName = current.constructorName.type
+            .toSource()
+            .split('<')
+            .first;
+        if (const {
+          'GlobalKey',
+          'GlobalObjectKey',
+          'Key',
+          'LabeledGlobalKey',
+          'ObjectKey',
+          'ValueKey',
+        }.contains(typeName)) {
           return true;
         }
       }
