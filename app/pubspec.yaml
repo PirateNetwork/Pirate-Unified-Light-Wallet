@@ -4,7 +4,8 @@ publish_to: 'none'
 version: 1.0.6+6
 
 environment:
-  sdk: '>=3.10.0 <4.0.0'
+  sdk: '>=3.13.0 <4.0.0'
+  flutter: '>=3.47.0'
 
 dependencies:
   archive: ^4.0.9
@@ -53,7 +54,7 @@ dependencies:
       ref: main
       path: packages/komodo_defi_types
   local_auth: ^3.0.0
-  mobile_scanner: ^7.1.4
+  mobile_scanner: ^7.4.0
   package_info_plus: ^9.0.1
   path: ^1.9.1
   path_provider: ^2.1.6
