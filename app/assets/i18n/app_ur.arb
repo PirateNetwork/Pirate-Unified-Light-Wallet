@@ -1503,5 +1503,9 @@
   "MathNodes": "MathNodes",
   "Pirate Unified": "Pirate Unified",
   "SOCKS5": "SOCKS5",
-  "Tor": "Tor"
+  "Tor": "Tor",
+  "Current wallet block height": "والیٹ کی موجودہ بلاک بلندی",
+  "Current chain tip": "موجودہ چین ٹِپ",
+  "Estimated time remaining": "تخمینی باقی وقت",
+  "Current sync speed": "موجودہ مطابقت پذیری کی رفتار"
 }

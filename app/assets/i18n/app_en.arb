@@ -1503,5 +1503,9 @@
   "~30 min": "~30 min",
   "≈ 1 ARRR": "≈ 1 ARRR",
   "⚠️ Latest block height not retrieved - connection failed before data could be fetched.": "⚠️ Latest block height not retrieved - connection failed before data could be fetched.",
-  "⚠️ Security Warning": "⚠️ Security Warning"
+  "⚠️ Security Warning": "⚠️ Security Warning",
+  "Current wallet block height": "Current wallet block height",
+  "Current chain tip": "Current chain tip",
+  "Estimated time remaining": "Estimated time remaining",
+  "Current sync speed": "Current sync speed"
 }

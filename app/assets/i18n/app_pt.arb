@@ -1503,5 +1503,9 @@
   "MathNodes": "MathNodes",
   "Pirate Unified": "Pirate Unified",
   "SOCKS5": "SOCKS5",
-  "Tor": "Tor"
+  "Tor": "Tor",
+  "Current wallet block height": "Altura atual do bloco da carteira",
+  "Current chain tip": "Ponta atual da cadeia",
+  "Estimated time remaining": "Tempo restante estimado",
+  "Current sync speed": "Velocidade atual de sincronização"
 }

@@ -115,4 +115,19 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('explains sync metrics through concise tooltips', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _testApp(width: 1000, blocksPerSecond: 21543.7),
+    );
+    await tester.pump();
+
+    expect(find.byTooltip('Current wallet block height'), findsOneWidget);
+    expect(find.byTooltip('Current chain tip'), findsOneWidget);
+    expect(find.byTooltip('Estimated time remaining'), findsOneWidget);
+    expect(find.byTooltip('Current sync speed'), findsOneWidget);
+  });
 }

@@ -171,18 +171,21 @@ class _SyncMetrics extends StatelessWidget {
     final metrics = <_SyncMetric>[
       _SyncMetric(
         label: 'Height'.tr,
+        tooltip: 'Current wallet block height'.tr,
         value: localizations.formatDecimal(currentHeight),
         valueKey: HomeSyncIndicator.currentHeightKey,
       ),
       if (targetHeight > 0)
         _SyncMetric(
           label: 'Target'.tr,
+          tooltip: 'Current chain tip'.tr,
           value: localizations.formatDecimal(targetHeight),
           valueKey: HomeSyncIndicator.targetHeightKey,
         ),
       if (statusText != null)
         _SyncMetric(
           label: 'ETA'.tr,
+          tooltip: 'Estimated time remaining'.tr,
           value: statusText!,
           valueColor: statusColor,
           valueKey: HomeSyncIndicator.etaKey,
@@ -190,6 +193,7 @@ class _SyncMetrics extends StatelessWidget {
       if (blocksPerSecond > 0)
         _SyncMetric(
           label: 'blk/s',
+          tooltip: 'Current sync speed'.tr,
           value: blocksPerSecond.toStringAsFixed(1),
           valueKey: HomeSyncIndicator.speedKey,
         ),
@@ -234,37 +238,42 @@ class _SyncMetrics extends StatelessWidget {
 class _SyncMetric extends StatelessWidget {
   const _SyncMetric({
     required this.label,
+    required this.tooltip,
     required this.value,
     required this.valueKey,
     this.valueColor,
   });
 
   final String label;
+  final String tooltip;
   final String value;
   final Key valueKey;
   final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: PTypography.labelSmall(color: AppColors.textMuted),
-        ),
-        const SizedBox(height: PSpacing.xxs),
-        Text(
-          value,
-          key: valueKey,
-          style: PTypography.codeSmall(
-            color: valueColor ?? AppColors.textSecondary,
-          ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-        ),
-      ],
+    return Tooltip(
+      message: tooltip,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: PTypography.labelSmall(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: PSpacing.xxs),
+          Text(
+            value,
+            key: valueKey,
+            style: PTypography.codeSmall(
+              color: valueColor ?? AppColors.textSecondary,
+            ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+        ],
+      ),
     );
   }
 }
