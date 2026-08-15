@@ -176,14 +176,10 @@ impl TransportManager {
         // Initialize I2P if enabled
         let i2p_client = if config.mode == TransportMode::I2p && config.i2p.enabled {
             info!("Initializing embedded I2P router...");
-            let client = I2pClient::new(config.i2p.clone())?;
-            let client_clone = client.clone();
-            tokio::spawn(async move {
-                if let Err(e) = client_clone.start().await {
-                    error!("I2P startup failed: {}", e);
-                }
-            });
-            Some(client)
+            // Startup is performed by `ensure_ready` after this manager has
+            // been installed as the single global owner. Starting here would
+            // let a discarded racing manager orphan its native i2pd process.
+            Some(I2pClient::new(config.i2p.clone())?)
         } else {
             None
         };
@@ -245,12 +241,31 @@ impl TransportManager {
         Ok(())
     }
 
+    async fn ensure_i2p_started(&self, config: &TransportConfig) -> Result<()> {
+        let i2p_current = { self.i2p_client.lock().await.clone() };
+        if let Some(i2p) = i2p_current {
+            i2p.start().await?;
+            return Ok(());
+        }
+
+        let client = I2pClient::new(config.i2p.clone())?;
+        client.clone().start().await?;
+        *self.i2p_client.lock().await = Some(client);
+        Ok(())
+    }
+
     /// Ensure the active transport has completed any required startup.
     pub async fn ensure_ready(&self) -> Result<()> {
         let _update_guard = self.update_lock.lock().await;
         let config = { self.config.lock().await.clone() };
-        if config.mode == TransportMode::Tor && config.tor.enabled {
-            self.ensure_tor_bootstrapped(&config).await?;
+        match config.mode {
+            TransportMode::Tor if config.tor.enabled => {
+                self.ensure_tor_bootstrapped(&config).await?;
+            }
+            TransportMode::I2p if config.i2p.enabled => {
+                self.ensure_i2p_started(&config).await?;
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -262,9 +277,16 @@ impl TransportManager {
         let _update_guard = self.update_lock.lock().await;
         let current_config = { self.config.lock().await.clone() };
         if current_config == config {
-            if config.mode == TransportMode::Tor && config.tor.enabled {
-                self.ensure_tor_bootstrapped(&config).await?;
-                return Ok(());
+            match config.mode {
+                TransportMode::Tor if config.tor.enabled => {
+                    self.ensure_tor_bootstrapped(&config).await?;
+                    return Ok(());
+                }
+                TransportMode::I2p if config.i2p.enabled => {
+                    self.ensure_i2p_started(&config).await?;
+                    return Ok(());
+                }
+                _ => {}
             }
 
             log_debug_event(
