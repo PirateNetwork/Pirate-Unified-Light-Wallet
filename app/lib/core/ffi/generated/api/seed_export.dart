@@ -4,6 +4,7 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `acknowledge_seed_warning`, `are_seed_screenshots_blocked`, `cancel_seed_export`, `complete_seed_biometric`, `export_seed_with_cached_passphrase`, `export_seed_with_passphrase`, `get_seed_clipboard_remaining`, `get_seed_export_state`, `get_seed_export_warnings`, `skip_seed_biometric`, `start_seed_export`

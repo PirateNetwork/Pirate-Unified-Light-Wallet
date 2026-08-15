@@ -5,6 +5,7 @@
 
 import '../frb_generated.dart';
 import '../models.dart';
+
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `light_client_config_for_endpoint`, `load_registry_tunnel_mode`, `persist_registry_tunnel_mode`, `redact_socks5_url`, `tunnel_transport_config_for`, `tunnel_transport_config`
