@@ -24,6 +24,39 @@ export CARGO_INCREMENTAL=0
 export IPHONEOS_DEPLOYMENT_TARGET="$IOS_MIN_DEPLOYMENT_TARGET"
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+strip_static_archive() {
+  local archive="$1"
+  local target_name="$2"
+  local original_size
+  local stripped_size
+  local symbols_file="$TMP_DIR/$target_name-exported-symbols.txt"
+
+  original_size="$(stat -f%z "$archive")"
+  xcrun strip -S "$archive"
+  xcrun ranlib "$archive"
+  stripped_size="$(stat -f%z "$archive")"
+
+  if (( stripped_size <= 0 || stripped_size > original_size )); then
+    echo "Invalid stripped archive size for $target_name: $stripped_size (was $original_size)" >&2
+    exit 1
+  fi
+
+  xcrun nm -gjU "$archive" > "$symbols_file"
+  for symbol in \
+    _pirate_wallet_service_invoke_json \
+    _pirate_wallet_service_free_string; do
+    if ! grep -Fxq "$symbol" "$symbols_file"; then
+      echo "Stripping $target_name removed required export: $symbol" >&2
+      exit 1
+    fi
+  done
+
+  echo "Stripped iOS debug symbols for $target_name ($original_size -> $stripped_size bytes)"
+}
+
 cd "$CRATES_DIR"
 # The XCFramework packages static libraries only. Build just the staticlib
 # artifact so iOS packaging does not waste time or fail linking an unused cdylib.
@@ -31,8 +64,15 @@ cargo rustc --release --target aarch64-apple-ios --package pirate-ffi-native --l
 cargo rustc --release --target aarch64-apple-ios-sim --package pirate-ffi-native --lib -- --crate-type staticlib
 cargo rustc --release --target x86_64-apple-ios --package pirate-ffi-native --lib -- --crate-type staticlib
 
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+strip_static_archive \
+  "$CRATES_DIR/target/aarch64-apple-ios/release/libpirate_ffi_native.a" \
+  "ios-arm64"
+strip_static_archive \
+  "$CRATES_DIR/target/aarch64-apple-ios-sim/release/libpirate_ffi_native.a" \
+  "ios-simulator-arm64"
+strip_static_archive \
+  "$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native.a" \
+  "ios-simulator-x86_64"
 
 HEADERS_DIR="$TMP_DIR/include"
 mkdir -p "$HEADERS_DIR"
