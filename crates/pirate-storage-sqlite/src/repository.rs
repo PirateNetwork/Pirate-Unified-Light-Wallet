@@ -1908,7 +1908,13 @@ impl<'a> Repository<'a> {
             .map(|extsk| extsk.to_extended_fvk().to_bytes());
 
         let conn = self.db.conn();
-        conn.execute_batch("BEGIN IMMEDIATE")?;
+        // Provisioning already owns a transaction so account, secret, and key
+        // publication remain atomic. Standalone repair callers still need this
+        // method to acquire and settle their own write transaction.
+        let owns_transaction = conn.is_autocommit();
+        if owns_transaction {
+            conn.execute_batch("BEGIN IMMEDIATE")?;
+        }
         let result = (|| -> Result<(i64, bool)> {
             let keys = self.get_account_keys(secret.account_id)?;
             let canonical_index = keys.iter().position(|key| {
@@ -2024,15 +2030,18 @@ impl<'a> Repository<'a> {
         })();
 
         match result {
-            Ok(value) => {
+            Ok(value) if owns_transaction => {
                 if let Err(error) = conn.execute_batch("COMMIT") {
                     let _ = conn.execute_batch("ROLLBACK");
                     return Err(error.into());
                 }
                 Ok(value)
             }
+            Ok(value) => Ok(value),
             Err(error) => {
-                let _ = conn.execute_batch("ROLLBACK");
+                if owns_transaction {
+                    let _ = conn.execute_batch("ROLLBACK");
+                }
                 Err(error)
             }
         }
@@ -7293,6 +7302,51 @@ mod tests {
             Some(ironwood_extsk.to_extended_fvk().to_bytes())
         );
         assert_eq!(repaired.birthday_height, 20);
+    }
+
+    #[test]
+    fn seed_key_reconciliation_joins_the_callers_transaction() {
+        const MNEMONIC: &str =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Atomic provisioning".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let sapling_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
+            MNEMONIC,
+            pirate_params::NetworkType::Mainnet,
+            0,
+        )
+        .unwrap();
+        let secret = WalletSecret {
+            wallet_id: "atomic-provisioning-wallet".to_string(),
+            account_id,
+            extsk: sapling_extsk.to_bytes(),
+            dfvk: Some(sapling_extsk.to_extended_fvk().to_bytes()),
+            orchard_extsk: None,
+            sapling_ivk: None,
+            orchard_ivk: None,
+            encrypted_mnemonic: Some(MNEMONIC.as_bytes().to_vec()),
+            mnemonic_language: None,
+            created_at: 1,
+        };
+
+        let transaction = db.conn().unchecked_transaction().unwrap();
+        let (key_id, replay_required) = repo
+            .reconcile_primary_seed_account_key(&secret, 20)
+            .unwrap();
+        assert!(replay_required);
+        assert!(repo.get_account_key_by_id(key_id).unwrap().is_some());
+
+        transaction.rollback().unwrap();
+        assert!(repo.get_account_key_by_id(key_id).unwrap().is_none());
+        assert!(!repo.seed_key_scan_replay_required().unwrap());
     }
 
     #[test]
