@@ -120,7 +120,7 @@ class SettingsScreen extends ConsumerWidget {
                 final subtitle = endpointAsync.when(
                   data: (config) => config.displayString,
                   loading: () => 'Loading...'.tr,
-                  error: (_, _) => '64.23.167.130:9067',
+                  error: (_, _) => FfiBridge.defaultLightdUrl,
                 );
                 return PListTile(
                   leading: const Icon(Icons.dns_outlined),

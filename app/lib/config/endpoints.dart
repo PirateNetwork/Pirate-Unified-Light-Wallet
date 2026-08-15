@@ -4,13 +4,15 @@ import 'package:flutter/foundation.dart';
 
 import '../core/i18n/arb_text_localizer.dart';
 
-/// Default lightwalletd server host (known-working mainnet).
-const String kDefaultLightdHost = '64.23.167.130';
-const int kDefaultLightdPort = 9067;
-const String kDefaultLightd = '$kDefaultLightdHost:$kDefaultLightdPort';
+const String kDevLightdHost = '64.23.167.130';
+const int kDevLightdPort = 9067;
 
 const String kOfficialLightdHost = 'lightd1.pirate.black';
 const int kOfficialLightdPort = 443;
+const String kDefaultLightdHost = kOfficialLightdHost;
+const int kDefaultLightdPort = kOfficialLightdPort;
+const String kDefaultLightd = '$kDefaultLightdHost:$kDefaultLightdPort';
+const String kDefaultLightdUrl = 'https://$kDefaultLightd';
 const String kMathNodesLightdHost = 'pirate.mathnodes.com';
 const int kMathNodesLightdPort = 443;
 
@@ -28,7 +30,7 @@ const String kDefaultI2pLightdUrl = 'http://$kI2pLightd';
 const String kIronwoodTestnetHost = '64.23.167.130';
 const int kIronwoodTestnetPort = 8067;
 
-const bool kDefaultUseTls = false;
+const bool kDefaultUseTls = true;
 const String kDefaultTlsPin = '';
 
 enum LightdNetwork { mainnet, ironwoodTestnet }
@@ -52,7 +54,7 @@ class LightdEndpoint {
     required this.host,
     required this.port,
     this.id = 'custom',
-    this.useTls = kDefaultUseTls,
+    this.useTls = false,
     this.tlsPin,
     this.label,
     this.network,
@@ -62,8 +64,8 @@ class LightdEndpoint {
 
   static final LightdEndpoint unifiedMainnet = LightdEndpoint(
     id: 'pirate-unified',
-    host: kDefaultLightdHost,
-    port: kDefaultLightdPort,
+    host: kDevLightdHost,
+    port: kDevLightdPort,
     tlsPin: kDefaultTlsPin.isEmpty ? null : kDefaultTlsPin,
     network: LightdNetwork.mainnet,
     automaticFailover: true,
@@ -111,14 +113,14 @@ class LightdEndpoint {
     network: LightdNetwork.ironwoodTestnet,
   );
 
-  static final LightdEndpoint defaultEndpoint = unifiedMainnet;
-  static final LightdEndpoint mainnet = unifiedMainnet;
+  static final LightdEndpoint defaultEndpoint = officialMainnet;
+  static final LightdEndpoint mainnet = officialMainnet;
 
   static final List<LightdEndpoint> mainnetPresets =
       List<LightdEndpoint>.unmodifiable([
-        unifiedMainnet,
         officialMainnet,
         mathNodesMainnet,
+        unifiedMainnet,
         torMainnet,
         i2pMainnet,
       ]);
@@ -140,7 +142,7 @@ class LightdEndpoint {
         mathNodesMainnet,
         torMainnet,
       ],
-      _ => <LightdEndpoint>[unifiedMainnet, officialMainnet, mathNodesMainnet],
+      _ => <LightdEndpoint>[officialMainnet, mathNodesMainnet, unifiedMainnet],
     };
     if (includeTestnet && normalizedMode != 'i2p') {
       presets.add(ironwoodTestnet);
@@ -166,7 +168,7 @@ class LightdEndpoint {
             unifiedMainnet,
             mathNodesMainnet,
           ]
-        : <LightdEndpoint>[officialMainnet, unifiedMainnet, mathNodesMainnet];
+        : <LightdEndpoint>[officialMainnet, mathNodesMainnet, unifiedMainnet];
     return List<LightdEndpoint>.unmodifiable(
       ordered.where((candidate) => candidate.id != current.id),
     );
@@ -202,7 +204,7 @@ class LightdEndpoint {
     if (storedNonI2p?.supportsTransport(normalizedMode) == true) {
       return storedNonI2p;
     }
-    return normalizedMode == 'tor' ? torMainnet : unifiedMainnet;
+    return normalizedMode == 'tor' ? torMainnet : officialMainnet;
   }
 
   String get url {
@@ -267,7 +269,7 @@ class LightdEndpoint {
         ? uri.port
         : useTls
         ? 443
-        : kDefaultLightdPort;
+        : kDevLightdPort;
     if (port < 1 || port > 65535) return null;
     final route = _routeForHost(host);
 

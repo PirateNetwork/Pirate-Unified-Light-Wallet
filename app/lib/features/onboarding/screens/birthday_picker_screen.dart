@@ -99,7 +99,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     });
 
     try {
-      final result = await FfiBridge.testNode(url: endpoints.kDefaultLightd);
+      final result = await FfiBridge.testNode(url: endpoints.kDefaultLightdUrl);
       if (!mounted) return;
       if (result.success && result.latestBlockHeight != null) {
         setState(() {

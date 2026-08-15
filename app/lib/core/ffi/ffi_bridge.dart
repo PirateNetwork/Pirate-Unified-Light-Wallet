@@ -981,12 +981,12 @@ class FfiBridge {
   // - set_lightd_endpoint(), get_lightd_endpoint(), get_lightd_endpoint_config()
   // ============================================================================
 
-  /// Default lightwalletd endpoint (known-working mainnet)
-  static const String defaultLightdHost = '64.23.167.130';
-  static const int defaultLightdPort = 9067;
-  static const bool defaultUseTls = false;
+  /// Default lightwalletd endpoint (official Pirate Chain mainnet)
+  static const String defaultLightdHost = 'lightd1.pirate.black';
+  static const int defaultLightdPort = 443;
+  static const bool defaultUseTls = true;
   static const String defaultLightdTlsPin = '';
-  static const String defaultLightdUrl = 'http://64.23.167.130:9067';
+  static const String defaultLightdUrl = 'https://lightd1.pirate.black:443';
 
   static Future<void> setLightdEndpoint({
     required WalletId walletId,

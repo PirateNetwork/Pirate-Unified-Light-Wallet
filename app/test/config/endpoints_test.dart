@@ -4,6 +4,13 @@ import 'package:pirate_wallet/features/settings/providers/transport_providers.da
 
 void main() {
   group('lightwalletd presets', () {
+    test('uses the official TLS endpoint by default', () {
+      expect(LightdEndpoint.defaultEndpoint, LightdEndpoint.officialMainnet);
+      expect(LightdEndpoint.mainnet, LightdEndpoint.officialMainnet);
+      expect(kDefaultLightdUrl, 'https://lightd1.pirate.black:443');
+      expect(kDefaultUseTls, isTrue);
+    });
+
     test('offers all curated clearnet mainnet endpoints', () {
       final presets = LightdEndpoint.presetsForTransport(
         'direct',
@@ -92,7 +99,7 @@ void main() {
           current: LightdEndpoint.torMainnet,
           storedNonI2p: LightdEndpoint.torMainnet,
         ),
-        LightdEndpoint.unifiedMainnet,
+        LightdEndpoint.officialMainnet,
       );
       expect(
         LightdEndpoint.replacementForTransport(
