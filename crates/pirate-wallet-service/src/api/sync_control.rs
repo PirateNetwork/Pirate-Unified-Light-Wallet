@@ -459,20 +459,15 @@ pub(super) fn maybe_trigger_compact_sync(wallet_id: WalletId) {
         return;
     }
 
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        handle.spawn(async move {
-            let _ = start_sync(wallet_id, SyncMode::Compact).await;
-        });
-    } else {
-        std::thread::spawn(move || {
-            if let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                let _ = runtime.block_on(start_sync(wallet_id, SyncMode::Compact));
-            }
-        });
-    }
+    crate::runtime::spawn_detached(async move {
+        if let Err(error) = start_sync(wallet_id.clone(), SyncMode::Compact).await {
+            tracing::error!(
+                wallet_id = %wallet_id,
+                error = ?error,
+                "Failed to start automatic compact sync"
+            );
+        }
+    });
 }
 
 pub(super) fn get_spendability_status(wallet_id: WalletId) -> Result<SpendabilityStatus> {

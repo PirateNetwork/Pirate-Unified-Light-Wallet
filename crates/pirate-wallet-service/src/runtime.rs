@@ -19,6 +19,14 @@ pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
     service_runtime().block_on(future)
 }
 
+pub(crate) fn spawn_detached<F>(future: F)
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    drop(service_runtime().spawn(future));
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;
@@ -36,7 +44,7 @@ mod tests {
                 .build()
                 .expect("caller runtime should build");
             caller_runtime.block_on(async move {
-                let _task = service_runtime().spawn(async move {
+                spawn_detached(async move {
                     tokio::time::sleep(Duration::from_millis(25)).await;
                     completed_tx
                         .send(())
