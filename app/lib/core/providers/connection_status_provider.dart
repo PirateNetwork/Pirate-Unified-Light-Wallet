@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/settings/providers/transport_providers.dart';
+import '../../features/settings/providers/endpoint_health_provider.dart';
 import '../ffi/generated/models.dart'
     show TunnelMode_I2p, TunnelMode_Socks5, TunnelMode_Tor;
 import 'wallet_providers.dart';
@@ -20,6 +21,7 @@ final connectionStatusLevelProvider = Provider<ConnectionStatusLevel>((ref) {
   final torStatus = ref.watch(torStatusProvider);
   final transportConfig = ref.watch(transportConfigProvider);
   final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
+  final endpointHealth = ref.watch(endpointHealthProvider);
   final syncStatusAsync = ref.watch(syncProgressStreamProvider);
   final isDecoy = ref.watch(decoyModeProvider);
 
@@ -60,6 +62,13 @@ final connectionStatusLevelProvider = Provider<ConnectionStatusLevel>((ref) {
   }
   if (!effectiveHasEndpoint) {
     return ConnectionStatusLevel.offline;
+  }
+  if (endpointHealth.phase == EndpointHealthPhase.offline) {
+    return ConnectionStatusLevel.offline;
+  }
+  if (endpointHealth.phase == EndpointHealthPhase.switching ||
+      endpointHealth.phase == EndpointHealthPhase.degraded) {
+    return ConnectionStatusLevel.connecting;
   }
   if (tunnelBlocked) {
     return tunnelError
