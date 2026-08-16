@@ -2778,7 +2778,8 @@ jobs:
               exit 1
             fi
 
-            local npm_tarball="${matches[0]}"
+            local npm_tarball
+            npm_tarball="$(realpath -- "${matches[0]}")"
             local checksum_file="$npm_tarball.sha256"
             if [ ! -f "$checksum_file" ]; then
               echo "Missing npm tarball checksum: $checksum_file" >&2
