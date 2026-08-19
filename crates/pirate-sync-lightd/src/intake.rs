@@ -39,6 +39,10 @@ const CACHED_SCAN_THROUGHPUT_GAIN_PPM: u64 = 20_000;
 const CACHED_SCAN_PARALLEL_GAIN_PPM: u64 = 30_000;
 const CACHED_SCAN_REGRESSION_TOLERANCE_PPM: u64 = 30_000;
 const RATE_SCALE_PPM: u128 = 1_000_000;
+const SHIELDED_WORK_TARGET: Duration = Duration::from_millis(500);
+const SHIELDED_WORK_MIN_PER_LANE: u64 = 256;
+const SHIELDED_WORK_INITIAL_PER_LANE: u64 = 1_024;
+const SHIELDED_WORK_MAX_PER_LANE: u64 = 8_192;
 
 /// Measurements from one validated and persisted durable stream segment.
 #[derive(Clone, Copy, Debug)]
@@ -210,6 +214,13 @@ fn nearest_durable_bucket(ideal: u64, byte_safe_blocks: u64) -> usize {
         .unwrap_or(0)
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct LocalBatchWeight {
+    pub(crate) blocks: u64,
+    pub(crate) encoded_bytes: u64,
+    pub(crate) shielded_work_items: u64,
+}
+
 /// Chooses how many blocks from a durable network segment fit in the current
 /// device-local scan batch.
 ///
@@ -218,41 +229,140 @@ fn nearest_durable_bucket(ideal: u64, byte_safe_blocks: u64) -> usize {
 /// pipeline always makes progress while preserving its strict block ordering.
 pub(crate) fn local_batch_prefix_len(
     encoded_block_bytes: &[u64],
-    current_blocks: u64,
-    current_bytes: u64,
-    target_blocks: u64,
-    target_bytes: u64,
+    block_work_items: &[u64],
+    current: LocalBatchWeight,
+    target: LocalBatchWeight,
 ) -> usize {
-    if encoded_block_bytes.is_empty() {
+    if encoded_block_bytes.is_empty() || encoded_block_bytes.len() != block_work_items.len() {
         return 0;
     }
 
-    let target_blocks = target_blocks.max(1);
-    let target_bytes = target_bytes.max(1);
-    if current_blocks >= target_blocks || current_bytes >= target_bytes {
+    let target_blocks = target.blocks.max(1);
+    let target_bytes = target.encoded_bytes.max(1);
+    let target_work_items = target.shielded_work_items.max(1);
+    if current.blocks >= target_blocks
+        || current.encoded_bytes >= target_bytes
+        || current.shielded_work_items >= target_work_items
+    {
         return 0;
     }
 
-    let block_slots = target_blocks.saturating_sub(current_blocks) as usize;
+    let block_slots = target_blocks.saturating_sub(current.blocks) as usize;
     let mut selected = 0usize;
     let mut added_bytes = 0u64;
-    for encoded_bytes in encoded_block_bytes.iter().copied().take(block_slots) {
+    let mut added_work_items = 0u64;
+    for (encoded_bytes, work_items) in encoded_block_bytes
+        .iter()
+        .copied()
+        .zip(block_work_items.iter().copied())
+        .take(block_slots)
+    {
         let encoded_bytes = encoded_bytes.max(1);
-        if current_bytes
+        if current
+            .encoded_bytes
             .saturating_add(added_bytes)
             .saturating_add(encoded_bytes)
             > target_bytes
+            || current
+                .shielded_work_items
+                .saturating_add(added_work_items)
+                .saturating_add(work_items)
+                > target_work_items
         {
             break;
         }
         added_bytes = added_bytes.saturating_add(encoded_bytes);
+        added_work_items = added_work_items.saturating_add(work_items);
         selected += 1;
     }
 
-    if selected == 0 && current_blocks == 0 {
+    if selected == 0 && current.blocks == 0 {
         1
     } else {
         selected
+    }
+}
+
+/// Device-local shielded-work controller.
+///
+/// Block and byte bounds protect memory, while this bound prevents a dense
+/// compact range from turning into one very long trial-decryption or tree
+/// insertion step. It is never used to choose a server-visible request range.
+#[derive(Clone, Debug)]
+pub(crate) struct AdaptiveShieldedWorkBatcher {
+    min_items: u64,
+    max_items: u64,
+    current_items: u64,
+    ewma_nanos_per_item: Option<u128>,
+}
+
+impl AdaptiveShieldedWorkBatcher {
+    pub(crate) fn new(parallel_lanes: usize) -> Self {
+        let lanes = parallel_lanes.max(1) as u64;
+        let min_items = lanes.saturating_mul(SHIELDED_WORK_MIN_PER_LANE).max(1);
+        let max_items = lanes
+            .saturating_mul(SHIELDED_WORK_MAX_PER_LANE)
+            .max(min_items);
+        Self {
+            min_items,
+            max_items,
+            current_items: lanes
+                .saturating_mul(SHIELDED_WORK_INITIAL_PER_LANE)
+                .clamp(min_items, max_items),
+            ewma_nanos_per_item: None,
+        }
+    }
+
+    pub(crate) fn target_items(&self) -> u64 {
+        self.current_items
+    }
+
+    pub(crate) fn observe(
+        &mut self,
+        requested_items: u64,
+        completed_items: u64,
+        processing_time: Duration,
+        stream_tail: bool,
+    ) -> u64 {
+        if completed_items == 0 || stream_tail || requested_items != self.current_items {
+            return self.current_items;
+        }
+
+        // Sparse batches are bounded by blocks or bytes and do not describe
+        // shielded-work saturation. They must not inflate this controller.
+        if completed_items < requested_items.saturating_mul(3).div_ceil(4) {
+            return self.current_items;
+        }
+
+        let sample = processing_time
+            .as_nanos()
+            .max(1)
+            .checked_div(u128::from(completed_items))
+            .unwrap_or(1)
+            .max(1);
+        self.ewma_nanos_per_item = Some(match self.ewma_nanos_per_item {
+            Some(previous) => previous.saturating_mul(3).saturating_add(sample) / 4,
+            None => sample,
+        });
+        let ideal = SHIELDED_WORK_TARGET
+            .as_nanos()
+            .checked_div(self.ewma_nanos_per_item.unwrap_or(1))
+            .unwrap_or(u128::from(self.max_items))
+            .min(u128::from(self.max_items)) as u64;
+        let lower = self
+            .current_items
+            .saturating_mul(3)
+            .div_ceil(4)
+            .max(self.min_items);
+        let upper = self
+            .current_items
+            .saturating_mul(5)
+            .div_ceil(4)
+            .min(self.max_items);
+        let quantum = SHIELDED_WORK_MIN_PER_LANE.max(1);
+        let next = ideal.clamp(lower, upper).saturating_add(quantum / 2) / quantum * quantum;
+        self.current_items = next.clamp(self.min_items, self.max_items);
+        self.current_items
     }
 }
 
@@ -888,6 +998,14 @@ impl Drop for PrefetchReservationInner {
 mod tests {
     use super::*;
 
+    fn local_weight(blocks: u64, encoded_bytes: u64, shielded_work_items: u64) -> LocalBatchWeight {
+        LocalBatchWeight {
+            blocks,
+            encoded_bytes,
+            shielded_work_items,
+        }
+    }
+
     #[derive(Clone, Copy)]
     struct SimulatedDevice {
         initial_blocks: u64,
@@ -1186,6 +1304,42 @@ mod tests {
     }
 
     #[test]
+    fn shielded_work_controller_reacts_only_to_saturated_batches() {
+        let mut controller = AdaptiveShieldedWorkBatcher::new(4);
+        assert_eq!(controller.target_items(), 4_096);
+
+        let sparse_target = controller.observe(4_096, 100, Duration::from_secs(5), false);
+        assert_eq!(sparse_target, 4_096);
+
+        let slow_target = controller.observe(4_096, 4_096, Duration::from_secs(4), false);
+        assert!(slow_target < 4_096);
+        let mut recovered = false;
+        let mut previous = slow_target;
+        for _ in 0..32 {
+            let next = controller.observe(previous, previous, Duration::from_millis(20), false);
+            recovered |= next > previous;
+            previous = next;
+        }
+        assert!(recovered);
+    }
+
+    #[test]
+    fn shielded_work_controller_keeps_a_bounded_device_local_target() {
+        let mut controller = AdaptiveShieldedWorkBatcher::new(2);
+        for _ in 0..100 {
+            let target = controller.target_items();
+            controller.observe(target, target, Duration::from_secs(30), false);
+        }
+        assert_eq!(controller.target_items(), 512);
+
+        for _ in 0..100 {
+            let target = controller.target_items();
+            controller.observe(target, target, Duration::from_millis(1), false);
+        }
+        assert_eq!(controller.target_items(), 16_384);
+    }
+
+    #[test]
     #[ignore = "manual adaptive durable-segment controller benchmark"]
     fn benchmark_adaptive_durable_segment_controller() {
         const OBSERVATIONS: u64 = 10_000_000;
@@ -1430,28 +1584,103 @@ mod tests {
     #[test]
     fn local_batches_split_and_merge_standard_segments_without_overshoot() {
         assert_eq!(
-            local_batch_prefix_len(&[10; 1_024], 0, 0, 1_000, 20_000),
+            local_batch_prefix_len(
+                &[10; 1_024],
+                &[0; 1_024],
+                local_weight(0, 0, 0),
+                local_weight(1_000, 20_000, u64::MAX),
+            ),
             1_000
         );
         assert_eq!(
-            local_batch_prefix_len(&[10; 24], 1_000, 10_000, 1_000, 20_000),
+            local_batch_prefix_len(
+                &[10; 24],
+                &[0; 24],
+                local_weight(1_000, 10_000, 0),
+                local_weight(1_000, 20_000, u64::MAX),
+            ),
             0
         );
         assert_eq!(
-            local_batch_prefix_len(&[10; 1_024], 0, 0, 4_000, 20_000),
+            local_batch_prefix_len(
+                &[10; 1_024],
+                &[0; 1_024],
+                local_weight(0, 0, 0),
+                local_weight(4_000, 20_000, u64::MAX),
+            ),
             1_024
         );
         assert_eq!(
-            local_batch_prefix_len(&[10; 1_024], 1_024, 10_240, 4_000, 20_000),
+            local_batch_prefix_len(
+                &[10; 1_024],
+                &[0; 1_024],
+                local_weight(1_024, 10_240, 0),
+                local_weight(4_000, 20_000, u64::MAX),
+            ),
             976
         );
     }
 
     #[test]
     fn local_byte_limit_allows_only_an_oversized_block_to_exceed_it() {
-        assert_eq!(local_batch_prefix_len(&[60, 60], 0, 0, 10, 100), 1);
-        assert_eq!(local_batch_prefix_len(&[150, 10], 0, 0, 10, 100), 1);
-        assert_eq!(local_batch_prefix_len(&[10], 1, 150, 10, 100), 0);
+        assert_eq!(
+            local_batch_prefix_len(
+                &[60, 60],
+                &[0, 0],
+                local_weight(0, 0, 0),
+                local_weight(10, 100, u64::MAX),
+            ),
+            1
+        );
+        assert_eq!(
+            local_batch_prefix_len(
+                &[150, 10],
+                &[0, 0],
+                local_weight(0, 0, 0),
+                local_weight(10, 100, u64::MAX),
+            ),
+            1
+        );
+        assert_eq!(
+            local_batch_prefix_len(
+                &[10],
+                &[0],
+                local_weight(1, 150, 0),
+                local_weight(10, 100, u64::MAX),
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn local_work_limit_splits_dense_blocks_and_admits_one_oversized_block() {
+        assert_eq!(
+            local_batch_prefix_len(
+                &[10; 4],
+                &[30, 30, 30, 30],
+                local_weight(0, 0, 0),
+                local_weight(10, 1_000, 75),
+            ),
+            2
+        );
+        assert_eq!(
+            local_batch_prefix_len(
+                &[10; 2],
+                &[100, 1],
+                local_weight(0, 0, 0),
+                local_weight(10, 1_000, 75),
+            ),
+            1
+        );
+        assert_eq!(
+            local_batch_prefix_len(
+                &[10],
+                &[1],
+                local_weight(1, 10, 75),
+                local_weight(10, 1_000, 75),
+            ),
+            0
+        );
     }
 
     #[test]

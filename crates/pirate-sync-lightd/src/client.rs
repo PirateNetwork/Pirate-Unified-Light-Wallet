@@ -874,6 +874,24 @@ impl From<proto::CompactBlock> for CompactBlock {
     }
 }
 
+impl CompactBlock {
+    pub(crate) fn shielded_work_items(
+        &self,
+        sapling_work_factor: u64,
+        ironwood_work_factor: u64,
+    ) -> u64 {
+        self.transactions.iter().fold(0u64, |total, tx| {
+            total
+                .saturating_add(
+                    (tx.outputs.len() as u64).saturating_mul(sapling_work_factor.max(1)),
+                )
+                .saturating_add(
+                    (tx.actions.len() as u64).saturating_mul(ironwood_work_factor.max(1)),
+                )
+        })
+    }
+}
+
 impl From<CompactBlock> for proto::CompactBlock {
     fn from(block: CompactBlock) -> Self {
         Self {

@@ -13,9 +13,10 @@ use crate::block_cache::{acquire_inflight, BlockCache, InflightLease, InflightTo
 use crate::client::{CompactBlockData, LightdInfo, TransportMode, TreeState};
 use crate::intake::{
     local_batch_prefix_len, AdaptiveDurableSegmentController, AdaptiveScanBatcher,
-    DurableSegmentObservation, PrefetchReservation, PrefetchWatermarks, ScanBatchObservation,
-    ScanBatchSource, DEFAULT_DURABLE_SEGMENT_BLOCKS, DEFAULT_NETWORK_SCAN_BATCH_TARGET,
-    DURABLE_SEGMENT_CHANNEL_CAPACITY, LOCAL_SCAN_BATCH_CHANNEL_CAPACITY,
+    AdaptiveShieldedWorkBatcher, DurableSegmentObservation, LocalBatchWeight, PrefetchReservation,
+    PrefetchWatermarks, ScanBatchObservation, ScanBatchSource, DEFAULT_DURABLE_SEGMENT_BLOCKS,
+    DEFAULT_NETWORK_SCAN_BATCH_TARGET, DURABLE_SEGMENT_CHANNEL_CAPACITY,
+    LOCAL_SCAN_BATCH_CHANNEL_CAPACITY,
 };
 use crate::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes;
 use crate::pipeline::NoteType;
@@ -927,8 +928,10 @@ impl Drop for PersistenceWorker {
 struct FetchedBlockBatch {
     blocks: Vec<CompactBlockData>,
     encoded_bytes: u64,
+    shielded_work_items: u64,
     requested_blocks: u64,
     requested_bytes: u64,
+    requested_work_items: u64,
     source: BlockFetchSource,
     elapsed: Duration,
     network_elapsed: Duration,
@@ -939,6 +942,9 @@ struct FetchedBlockBatch {
 struct PrefetchFlowControl {
     target_blocks: AtomicU64,
     target_bytes: AtomicU64,
+    target_work_items: AtomicU64,
+    sapling_work_factor: u64,
+    ironwood_work_factor: u64,
     durable_segment_blocks: Arc<AtomicU64>,
     watermarks: Arc<PrefetchWatermarks>,
 }
@@ -964,6 +970,7 @@ impl Drop for AbortTaskOnDrop {
 struct NetworkBatchAccumulator {
     blocks: Vec<CompactBlockData>,
     encoded_bytes: u64,
+    shielded_work_items: u64,
     network_elapsed: Duration,
     cache_write_elapsed: Duration,
     spool_reservations: Vec<PrefetchReservation>,
@@ -974,33 +981,44 @@ impl NetworkBatchAccumulator {
         self.blocks.is_empty()
     }
 
-    fn reached(&self, target: (u64, u64)) -> bool {
-        self.blocks.len() as u64 >= target.0 || self.encoded_bytes >= target.1
+    fn reached(&self, target: (u64, u64, u64)) -> bool {
+        self.blocks.len() as u64 >= target.0
+            || self.encoded_bytes >= target.1
+            || self.shielded_work_items >= target.2
     }
 
     fn push(
         &mut self,
         mut blocks: Vec<CompactBlockData>,
         encoded_bytes: u64,
+        shielded_work_items: u64,
         network_elapsed: Duration,
         cache_write_elapsed: Duration,
         reservation: PrefetchReservation,
     ) {
         self.blocks.append(&mut blocks);
         self.encoded_bytes = self.encoded_bytes.saturating_add(encoded_bytes);
+        self.shielded_work_items = self.shielded_work_items.saturating_add(shielded_work_items);
         self.network_elapsed += network_elapsed;
         self.cache_write_elapsed += cache_write_elapsed;
         self.spool_reservations.push(reservation);
     }
 
-    fn take_batch(&mut self, requested_blocks: u64, requested_bytes: u64) -> FetchedBlockBatch {
+    fn take_batch(
+        &mut self,
+        requested_blocks: u64,
+        requested_bytes: u64,
+        requested_work_items: u64,
+    ) -> FetchedBlockBatch {
         let network_elapsed = std::mem::take(&mut self.network_elapsed);
         let cache_write_elapsed = std::mem::take(&mut self.cache_write_elapsed);
         FetchedBlockBatch {
             blocks: std::mem::take(&mut self.blocks),
             encoded_bytes: std::mem::take(&mut self.encoded_bytes),
+            shielded_work_items: std::mem::take(&mut self.shielded_work_items),
             requested_blocks,
             requested_bytes,
+            requested_work_items,
             source: BlockFetchSource::Network,
             elapsed: network_elapsed + cache_write_elapsed,
             network_elapsed,
@@ -1216,6 +1234,17 @@ fn wallet_relevant_blocks(
     let birthday_height = u64::from(birthday_height);
     let first_relevant = blocks.partition_point(|block| block.height < birthday_height);
     &blocks[first_relevant..]
+}
+
+fn block_shielded_work_items(
+    blocks: &[CompactBlockData],
+    sapling_work_factor: u64,
+    ironwood_work_factor: u64,
+) -> Vec<u64> {
+    blocks
+        .iter()
+        .map(|block| block.shielded_work_items(sapling_work_factor, ironwood_work_factor))
+        .collect()
 }
 
 fn prepare_commitment_batch(blocks: &[CompactBlockData]) -> PreparedCommitmentBatch {
@@ -3839,11 +3868,16 @@ impl SyncEngine {
             prefetched_batch_encoded_byte_cap(&self.config),
             self.decrypt_pool.current_num_threads(),
         );
+        let mut adaptive_shielded_work_batcher =
+            AdaptiveShieldedWorkBatcher::new(self.decrypt_pool.current_num_threads());
         let prefetch_flow = Arc::new(PrefetchFlowControl {
             target_blocks: AtomicU64::new(adaptive_scan_batcher.target_blocks()),
             target_bytes: AtomicU64::new(
                 current_target_bytes.min(prefetched_batch_encoded_byte_cap(&self.config)),
             ),
+            target_work_items: AtomicU64::new(adaptive_shielded_work_batcher.target_items()),
+            sapling_work_factor: self.trial_decrypt_keys.sapling_ivks.len().max(1) as u64,
+            ironwood_work_factor: self.trial_decrypt_keys.orchard_ivks.len().max(1) as u64,
             durable_segment_blocks: Arc::new(AtomicU64::new(DEFAULT_DURABLE_SEGMENT_BLOCKS)),
             watermarks: PrefetchWatermarks::new(
                 self.config.prefetch_queue_max_bytes,
@@ -4422,8 +4456,10 @@ impl SyncEngine {
                 let FetchedBlockBatch {
                     blocks,
                     encoded_bytes,
+                    shielded_work_items,
                     requested_blocks,
                     requested_bytes,
+                    requested_work_items,
                     source: fetch_source,
                     elapsed: fetch_elapsed,
                     network_elapsed: network_fetch_elapsed,
@@ -5175,13 +5211,14 @@ impl SyncEngine {
                     .sapling_work
                     .parallel_worker_active
                     .saturating_add(shardtree_work.ironwood_work.parallel_worker_active);
+                let local_processing_time =
+                    batch_full_elapsed.saturating_sub(Duration::from_millis(fetch_wait_ms as u64));
                 network_max_batch_blocks = adaptive_scan_batcher.observe(ScanBatchObservation {
                     requested_blocks,
                     requested_bytes,
                     blocks: blocks.len() as u64,
                     encoded_bytes: total_block_size,
-                    processing_time: batch_full_elapsed
-                        .saturating_sub(Duration::from_millis(fetch_wait_ms as u64)),
+                    processing_time: local_processing_time,
                     intake_wait: Duration::from_millis(fetch_wait_ms as u64),
                     queued_bytes: prefetch_flow.watermarks.queued_bytes(),
                     source: match fetch_source {
@@ -5195,6 +5232,16 @@ impl SyncEngine {
                 prefetch_flow
                     .target_blocks
                     .store(network_max_batch_blocks, Ordering::Release);
+                let previous_work_target = adaptive_shielded_work_batcher.target_items();
+                let next_work_target = adaptive_shielded_work_batcher.observe(
+                    requested_work_items,
+                    shielded_work_items,
+                    local_processing_time,
+                    batch_end >= end,
+                );
+                prefetch_flow
+                    .target_work_items
+                    .store(next_work_target, Ordering::Release);
                 if previous_scan_target != network_max_batch_blocks {
                     tracing::debug!(
                         previous = previous_scan_target,
@@ -5203,6 +5250,15 @@ impl SyncEngine {
                         decision = adaptive_scan_batcher.last_decision().as_str(),
                         queued_bytes = prefetch_flow.watermarks.queued_bytes(),
                         "adapted local scan batch target"
+                    );
+                }
+                if previous_work_target != next_work_target {
+                    tracing::debug!(
+                        previous = previous_work_target,
+                        next = next_work_target,
+                        completed = shielded_work_items,
+                        processing_ms = local_processing_time.as_millis(),
+                        "adapted local shielded-work target"
                     );
                 }
 
@@ -5241,7 +5297,7 @@ impl SyncEngine {
                         known_processing_ms + perf_progress_ms + checkpoint_ms + sync_state_ms;
                     let residual_full_other_ms = batch_full_ms.saturating_sub(known_full_ms);
                     append_debug_log_line(&format!(
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"wallet_id":"{}","start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"fetch_source":"{}","scan_requested_blocks":{},"scan_requested_bytes":{},"scan_controller_decision":"{}","scan_cached_blocks_per_second":{},"scan_cached_parallel_saturation_ppm":{},"scan_target_blocks":{},"durable_segment_blocks":{},"prefetch_queued_bytes":{},"prefetch_high_bytes":{},"fetch_wait_ms":{},"fetch_total_ms":{},"network_fetch_ms":{},"cache_write_ms":{},"boundary_validation_ms":{},"decrypt_ms":{},"decrypt_pool_wall_ms":{},"decrypt_worker_active_ms":{},"decrypt_worker_tasks":{},"tree_parallel_wall_ms":{},"tree_parallel_worker_active_ms":{},"tree_effective_workers_milli":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"chain_blocks_ms":{},"prefetch_plan_ms":{},"batch_sizing_ms":{},"next_prefetch_ms":{},"note_post_ms":{},"tx_meta_prepare_ms":{},"perf_progress_ms":{},"checkpoint_ms":{},"sync_state_ms":{},"residual_processing_other_ms":{},"residual_full_other_ms":{},"batch_total_ms":{},"batch_full_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"wallet_id":"{}","start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"shielded_work_items":{},"requested_work_items":{},"shielded_work_target":{},"fetch_source":"{}","scan_requested_blocks":{},"scan_requested_bytes":{},"scan_controller_decision":"{}","scan_cached_blocks_per_second":{},"scan_cached_parallel_saturation_ppm":{},"scan_target_blocks":{},"durable_segment_blocks":{},"prefetch_queued_bytes":{},"prefetch_high_bytes":{},"fetch_wait_ms":{},"fetch_total_ms":{},"network_fetch_ms":{},"cache_write_ms":{},"boundary_validation_ms":{},"decrypt_ms":{},"decrypt_pool_wall_ms":{},"decrypt_worker_active_ms":{},"decrypt_worker_tasks":{},"tree_parallel_wall_ms":{},"tree_parallel_worker_active_ms":{},"tree_effective_workers_milli":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"chain_blocks_ms":{},"prefetch_plan_ms":{},"batch_sizing_ms":{},"next_prefetch_ms":{},"note_post_ms":{},"tx_meta_prepare_ms":{},"perf_progress_ms":{},"checkpoint_ms":{},"sync_state_ms":{},"residual_processing_other_ms":{},"residual_full_other_ms":{},"batch_total_ms":{},"batch_full_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                         id,
                         ts,
                         wallet_id,
@@ -5251,6 +5307,9 @@ impl SyncEngine {
                         notes.len(),
                         total_block_size,
                         avg_block_size,
+                        shielded_work_items,
+                        requested_work_items,
+                        next_work_target,
                         fetch_source.as_str(),
                         requested_blocks,
                         requested_bytes,
@@ -5824,11 +5883,17 @@ impl SyncEngine {
             max_chunk_bytes,
         )
         .await?;
+        let shielded_work_items = blocks
+            .iter()
+            .map(|block| block.shielded_work_items(1, 1))
+            .sum();
         Ok(FetchedBlockBatch {
             encoded_bytes: timings.encoded_bytes,
             blocks,
+            shielded_work_items,
             requested_blocks: end.saturating_sub(start).saturating_add(1),
             requested_bytes: max_chunk_bytes,
+            requested_work_items: u64::MAX,
             source,
             elapsed: started.elapsed(),
             network_elapsed: timings.network_elapsed,
@@ -6267,9 +6332,17 @@ impl SyncEngine {
                     .target_bytes
                     .load(Ordering::Acquire)
                     .clamp(1, max_chunk_bytes);
+                let target_work_items = flow.target_work_items.load(Ordering::Acquire).max(1);
                 let local_end = end.min(current.saturating_add(target_blocks.saturating_sub(1)));
-                match cache.load_bounded_range_for_upgrade(current, local_end, target_bytes) {
-                    Ok(cached) if !cached.blocks.is_empty() => {
+                match cache.load_bounded_work_range_for_upgrade(
+                    current,
+                    local_end,
+                    target_bytes,
+                    target_work_items,
+                    flow.sapling_work_factor,
+                    flow.ironwood_work_factor,
+                ) {
+                    Ok(mut cached) if !cached.blocks.is_empty() => {
                         let chunk_end =
                             cached
                                 .blocks
@@ -6288,6 +6361,7 @@ impl SyncEngine {
                         )
                         .await?
                         {
+                            cached.legacy_heights.retain(|height| *height <= chunk_end);
                             if !cached.legacy_heights.is_empty() {
                                 cache
                                     .upgrade_legacy_rows(&cached.blocks, &cached.legacy_heights)?;
@@ -6299,8 +6373,10 @@ impl SyncEngine {
                             let batch = FetchedBlockBatch {
                                 blocks: cached.blocks,
                                 encoded_bytes: cached.encoded_bytes,
+                                shielded_work_items: cached.shielded_work_items,
                                 requested_blocks: target_blocks,
                                 requested_bytes: target_bytes,
+                                requested_work_items: target_work_items,
                                 source: BlockFetchSource::Cache,
                                 elapsed: Duration::ZERO,
                                 network_elapsed: Duration::ZERO,
@@ -6380,6 +6456,11 @@ impl SyncEngine {
                             segment_block_bytes.iter().copied().sum::<u64>(),
                             segment_bytes
                         );
+                        let mut segment_block_work = block_shielded_work_items(
+                            &segment_blocks,
+                            flow.sapling_work_factor,
+                            flow.ironwood_work_factor,
+                        );
                         let mut attribute_network = Some(network_elapsed);
                         let mut attribute_cache_write = Some(cache_write_elapsed);
                         while !segment_blocks.is_empty() {
@@ -6388,16 +6469,24 @@ impl SyncEngine {
                                 flow.target_bytes
                                     .load(Ordering::Acquire)
                                     .clamp(1, max_chunk_bytes),
+                                flow.target_work_items.load(Ordering::Acquire).max(1),
                             );
                             let take = local_batch_prefix_len(
                                 &segment_block_bytes,
-                                pending.blocks.len() as u64,
-                                pending.encoded_bytes,
-                                target.0,
-                                target.1,
+                                &segment_block_work,
+                                LocalBatchWeight {
+                                    blocks: pending.blocks.len() as u64,
+                                    encoded_bytes: pending.encoded_bytes,
+                                    shielded_work_items: pending.shielded_work_items,
+                                },
+                                LocalBatchWeight {
+                                    blocks: target.0,
+                                    encoded_bytes: target.1,
+                                    shielded_work_items: target.2,
+                                },
                             );
                             if take == 0 {
-                                let batch = pending.take_batch(target.0, target.1);
+                                let batch = pending.take_batch(target.0, target.1, target.2);
                                 Self::send_prefetched_batch(sender, batch, &cancel).await?;
                                 continue;
                             }
@@ -6408,16 +6497,20 @@ impl SyncEngine {
                             let remaining_sizes = segment_block_bytes.split_off(take);
                             let piece_sizes =
                                 std::mem::replace(&mut segment_block_bytes, remaining_sizes);
+                            let remaining_work = segment_block_work.split_off(take);
+                            let piece_work =
+                                std::mem::replace(&mut segment_block_work, remaining_work);
                             let piece_bytes = piece_sizes.iter().copied().sum::<u64>();
                             pending.push(
                                 piece_blocks,
                                 piece_bytes,
+                                piece_work.iter().copied().sum(),
                                 attribute_network.take().unwrap_or_default(),
                                 attribute_cache_write.take().unwrap_or_default(),
                                 reservation.clone(),
                             );
                             if pending.reached(target) {
-                                let batch = pending.take_batch(target.0, target.1);
+                                let batch = pending.take_batch(target.0, target.1, target.2);
                                 Self::send_prefetched_batch(sender, batch, &cancel).await?;
                             }
                         }
@@ -6429,6 +6522,7 @@ impl SyncEngine {
                             flow.target_bytes
                                 .load(Ordering::Acquire)
                                 .clamp(1, max_chunk_bytes),
+                            flow.target_work_items.load(Ordering::Acquire).max(1),
                         );
                         Self::send_prefetched_batch(sender, batch, &cancel).await?;
                     }
@@ -12765,10 +12859,16 @@ mod tests {
     }
 
     fn fetched_test_batch(blocks: Vec<CompactBlockData>) -> FetchedBlockBatch {
+        let shielded_work_items = blocks
+            .iter()
+            .map(|block| block.shielded_work_items(1, 1))
+            .sum();
         FetchedBlockBatch {
             encoded_bytes: blocks.len() as u64,
+            shielded_work_items,
             requested_blocks: blocks.len() as u64,
             requested_bytes: u64::MAX,
+            requested_work_items: u64::MAX,
             blocks,
             source: BlockFetchSource::Cache,
             elapsed: Duration::ZERO,

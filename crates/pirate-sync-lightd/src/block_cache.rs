@@ -23,6 +23,7 @@ pub(crate) struct LoadedBlockRange {
     pub(crate) blocks: Vec<CompactBlockData>,
     pub(crate) legacy_heights: Vec<u64>,
     pub(crate) encoded_bytes: u64,
+    pub(crate) shielded_work_items: u64,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -146,6 +147,7 @@ impl BlockCache {
                 blocks: Vec::new(),
                 legacy_heights: Vec::new(),
                 encoded_bytes: 0,
+                shielded_work_items: 0,
             });
         }
 
@@ -165,6 +167,7 @@ impl BlockCache {
         let mut blocks = Vec::new();
         let mut legacy_heights = Vec::new();
         let mut encoded_bytes = 0u64;
+        let mut shielded_work_items = 0u64;
         for row in rows {
             let (height, data) = row.map_err(|e| Error::Storage(e.to_string()))?;
             let height = u64::try_from(height)
@@ -172,30 +175,49 @@ impl BlockCache {
             if !data.starts_with(CACHE_RECORD_MAGIC) {
                 legacy_heights.push(height);
             }
-            encoded_bytes = encoded_bytes.saturating_add(data.len() as u64);
-            blocks.push(decode_block(&data)?);
+            let row_bytes = data.len() as u64;
+            encoded_bytes = encoded_bytes.saturating_add(row_bytes);
+            let block = decode_block(&data)?;
+            shielded_work_items =
+                shielded_work_items.saturating_add(block.shielded_work_items(1, 1));
+            blocks.push(block);
         }
 
         Ok(LoadedBlockRange {
             blocks,
             legacy_heights,
             encoded_bytes,
+            shielded_work_items,
         })
     }
 
     /// Load the largest contiguous prefix whose encoded cache rows fit the byte
     /// budget. A single oversized block is returned by itself.
+    #[cfg(test)]
     pub(crate) fn load_bounded_range_for_upgrade(
         &self,
         start: u64,
         end: u64,
         max_encoded_bytes: u64,
     ) -> Result<LoadedBlockRange> {
+        self.load_bounded_work_range_for_upgrade(start, end, max_encoded_bytes, u64::MAX, 1, 1)
+    }
+
+    pub(crate) fn load_bounded_work_range_for_upgrade(
+        &self,
+        start: u64,
+        end: u64,
+        max_encoded_bytes: u64,
+        max_shielded_work_items: u64,
+        sapling_work_factor: u64,
+        ironwood_work_factor: u64,
+    ) -> Result<LoadedBlockRange> {
         if start > end {
             return Ok(LoadedBlockRange {
                 blocks: Vec::new(),
                 legacy_heights: Vec::new(),
                 encoded_bytes: 0,
+                shielded_work_items: 0,
             });
         }
 
@@ -207,6 +229,7 @@ impl BlockCache {
                     blocks: Vec::new(),
                     legacy_heights: Vec::new(),
                     encoded_bytes: 0,
+                    shielded_work_items: 0,
                 });
             }
             None => end,
@@ -224,6 +247,8 @@ impl BlockCache {
         let mut blocks = Vec::new();
         let mut legacy_heights = Vec::new();
         let mut encoded_bytes = 0u64;
+        let mut shielded_work_items = 0u64;
+        let max_shielded_work_items = max_shielded_work_items.max(1);
 
         while let Some(row) = rows.next().map_err(|e| Error::Storage(e.to_string()))? {
             let height_i64: i64 = row.get(0).map_err(|e| Error::Storage(e.to_string()))?;
@@ -237,11 +262,20 @@ impl BlockCache {
             if !blocks.is_empty() && encoded_bytes.saturating_add(row_bytes) > max_encoded_bytes {
                 break;
             }
+            let block = decode_block(&data)?;
+            let block_work_items =
+                block.shielded_work_items(sapling_work_factor, ironwood_work_factor);
+            if !blocks.is_empty()
+                && shielded_work_items.saturating_add(block_work_items) > max_shielded_work_items
+            {
+                break;
+            }
             if !data.starts_with(CACHE_RECORD_MAGIC) {
                 legacy_heights.push(height);
             }
-            blocks.push(decode_block(&data)?);
+            blocks.push(block);
             encoded_bytes = encoded_bytes.saturating_add(row_bytes);
+            shielded_work_items = shielded_work_items.saturating_add(block_work_items);
             expected = expected.saturating_add(1);
         }
 
@@ -249,6 +283,7 @@ impl BlockCache {
             blocks,
             legacy_heights,
             encoded_bytes,
+            shielded_work_items,
         })
     }
 
@@ -1064,6 +1099,74 @@ mod tests {
             .unwrap();
         assert_eq!(loaded.blocks.len(), 1);
         assert!(loaded.encoded_bytes > 1);
+    }
+
+    #[test]
+    fn bounded_cache_reads_stop_on_weighted_shielded_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = BlockCache::new(dir.path().join("blocks.db")).unwrap();
+        let blocks = (42..=45)
+            .map(|height| {
+                let mut block = sample_block();
+                block.height = height;
+                block.hash = vec![height as u8; 32];
+                block
+            })
+            .collect::<Vec<_>>();
+        cache.store_blocks(&blocks).unwrap();
+
+        // Each block has one Sapling output and one Ironwood action. With two
+        // and three local viewing-key candidates respectively, each costs five
+        // work items and only one fits below a budget of nine.
+        let first = cache
+            .load_bounded_work_range_for_upgrade(42, 45, u64::MAX, 9, 2, 3)
+            .unwrap();
+        assert_eq!(first.blocks.len(), 1);
+        assert_eq!(first.shielded_work_items, 5);
+
+        let two = cache
+            .load_bounded_work_range_for_upgrade(43, 45, u64::MAX, 10, 2, 3)
+            .unwrap();
+        assert_eq!(two.blocks.len(), 2);
+        assert_eq!(two.shielded_work_items, 10);
+
+        let oversized = cache
+            .load_bounded_work_range_for_upgrade(45, 45, u64::MAX, 1, 2, 3)
+            .unwrap();
+        assert_eq!(oversized.blocks.len(), 1);
+        assert_eq!(oversized.shielded_work_items, 5);
+    }
+
+    #[test]
+    fn dense_cache_batches_resume_without_gaps() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = BlockCache::new(dir.path().join("blocks.db")).unwrap();
+        let blocks = (42..=73)
+            .map(|height| {
+                let mut block = sample_block();
+                block.height = height;
+                block.hash = vec![height as u8; 32];
+                let output_count = if height.is_multiple_of(7) { 9 } else { 2 };
+                block.transactions[0].outputs =
+                    vec![block.transactions[0].outputs[0].clone(); output_count];
+                block
+            })
+            .collect::<Vec<_>>();
+        cache.store_blocks(&blocks).unwrap();
+
+        let mut next = 42;
+        let mut decoded_heights = Vec::new();
+        while next <= 73 {
+            let batch = cache
+                .load_bounded_work_range_for_upgrade(next, 73, u64::MAX, 12, 1, 1)
+                .unwrap();
+            assert!(!batch.blocks.is_empty());
+            assert!(batch.shielded_work_items <= 12 || batch.blocks.len() == 1);
+            decoded_heights.extend(batch.blocks.iter().map(|block| block.height));
+            next = batch.blocks.last().unwrap().height.saturating_add(1);
+        }
+
+        assert_eq!(decoded_heights, (42..=73).collect::<Vec<_>>());
     }
 
     #[test]
