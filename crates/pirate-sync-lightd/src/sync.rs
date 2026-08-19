@@ -6407,6 +6407,9 @@ impl SyncEngine {
                     continue;
                 }
                 InflightLease::Leader(token) => {
+                    let max_segment_bytes = max_chunk_bytes
+                        .min(flow.watermarks.segment_admission_bytes())
+                        .max(1);
                     let (segment_sender, mut segment_receiver) =
                         mpsc::channel(DURABLE_SEGMENT_CHANNEL_CAPACITY);
                     let segment_handle = tokio::spawn(Self::produce_durable_network_segments(
@@ -6415,7 +6418,7 @@ impl SyncEngine {
                         end,
                         cancel.clone(),
                         wallet_id.clone(),
-                        max_chunk_bytes,
+                        max_segment_bytes,
                         Arc::clone(&flow),
                         token,
                         segment_sender,
@@ -6627,7 +6630,10 @@ impl SyncEngine {
                 );
             }
 
-            let reservation = flow.watermarks.reserve(encoded_bytes, &cancel).await?;
+            let reservation = flow
+                .watermarks
+                .reserve_durable_segment(encoded_bytes, &cancel)
+                .await?;
             let previous_segment_blocks = segment_controller.target_blocks();
             let next_segment_blocks = segment_controller.observe(DurableSegmentObservation {
                 blocks: blocks.len() as u64,

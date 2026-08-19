@@ -917,12 +917,43 @@ impl PrefetchWatermarks {
         self.high_bytes
     }
 
+    /// Largest ordinary segment that can be admitted as soon as the queue
+    /// reaches its low-water boundary. A larger segment would require the
+    /// queue to drain completely and can deadlock a one-batch lookahead that
+    /// still owns an earlier reservation.
+    pub(crate) fn segment_admission_bytes(&self) -> u64 {
+        self.high_bytes.saturating_sub(self.low_bytes).max(1)
+    }
+
     pub(crate) async fn reserve(
         self: &Arc<Self>,
         encoded_bytes: u64,
         cancel: &CancelToken,
     ) -> Result<PrefetchReservation> {
-        let charged_bytes = encoded_bytes.max(1).min(self.high_bytes);
+        self.reserve_charged(encoded_bytes.max(1).min(self.high_bytes), cancel)
+            .await
+    }
+
+    /// Reserve a durable segment. Multi-block segments are capped to this
+    /// charge before admission; an indivisible oversized block uses the same
+    /// bounded charge so it cannot wait forever behind a partial local batch.
+    pub(crate) async fn reserve_durable_segment(
+        self: &Arc<Self>,
+        encoded_bytes: u64,
+        cancel: &CancelToken,
+    ) -> Result<PrefetchReservation> {
+        self.reserve_charged(
+            encoded_bytes.max(1).min(self.segment_admission_bytes()),
+            cancel,
+        )
+        .await
+    }
+
+    async fn reserve_charged(
+        self: &Arc<Self>,
+        charged_bytes: u64,
+        cancel: &CancelToken,
+    ) -> Result<PrefetchReservation> {
         loop {
             let notified = self.changed.notified();
             let queued = self.queued_bytes.load(Ordering::Acquire);
@@ -1803,6 +1834,20 @@ mod tests {
         let second = waiting.await.unwrap().unwrap();
         assert_eq!(watermarks.queued_bytes(), 50);
         drop(second);
+        assert_eq!(watermarks.queued_bytes(), 0);
+    }
+
+    #[tokio::test]
+    async fn durable_segment_fits_at_the_low_water_boundary() {
+        let watermarks = PrefetchWatermarks::new(100, 40);
+        assert_eq!(watermarks.segment_admission_bytes(), 60);
+        let held = watermarks.reserve(40, &CancelToken::new()).await.unwrap();
+        let segment = watermarks
+            .reserve_durable_segment(1_000, &CancelToken::new())
+            .await
+            .unwrap();
+        assert_eq!(watermarks.queued_bytes(), 100);
+        drop((held, segment));
         assert_eq!(watermarks.queued_bytes(), 0);
     }
 
