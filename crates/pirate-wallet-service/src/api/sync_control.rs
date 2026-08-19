@@ -2197,7 +2197,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
             let result = run_sync_engine_task(sync.clone(), move |engine| {
                 Box::pin(async move {
                     engine
-                        .sync_range_to_latest(rescan_start_plan.requested_sync_from_height)
+                        .sync_rescan_to_latest(rescan_start_plan.requested_sync_from_height)
                         .await
                         .map_err(anyhow::Error::from)
                 })
