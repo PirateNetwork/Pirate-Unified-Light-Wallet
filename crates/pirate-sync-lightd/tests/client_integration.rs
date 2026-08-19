@@ -312,6 +312,31 @@ mod live_tests {
         println!("✓ Latest block height: {}", height);
     }
 
+    /// Verify that the default endpoint can provide the historical frontier
+    /// required to bootstrap an arbitrary-height wallet rescan.
+    #[tokio::test]
+    #[ignore = "Requires live network"]
+    async fn test_live_get_historical_tree_state() {
+        let config = LightClientConfig::direct(DEFAULT_LIGHTD_URL);
+        let client = LightClient::with_config(config);
+        let height = std::env::var("PIRATE_TEST_TREE_STATE_HEIGHT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(2_399_999);
+
+        client.connect().await.expect("Failed to connect");
+        let state = client
+            .get_tree_state(height)
+            .await
+            .expect("Failed to get historical tree state");
+
+        assert_eq!(state.height, height);
+        assert!(
+            !state.sapling_frontier.is_empty() || !state.sapling_tree.is_empty(),
+            "Historical Sapling frontier is empty"
+        );
+    }
+
     /// Test streaming compact blocks from live server
     #[tokio::test]
     #[ignore = "Requires live network"]
