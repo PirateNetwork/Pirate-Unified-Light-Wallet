@@ -46,8 +46,8 @@ pub struct BackgroundSyncConfig {
     pub max_duration_secs: u64,
     /// Maximum blocks to sync in one run (normal conditions)
     pub max_blocks: u64,
-    /// Maximum blocks during spam periods (reduced to prevent timeouts)
-    pub max_blocks_spam: u64,
+    /// Maximum blocks during dense periods (reduced to prevent timeouts)
+    pub max_blocks_dense: u64,
     /// Compact sync interval (minutes)
     pub compact_interval_mins: u32,
     /// Deep sync interval (hours)
@@ -63,7 +63,7 @@ impl Default for BackgroundSyncConfig {
         Self {
             max_duration_secs: 90,
             max_blocks: 5_000_000,
-            max_blocks_spam: 50_000,
+            max_blocks_dense: 50_000,
             compact_interval_mins: 24 * 60,
             deep_interval_hours: 24,
             use_foreground_service: true,
@@ -177,25 +177,25 @@ impl BackgroundSyncOrchestrator {
     async fn execute_compact_sync(&self, start: u64, target: u64) -> Result<(u64, u32)> {
         let mut engine = self.sync_engine.clone().lock_owned().await;
 
-        // Check if we're in a spam period by checking recent sync performance
+        // Check for a dense period using recent sync performance.
         // If recent batches were heavy, reduce max_blocks to prevent timeouts
         let max_blocks = {
             let perf = engine.perf_counters();
             let perf_snap = perf.snapshot();
-            // If average batch time is very high (>5s per batch), likely spam period
+            // If average batch time is very high (>5s per batch), the range is likely dense.
             // Reduce max_blocks to prevent timeout
             if perf_snap.avg_batch_ms > 5000 && perf_snap.blocks_processed > 0 {
                 debug!(
-                    "Spam period detected (avg batch {}ms), reducing max_blocks from {} to {}",
-                    perf_snap.avg_batch_ms, self.config.max_blocks, self.config.max_blocks_spam
+                    "Dense block range detected (avg batch {}ms), reducing max_blocks from {} to {}",
+                    perf_snap.avg_batch_ms, self.config.max_blocks, self.config.max_blocks_dense
                 );
-                self.config.max_blocks_spam
+                self.config.max_blocks_dense
             } else {
                 self.config.max_blocks
             }
         };
 
-        // Limit to max blocks (spam-aware)
+        // Limit the range using the density-aware cap.
         let effective_target = std::cmp::min(target, start + max_blocks.saturating_sub(1));
 
         // Sync with timeout
@@ -229,23 +229,23 @@ impl BackgroundSyncOrchestrator {
     async fn execute_deep_sync(&self, start: u64, target: u64) -> Result<(u64, u32)> {
         let mut engine = self.sync_engine.clone().lock_owned().await;
 
-        // Check if we're in a spam period (same logic as compact sync)
+        // Check for a dense period using the same logic as compact sync.
         let max_blocks = {
             let perf = engine.perf_counters();
             let perf_snap = perf.snapshot();
-            // If average batch time is very high (>5s per batch), likely spam period
+            // If average batch time is very high (>5s per batch), the range is likely dense.
             if perf_snap.avg_batch_ms > 5000 && perf_snap.blocks_processed > 0 {
                 debug!(
-                    "Spam period detected (avg batch {}ms), reducing max_blocks from {} to {}",
-                    perf_snap.avg_batch_ms, self.config.max_blocks, self.config.max_blocks_spam
+                    "Dense block range detected (avg batch {}ms), reducing max_blocks from {} to {}",
+                    perf_snap.avg_batch_ms, self.config.max_blocks, self.config.max_blocks_dense
                 );
-                self.config.max_blocks_spam
+                self.config.max_blocks_dense
             } else {
                 self.config.max_blocks
             }
         };
 
-        // Limit to max blocks (spam-aware) even for deep sync
+        // Apply the density-aware cap to deep sync as well.
         let effective_target = std::cmp::min(target, start + max_blocks.saturating_sub(1));
 
         let timeout = tokio::time::Duration::from_secs(self.config.max_duration_secs);
