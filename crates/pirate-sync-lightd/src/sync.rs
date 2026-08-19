@@ -245,7 +245,7 @@ pub struct SyncConfig {
     /// Initial batch size for block fetching (will adapt based on block size)
     /// Used when server batch recommendations are disabled or unavailable
     pub batch_size: u64,
-    /// Minimum batch size (for spam blocks)
+    /// Minimum batch size for dense or full blocks
     pub min_batch_size: u64,
     /// Maximum batch size (caps server-provided batches to prevent OOM)
     /// Also used as the maximum when using client-side batching
@@ -266,11 +266,11 @@ pub struct SyncConfig {
     pub defer_full_tx_fetch: bool,
     /// Target batch size in bytes (used to derive block count)
     pub target_batch_bytes: u64,
-    /// Minimum batch size in bytes (during heavy/spam periods)
+    /// Minimum batch size in bytes during dense block ranges
     pub min_batch_bytes: u64,
     /// Maximum batch size in bytes (cap for large batches)
     pub max_batch_bytes: u64,
-    /// Threshold for detecting heavy/spam blocks (bytes per block)
+    /// Threshold for detecting unusually large blocks (bytes per block)
     pub heavy_block_threshold_bytes: u64,
     /// Maximum memory per batch in bytes (None = no limit)
     /// Helps prevent OOM on memory-constrained devices
@@ -388,7 +388,7 @@ impl Default for SyncConfig {
         Self {
             checkpoint_interval: 10_000,
             batch_size,     // Used when server recommendations disabled/unavailable.
-            min_batch_size, // Minimum batch size for spam blocks
+            min_batch_size, // Minimum batch size for dense block ranges
             max_batch_size, // Maximum batch size (caps server batches to prevent OOM)
             use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
             mini_checkpoint_every: 5,               // Mini-checkpoint every 5 batches
@@ -399,7 +399,7 @@ impl Default for SyncConfig {
             target_batch_bytes,
             min_batch_bytes,
             max_batch_bytes,
-            heavy_block_threshold_bytes: 500_000, // 500KB per block = heavy/spam (lowered for earlier detection)
+            heavy_block_threshold_bytes: 500_000, // 500KB per block triggers conservative byte sizing
             max_batch_memory_bytes,
             sync_state_flush_every_batches,
             sync_state_flush_interval_ms,
@@ -3891,7 +3891,7 @@ impl SyncEngine {
             (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
         let mut avg_block_size_estimate = if self.config.use_server_batch_recommendations {
             // Until the first real batch is measured, assume we might be entering
-            // a spam-heavy range. This prevents a speculative multi-thousand block
+            // a dense range. This prevents a speculative multi-thousand block
             // fetch from landing on memory-constrained mobile devices before
             // adaptive byte sizing has any telemetry.
             initial_block_size_estimate.max(self.config.heavy_block_threshold_bytes.max(1))
@@ -4528,7 +4528,7 @@ impl SyncEngine {
                 }
                 consecutive_fetch_failures = 0;
 
-                // Detect heavy/spam blocks and adapt batch size using the exact
+                // Detect unusually large blocks and adapt batch size using the exact
                 // protobuf bytes admitted by the bounded stream.
                 let batch_sizing_start = Instant::now();
                 let total_block_size = encoded_bytes.max(1);
@@ -4537,7 +4537,7 @@ impl SyncEngine {
                 let is_heavy_batch = avg_block_size > self.config.heavy_block_threshold_bytes;
                 if is_heavy_batch {
                     consecutive_heavy_batches += 1;
-                    // Reduce target bytes significantly for spam blocks.
+                    // Reduce target bytes significantly for unusually large blocks.
                     current_target_bytes =
                         std::cmp::max(self.config.min_batch_bytes, current_target_bytes / 4);
                     prefetch_flow.target_bytes.store(
@@ -5026,7 +5026,7 @@ impl SyncEngine {
                     }
 
                     tracing::info!(
-                        "Emergency checkpoint at {} due to spam blocks (target bytes: {})",
+                        "Emergency checkpoint at {} after dense blocks (target bytes: {})",
                         batch_end,
                         current_target_bytes
                     );
@@ -6782,6 +6782,9 @@ impl SyncEngine {
                 mut handle,
                 producer_abort,
             } => {
+                // The next batch has already crossed the network and durable
+                // cache boundary. Report the work actually blocking progress.
+                self.progress.write().await.set_stage(SyncStage::Notes);
                 let output = tokio::select! {
                     joined = &mut handle => joined.map_err(|error| {
                         Error::Sync(format!("trial-decrypt lookahead task failed: {}", error))
@@ -6849,6 +6852,38 @@ impl SyncEngine {
                     return Err(Error::Cancelled);
                 }
             };
+            let fetched_start = fetched
+                .blocks
+                .first()
+                .map(|block| block.height)
+                .unwrap_or(planned_start);
+            let fetched_end = fetched
+                .blocks
+                .last()
+                .map(|block| block.height)
+                .unwrap_or(planned_start);
+            tracing::debug!(
+                start = fetched_start,
+                end = fetched_end,
+                blocks = fetched.blocks.len(),
+                encoded_bytes = fetched.encoded_bytes,
+                shielded_work_items = fetched.shielded_work_items,
+                "starting one-batch-ahead immutable work"
+            );
+            if verbose_sync_batch_logging_enabled() {
+                append_sync_decision_log(
+                    "sync.rs:decrypt_lookahead",
+                    "starting one-batch-ahead immutable work",
+                    format!(
+                        "\"start\":{},\"end\":{},\"blocks\":{},\"encoded_bytes\":{},\"shielded_work_items\":{}",
+                        fetched_start,
+                        fetched_end,
+                        fetched.blocks.len(),
+                        fetched.encoded_bytes,
+                        fetched.shielded_work_items,
+                    ),
+                );
+            }
 
             let decrypt_cancel = cancel.clone();
             let (fetched, result, prepared_commitments) = tokio::task::spawn_blocking(move || {
