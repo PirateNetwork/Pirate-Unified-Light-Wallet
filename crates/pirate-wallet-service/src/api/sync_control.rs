@@ -1524,6 +1524,61 @@ fn rescan_phase_status(
     }
 }
 
+/// Keep rollback durability separate from the height presented to SyncEngine.
+/// The engine first bootstraps the requested frontier from lightwalletd and
+/// falls back to the retained checkpoint only when a partial replay is valid.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RescanStartPlan {
+    requested_sync_from_height: u64,
+    retained_tree_height: u64,
+    fallback_replay_from_height: u64,
+}
+
+fn plan_rescan_start(effective_from_height: u32, retained_tree_height: u64) -> RescanStartPlan {
+    let requested_sync_from_height = u64::from(effective_from_height).max(1);
+    let retained_tree_height =
+        retained_tree_height.min(requested_sync_from_height.saturating_sub(1));
+    let fallback_replay_from_height = retained_tree_height.saturating_add(1).max(1);
+
+    RescanStartPlan {
+        requested_sync_from_height,
+        retained_tree_height,
+        fallback_replay_from_height,
+    }
+}
+
+#[cfg(test)]
+mod rescan_start_plan_tests {
+    use super::*;
+
+    #[test]
+    fn pruned_checkpoint_bootstraps_at_the_requested_rescan_height() {
+        let plan = plan_rescan_start(2_400_000, 0);
+
+        assert_eq!(plan.requested_sync_from_height, 2_400_000);
+        assert_eq!(plan.retained_tree_height, 0);
+        assert_eq!(plan.fallback_replay_from_height, 1);
+    }
+
+    #[test]
+    fn partial_tree_replay_remains_available_without_replacing_the_requested_start() {
+        let plan = plan_rescan_start(2_400_000, 152_854);
+
+        assert_eq!(plan.requested_sync_from_height, 2_400_000);
+        assert_eq!(plan.retained_tree_height, 152_854);
+        assert_eq!(plan.fallback_replay_from_height, 152_855);
+    }
+
+    #[test]
+    fn exact_checkpoint_needs_no_earlier_fallback() {
+        let plan = plan_rescan_start(2_400_000, 2_399_999);
+
+        assert_eq!(plan.requested_sync_from_height, 2_400_000);
+        assert_eq!(plan.retained_tree_height, 2_399_999);
+        assert_eq!(plan.fallback_replay_from_height, 2_400_000);
+    }
+}
+
 fn mark_rescan_active(wallet_id: &WalletId) -> RescanActiveGuard {
     RESCAN_ACTIVE.write().insert(wallet_id.clone());
     RescanActiveGuard {
@@ -1597,7 +1652,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     mark_spendability_rescan_required(&wallet_id, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED);
     let mut effective_from_height = from_height;
     let truncate_height: u64;
-    let replay_from_height: u64;
+    let rescan_start_plan: RescanStartPlan;
     let mut historical_sapling_mark_positions = Vec::new();
     let mut historical_ironwood_mark_positions = Vec::new();
 
@@ -1893,7 +1948,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                     e
                 },
             )?;
-        replay_from_height = tree_replay_height.saturating_add(1).max(1);
+        rescan_start_plan = plan_rescan_start(effective_from_height, tree_replay_height);
         {
             pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
@@ -1922,7 +1977,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         }
         let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
         sync_storage
-            .reset_sync_state(tree_replay_height)
+            .reset_sync_state(rescan_start_plan.retained_tree_height)
             .map_err(|e| {
                 pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
@@ -1978,12 +2033,13 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_rescan_reset","timestamp":{},"location":"api.rs:3078","message":"rescan reset ok","data":{{"wallet_id":"{}","truncate_height":{},"reset_height":{},"replay_from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                r#"{{"id":"log_rescan_reset","timestamp":{},"location":"api.rs:3078","message":"rescan reset ok","data":{{"wallet_id":"{}","truncate_height":{},"reset_height":{},"requested_sync_from_height":{},"fallback_replay_from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                 ts,
                 wallet_id,
                 truncate_height,
-                replay_from_height.saturating_sub(1),
-                replay_from_height
+                rescan_start_plan.retained_tree_height,
+                rescan_start_plan.requested_sync_from_height,
+                rescan_start_plan.fallback_replay_from_height
             );
         });
     }
@@ -2057,7 +2113,9 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     let progress_handle = Arc::clone(&progress);
     let perf_handle = Arc::clone(&perf);
     let initial_status = rescan_phase_status(
-        replay_from_height.saturating_sub(1),
+        rescan_start_plan
+            .requested_sync_from_height
+            .saturating_sub(1),
         prior_target_height,
         crate::models::SyncStage::Preparing,
     );
@@ -2092,8 +2150,12 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     cache_sync_status(&wallet_id, &initial_status);
     mark_spendability_sync_finalizing(
         &wallet_id,
-        replay_from_height.saturating_sub(1),
-        replay_from_height.saturating_sub(1),
+        rescan_start_plan
+            .requested_sync_from_height
+            .saturating_sub(1),
+        rescan_start_plan
+            .requested_sync_from_height
+            .saturating_sub(1),
     );
     SYNC_RUNTIME_HANDLES.write().insert(
         wallet_id.clone(),
@@ -2110,8 +2172,12 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_rescan_session","timestamp":{},"location":"api.rs:3142","message":"rescan session created","data":{{"wallet_id":"{}","from_height":{},"replay_from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts, wallet_id, effective_from_height, replay_from_height
+                r#"{{"id":"log_rescan_session","timestamp":{},"location":"api.rs:3142","message":"rescan session created","data":{{"wallet_id":"{}","from_height":{},"requested_sync_from_height":{},"fallback_replay_from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                ts,
+                wallet_id,
+                effective_from_height,
+                rescan_start_plan.requested_sync_from_height,
+                rescan_start_plan.fallback_replay_from_height
             );
         });
     }
@@ -2131,7 +2197,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
             let result = run_sync_engine_task(sync.clone(), move |engine| {
                 Box::pin(async move {
                     engine
-                        .sync_range_to_latest(replay_from_height)
+                        .sync_range_to_latest(rescan_start_plan.requested_sync_from_height)
                         .await
                         .map_err(anyhow::Error::from)
                 })
