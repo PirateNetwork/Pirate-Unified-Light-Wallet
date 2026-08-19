@@ -1190,6 +1190,25 @@ enum FrontierInitSource {
     ReplayFrom(u64),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ResumeChainPolicy {
+    RepairMetadataGap,
+    PreserveHistoricalBootstrap,
+}
+
+fn matching_resume_height(
+    requested_start_height: u64,
+    local_tip_height: u64,
+    metadata_gap: bool,
+    policy: ResumeChainPolicy,
+) -> u64 {
+    if metadata_gap && policy == ResumeChainPolicy::RepairMetadataGap {
+        local_tip_height.saturating_add(1).max(1)
+    } else {
+        requested_start_height
+    }
+}
+
 fn wallet_relevant_blocks(
     blocks: &[CompactBlockData],
     birthday_height: u32,
@@ -1946,6 +1965,7 @@ impl SyncEngine {
         &mut self,
         requested_start_height: u64,
         remote_tip_height: u64,
+        policy: ResumeChainPolicy,
     ) -> Result<u64> {
         let Some(sink) = self.storage.clone() else {
             return Ok(requested_start_height);
@@ -1994,12 +2014,32 @@ impl SyncEngine {
             .get_block(height_to_u32(local_tip.height)?)
             .await?;
         if remote_tip_block.hash == local_tip.hash {
-            if metadata_gap {
+            let resume_height = matching_resume_height(
+                requested_start_height,
+                local_tip.height,
+                metadata_gap,
+                policy,
+            );
+            if resume_height != requested_start_height {
                 self.rollback_to_checkpoint(local_tip.height, None).await?;
                 self.invalidate_block_cache_above(local_tip.height);
-                return Ok(local_tip.height.saturating_add(1).max(1));
+            } else if metadata_gap {
+                tracing::info!(
+                    "Preserving intentional historical bootstrap at {} after validating retained chain tip {}",
+                    requested_start_height,
+                    local_tip.height
+                );
+                append_debug_log_line(&format!(
+                    r#"{{"id":"log_rescan_bootstrap_gap","timestamp":{},"location":"sync.rs:validate_resume_chain","message":"preserved intentional historical bootstrap gap","data":{{"requested_start":{},"retained_tip":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis(),
+                    requested_start_height,
+                    local_tip.height
+                ));
             }
-            return Ok(requested_start_height);
+            return Ok(resume_height);
         }
 
         tracing::warn!(
@@ -2155,13 +2195,37 @@ impl SyncEngine {
     /// Sync specific range
     pub async fn sync_range(&mut self, start_height: u64, end_height: Option<u64>) -> Result<()> {
         let follow_tip = end_height.is_none();
-        self.sync_range_with_mode(start_height, end_height, follow_tip)
-            .await
+        self.sync_range_with_mode(
+            start_height,
+            end_height,
+            follow_tip,
+            ResumeChainPolicy::RepairMetadataGap,
+        )
+        .await
     }
 
     /// Sync through one validated snapshot of the server tip, then return.
     pub async fn sync_range_to_latest(&mut self, start_height: u64) -> Result<()> {
-        self.sync_range_with_mode(start_height, None, false).await
+        self.sync_range_with_mode(
+            start_height,
+            None,
+            false,
+            ResumeChainPolicy::RepairMetadataGap,
+        )
+        .await
+    }
+
+    /// Sync an explicit historical rescan through one validated tip snapshot.
+    /// A gap between retained chain metadata and `start_height` is intentional:
+    /// ShardTrees will be bootstrapped from the server at the requested height.
+    pub async fn sync_rescan_to_latest(&mut self, start_height: u64) -> Result<()> {
+        self.sync_range_with_mode(
+            start_height,
+            None,
+            false,
+            ResumeChainPolicy::PreserveHistoricalBootstrap,
+        )
+        .await
     }
 
     async fn sync_range_with_mode(
@@ -2169,6 +2233,7 @@ impl SyncEngine {
         start_height: u64,
         end_height: Option<u64>,
         follow_tip: bool,
+        resume_chain_policy: ResumeChainPolicy,
     ) -> Result<()> {
         tracing::info!(
             "sync_range called: start={}, end_height={:?}",
@@ -2288,7 +2353,7 @@ impl SyncEngine {
         }
 
         effective_start_height = self
-            .validate_resume_chain(effective_start_height, end)
+            .validate_resume_chain(effective_start_height, end, resume_chain_policy)
             .await?;
 
         self.ensure_nullifier_cache()?;
@@ -5465,7 +5530,11 @@ impl SyncEngine {
             match self.client.get_latest_block().await {
                 Ok(latest_height) => {
                     let validated_start = self
-                        .validate_resume_chain(current.saturating_add(1), latest_height)
+                        .validate_resume_chain(
+                            current.saturating_add(1),
+                            latest_height,
+                            ResumeChainPolicy::RepairMetadataGap,
+                        )
                         .await?;
                     if validated_start <= current {
                         tracing::warn!(
@@ -11818,6 +11887,45 @@ mod tests {
         assert_eq!(select_sync_target(160, None, 150, false), 160);
         assert_eq!(select_sync_target(100, None, 150, true), 150);
         assert_eq!(select_sync_target(100, Some(125), 150, false), 125);
+    }
+
+    #[test]
+    fn normal_resume_repairs_a_matching_metadata_gap() {
+        assert_eq!(
+            matching_resume_height(
+                2_400_000,
+                156_854,
+                true,
+                ResumeChainPolicy::RepairMetadataGap,
+            ),
+            156_855
+        );
+    }
+
+    #[test]
+    fn historical_rescan_preserves_its_requested_start_across_a_matching_gap() {
+        assert_eq!(
+            matching_resume_height(
+                2_400_000,
+                156_854,
+                true,
+                ResumeChainPolicy::PreserveHistoricalBootstrap,
+            ),
+            2_400_000
+        );
+    }
+
+    #[test]
+    fn contiguous_metadata_never_changes_the_requested_start() {
+        for policy in [
+            ResumeChainPolicy::RepairMetadataGap,
+            ResumeChainPolicy::PreserveHistoricalBootstrap,
+        ] {
+            assert_eq!(
+                matching_resume_height(2_400_000, 2_399_999, false, policy),
+                2_400_000
+            );
+        }
     }
 
     #[test]
