@@ -1,5 +1,7 @@
 use super::*;
-use pirate_sync_lightd::client::{LightClientConfig, RetryConfig, TlsConfig, TransportMode};
+use pirate_sync_lightd::client::{
+    is_pirate_mainnet_auto_endpoint, LightClientConfig, RetryConfig, TlsConfig, TransportMode,
+};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
@@ -14,8 +16,14 @@ const DEV_LIGHTD_PORT: u16 = 9067;
 const IRONWOOD_TESTNET_PORT: u16 = 8067;
 const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "lightd1.pirate.black",
+    "lightd.pirate.black",
     "lightd1.piratechain.com",
     "pirate.mathnodes.com",
+    "arrr.qortal.link",
+    "arrr2.qortal.link",
+    "arrr3.qortal.link",
+    "lightwalletd1.cryptoforge.cc",
+    "lightwalletd2.cryptoforge.cc",
     "lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion",
     "rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p",
 ];
@@ -150,7 +158,7 @@ pub(super) fn build_light_client_config(
     connect_timeout: Duration,
     request_timeout: Duration,
 ) -> LightClientConfig {
-    LightClientConfig {
+    let config = LightClientConfig {
         endpoint: endpoint.url(),
         transport,
         socks5_url,
@@ -164,6 +172,11 @@ pub(super) fn build_light_client_config(
         request_timeout,
         allow_direct_fallback,
         failover_endpoints: Vec::new(),
+    };
+    if endpoint.tls_pin.is_none() && is_pirate_mainnet_auto_endpoint(&endpoint.url()) {
+        config.with_pirate_mainnet_auto_pool()
+    } else {
+        config
     }
 }
 
@@ -233,6 +246,24 @@ mod tests {
     fn default_endpoint_uses_the_official_tls_server() {
         let endpoint = LightdEndpoint::default();
         assert_eq!(endpoint.url(), "https://lightd1.pirate.black:443");
+    }
+
+    #[test]
+    fn curated_endpoint_enables_the_canonical_auto_pool() {
+        let endpoint = LightdEndpoint::default();
+        let config = build_light_client_config(
+            &endpoint,
+            TransportMode::Direct,
+            None,
+            false,
+            RetryConfig::default(),
+            Duration::from_secs(30),
+            Duration::from_secs(180),
+        );
+        assert_eq!(
+            config.failover_endpoints.len(),
+            pirate_sync_lightd::client::MAINNET_AUTO_LIGHTD_URLS.len() - 1
+        );
     }
 
     #[test]
