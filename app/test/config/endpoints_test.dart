@@ -4,152 +4,277 @@ import 'package:pirate_wallet/features/settings/providers/transport_providers.da
 
 void main() {
   group('lightwalletd presets', () {
-    test('uses the official TLS endpoint by default', () {
-      expect(LightdEndpoint.defaultEndpoint, LightdEndpoint.officialMainnet);
+    test('uses the automatic official mainnet pool by default', () {
+      expect(
+        LightdEndpoint.defaultEndpoint,
+        LightdEndpoint.autoMainnetClearnet,
+      );
+      expect(LightdEndpoint.defaultEndpoint.automaticFailover, isTrue);
       expect(LightdEndpoint.mainnet, LightdEndpoint.officialMainnet);
       expect(kDefaultLightdUrl, 'https://lightd1.pirate.black:443');
       expect(kDefaultUseTls, isTrue);
     });
 
-    test('offers all curated clearnet mainnet endpoints', () {
+    test('offers curated clearnet servers without retired dev endpoints', () {
       final presets = LightdEndpoint.presetsForTransport(
         'direct',
         includeTestnet: false,
       );
 
-      expect(presets.map((endpoint) => endpoint.url).toList(), <String>[
-        'https://lightd1.pirate.black:443',
-        'https://lightd.pirate.black:443',
-        'https://arrr.qortal.link:443',
-        'https://arrr2.qortal.link:443',
-        'https://arrr3.qortal.link:443',
-        'https://lightwalletd1.cryptoforge.cc:443',
-        'https://lightwalletd2.cryptoforge.cc:443',
-        'https://pirate.mathnodes.com:443',
-        'http://64.23.167.130:9067',
+      expect(presets, <LightdEndpoint>[
+        LightdEndpoint.autoMainnetClearnet,
+        LightdEndpoint.officialMainnet,
+        LightdEndpoint.pirateBlackMainnet,
+        LightdEndpoint.cryptoForge1Mainnet,
+        LightdEndpoint.cryptoForge2Mainnet,
+        LightdEndpoint.qortalMainnet,
+        LightdEndpoint.qortal2Mainnet,
+        LightdEndpoint.qortal3Mainnet,
+        LightdEndpoint.mathNodesMainnet,
       ]);
       expect(
         presets.every((endpoint) => endpoint.route == LightdRoute.clearnet),
         isTrue,
       );
+      expect(
+        presets.any((endpoint) => endpoint.host == '64.23.167.130'),
+        isFalse,
+      );
     });
 
-    test('adds the hidden service only when Tor can resolve it', () {
-      final torPresets = LightdEndpoint.presetsForTransport(
+    test('shows only official onion presets in Tor mode', () {
+      final presets = LightdEndpoint.presetsForTransport(
         'tor',
         includeTestnet: false,
       );
-      final directPresets = LightdEndpoint.presetsForTransport(
-        'direct',
+
+      expect(presets, <LightdEndpoint>[
+        LightdEndpoint.autoMainnetTor,
+        LightdEndpoint.mainnetTor1,
+        LightdEndpoint.mainnetTor2,
+      ]);
+      expect(
+        presets.every((endpoint) => endpoint.supportsTransport('tor')),
+        isTrue,
+      );
+      expect(
+        presets.every((endpoint) => !endpoint.supportsTransport('direct')),
+        isTrue,
+      );
+    });
+
+    test('shows only official I2P presets in I2P mode', () {
+      final presets = LightdEndpoint.presetsForTransport(
+        'i2p',
         includeTestnet: false,
       );
 
-      expect(torPresets, contains(LightdEndpoint.torMainnet));
-      expect(directPresets, isNot(contains(LightdEndpoint.torMainnet)));
-      expect(LightdEndpoint.torMainnet.supportsTransport('tor'), isTrue);
-      expect(LightdEndpoint.torMainnet.supportsTransport('direct'), isFalse);
-    });
-
-    test('uses only the I2P hidden service in I2P mode', () {
-      expect(LightdEndpoint.presetsForTransport('i2p'), <LightdEndpoint>[
-        LightdEndpoint.i2pMainnet,
+      expect(presets, <LightdEndpoint>[
+        LightdEndpoint.autoMainnetI2p,
+        LightdEndpoint.mainnetI2p1,
+        LightdEndpoint.mainnetI2p2,
       ]);
-      expect(LightdEndpoint.i2pMainnet.supportsTransport('i2p'), isTrue);
-      expect(LightdEndpoint.i2pMainnet.supportsTransport('tor'), isFalse);
+      expect(
+        presets.every((endpoint) => endpoint.supportsTransport('i2p')),
+        isTrue,
+      );
     });
 
-    test('never mixes custom or testnet endpoints into failover', () {
+    test('includes every Ironwood testnet route', () {
+      expect(
+        LightdEndpoint.presetsForTransport('direct').where(
+          (endpoint) => endpoint.network == LightdNetwork.ironwoodTestnet,
+        ),
+        <LightdEndpoint>[
+          LightdEndpoint.autoIronwoodTestnetClearnet,
+          LightdEndpoint.ironwoodTestnet1,
+          LightdEndpoint.ironwoodTestnet2,
+        ],
+      );
+      expect(
+        LightdEndpoint.presetsForTransport('tor').where(
+          (endpoint) => endpoint.network == LightdNetwork.ironwoodTestnet,
+        ),
+        <LightdEndpoint>[
+          LightdEndpoint.autoIronwoodTestnetTor,
+          LightdEndpoint.ironwoodTestnetTor1,
+          LightdEndpoint.ironwoodTestnetTor2,
+        ],
+      );
+      expect(
+        LightdEndpoint.presetsForTransport('i2p').where(
+          (endpoint) => endpoint.network == LightdNetwork.ironwoodTestnet,
+        ),
+        <LightdEndpoint>[
+          LightdEndpoint.autoIronwoodTestnetI2p,
+          LightdEndpoint.ironwoodTestnetI2p1,
+          LightdEndpoint.ironwoodTestnetI2p2,
+        ],
+      );
+    });
+
+    test('automatic pools contain only the same network and route', () {
+      for (final automatic in <LightdEndpoint>[
+        LightdEndpoint.autoMainnetClearnet,
+        LightdEndpoint.autoMainnetTor,
+        LightdEndpoint.autoMainnetI2p,
+        LightdEndpoint.autoIronwoodTestnetClearnet,
+        LightdEndpoint.autoIronwoodTestnetTor,
+        LightdEndpoint.autoIronwoodTestnetI2p,
+      ]) {
+        final candidates = LightdEndpoint.failoverCandidates(automatic);
+        expect(candidates, isNotEmpty, reason: automatic.id);
+        expect(
+          candidates.every(
+            (candidate) =>
+                candidate.network == automatic.network &&
+                candidate.route == automatic.route &&
+                candidate.useTls == automatic.useTls &&
+                !candidate.automaticFailover,
+          ),
+          isTrue,
+          reason: automatic.id,
+        );
+        expect(
+          candidates.any((candidate) => candidate.url == automatic.url),
+          isFalse,
+          reason: automatic.id,
+        );
+      }
+    });
+
+    test('manual and custom selections never acquire a pool implicitly', () {
       const custom = LightdEndpoint(
         host: 'example.com',
         port: 443,
         useTls: true,
       );
 
-      expect(LightdEndpoint.failoverCandidates(custom, 'direct'), isEmpty);
+      expect(LightdEndpoint.failoverCandidates(custom), isEmpty);
       expect(
-        LightdEndpoint.failoverCandidates(
-          LightdEndpoint.ironwoodTestnet,
-          'direct',
+        LightdEndpoint.failoverCandidates(LightdEndpoint.officialMainnet),
+        isEmpty,
+      );
+      expect(
+        LightdEndpoint.failoverCandidates(LightdEndpoint.ironwoodTestnet1),
+        isEmpty,
+      );
+    });
+
+    test('automatic selection follows transport without changing networks', () {
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'i2p',
+          current: LightdEndpoint.autoMainnetClearnet,
         ),
-        isEmpty,
+        LightdEndpoint.autoMainnetI2p,
       );
       expect(
-        LightdEndpoint.failoverCandidates(LightdEndpoint.unifiedMainnet, 'i2p'),
-        isEmpty,
+        LightdEndpoint.replacementForTransport(
+          mode: 'tor',
+          current: LightdEndpoint.autoIronwoodTestnetI2p,
+        ),
+        LightdEndpoint.autoIronwoodTestnetTor,
       );
-    });
-
-    test('automatic failover uses only the canonical live mainnet pool', () {
-      final candidates = LightdEndpoint.failoverCandidates(
-        LightdEndpoint.officialMainnet,
-        'direct',
-      );
-
-      expect(candidates.map((endpoint) => endpoint.url).toList(), <String>[
-        'https://lightd.pirate.black:443',
-        'https://arrr.qortal.link:443',
-        'https://arrr2.qortal.link:443',
-        'https://arrr3.qortal.link:443',
-        'https://lightwalletd1.cryptoforge.cc:443',
-        'https://lightwalletd2.cryptoforge.cc:443',
-      ]);
-      expect(candidates, isNot(contains(LightdEndpoint.mathNodesMainnet)));
-      expect(candidates, isNot(contains(LightdEndpoint.unifiedMainnet)));
-      expect(candidates, isNot(contains(LightdEndpoint.torMainnet)));
-    });
-
-    test('moves into I2P and restores a compatible clearnet endpoint', () {
-      final intoI2p = LightdEndpoint.replacementForTransport(
-        mode: 'i2p',
-        current: LightdEndpoint.officialMainnet,
-        configuredI2p: LightdEndpoint.i2pMainnet,
-      );
-      final backToDirect = LightdEndpoint.replacementForTransport(
-        mode: 'direct',
-        current: LightdEndpoint.i2pMainnet,
-        storedNonI2p: LightdEndpoint.officialMainnet,
-      );
-
-      expect(intoI2p, LightdEndpoint.i2pMainnet);
-      expect(backToDirect, LightdEndpoint.officialMainnet);
-    });
-
-    test('never carries hidden-service routes into incompatible modes', () {
       expect(
         LightdEndpoint.replacementForTransport(
           mode: 'direct',
-          current: LightdEndpoint.torMainnet,
-          storedNonI2p: LightdEndpoint.torMainnet,
-        ),
-        LightdEndpoint.officialMainnet,
-      );
-      expect(
-        LightdEndpoint.replacementForTransport(
-          mode: 'tor',
-          current: LightdEndpoint.i2pMainnet,
-        ),
-        LightdEndpoint.torMainnet,
-      );
-      expect(
-        LightdEndpoint.replacementForTransport(
-          mode: 'tor',
-          current: LightdEndpoint.officialMainnet,
+          current: LightdEndpoint.autoMainnetClearnet,
         ),
         isNull,
+      );
+    });
+
+    test('manual choices persist while compatible with the transport', () {
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'direct',
+          current: LightdEndpoint.mathNodesMainnet,
+        ),
+        isNull,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'tor',
+          current: LightdEndpoint.mainnetTor1,
+        ),
+        isNull,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'direct',
+          current: LightdEndpoint.mainnetTor1,
+          storedNonI2p: LightdEndpoint.mathNodesMainnet,
+        ),
+        LightdEndpoint.mathNodesMainnet,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'i2p',
+          current: LightdEndpoint.mathNodesMainnet,
+          configuredI2p: LightdEndpoint.autoMainnetI2p,
+        ),
+        LightdEndpoint.autoMainnetI2p,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'direct',
+          current: LightdEndpoint.autoMainnetI2p,
+          storedNonI2p: LightdEndpoint.mathNodesMainnet,
+        ),
+        LightdEndpoint.mathNodesMainnet,
+      );
+    });
+
+    test('retired presets migrate to the matching automatic route', () {
+      final retiredMainnet = LightdEndpoint.tryParse(
+        'http://64.23.167.130:9067',
+      );
+      final retiredTestnet = LightdEndpoint.tryParse(
+        'http://64.23.167.130:8067',
+      );
+      final retiredI2p = LightdEndpoint.tryParse(
+        'http://rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p:9067',
+      );
+
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'direct',
+          current: retiredMainnet,
+        ),
+        LightdEndpoint.autoMainnetClearnet,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'tor',
+          current: retiredTestnet,
+        ),
+        LightdEndpoint.autoIronwoodTestnetTor,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'i2p',
+          current: retiredI2p,
+        ),
+        LightdEndpoint.autoMainnetI2p,
       );
     });
   });
 
   group('endpoint parsing', () {
-    test('recognizes curated endpoint metadata', () {
-      final endpoint = LightdEndpoint.tryParse(
+    test('distinguishes Auto from a manual server at the same URL', () {
+      final manual = LightdEndpoint.tryParse(
         'https://lightd1.pirate.black:443/',
       );
+      final automatic = LightdEndpoint.tryParse(
+        'https://lightd1.pirate.black:443/',
+        automaticFailover: true,
+      );
 
-      expect(endpoint, isNotNull);
-      expect(endpoint!.id, 'pirate-official');
-      expect(endpoint.network, LightdNetwork.mainnet);
-      expect(endpoint.automaticFailover, isTrue);
+      expect(manual, LightdEndpoint.officialMainnet);
+      expect(manual!.automaticFailover, isFalse);
+      expect(automatic, LightdEndpoint.autoMainnetClearnet);
+      expect(automatic!.automaticFailover, isTrue);
     });
 
     test('uses standard TLS and lightwalletd ports when omitted', () {
@@ -157,13 +282,13 @@ void main() {
       expect(LightdEndpoint.tryParse('http://example.com')!.port, 9067);
     });
 
-    test('recognizes hidden-service routes', () {
+    test('recognizes official hidden-service routes', () {
       expect(
         LightdEndpoint.tryParse(kDefaultI2pLightdUrl)!.route,
         LightdRoute.i2p,
       );
       expect(
-        LightdEndpoint.tryParse(LightdEndpoint.torMainnet.url)!.route,
+        LightdEndpoint.tryParse(LightdEndpoint.mainnetTor1.url)!.route,
         LightdRoute.tor,
       );
     });
@@ -175,12 +300,17 @@ void main() {
     });
   });
 
-  test('empty stored I2P endpoints migrate to the curated preset', () {
-    final config = TransportConfig.fromJson(const <String, dynamic>{
+  test('stored I2P preferences migrate to the official endpoint', () {
+    final empty = TransportConfig.fromJson(const <String, dynamic>{
       'mode': 'i2p',
       'i2p_endpoint': '',
     });
+    final retired = TransportConfig.fromJson(const <String, dynamic>{
+      'mode': 'i2p',
+      'i2p_endpoint': 'http://rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p:9067',
+    });
 
-    expect(config.i2pEndpoint, kDefaultI2pLightdUrl);
+    expect(empty.i2pEndpoint, kDefaultI2pLightdUrl);
+    expect(retired.i2pEndpoint, kDefaultI2pLightdUrl);
   });
 }

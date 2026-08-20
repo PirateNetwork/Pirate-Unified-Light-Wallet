@@ -86,7 +86,7 @@ Widget _testApp({BigInt? total, BigInt? pending, Key? key}) {
       transportConfigProvider.overrideWith(_TestTransportConfigNotifier.new),
       lightdEndpointConfigProvider.overrideWith(
         (ref) async =>
-            const LightdEndpointConfig(url: 'http://64.23.167.130:9067'),
+            const LightdEndpointConfig(url: 'https://lightd1.pirate.black:443'),
       ),
     ],
     child: MaterialApp(
@@ -106,9 +106,7 @@ void main() {
     tester.view.physicalSize = const Size(1280, 900);
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(
-      _testApp(key: const ValueKey('settled-balance')),
-    );
+    await tester.pumpWidget(_testApp(key: const ValueKey('settled-balance')));
     await tester.pump(const Duration(milliseconds: 100));
     final settledHeader = tester.widget<SliverPersistentHeader>(
       find.byKey(HomeScreen.headerKey),

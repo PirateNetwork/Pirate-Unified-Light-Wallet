@@ -37,7 +37,7 @@ class _TestI2pTransportConfigNotifier extends TransportConfigNotifier {
     mode: 'i2p',
     dnsProvider: 'cloudflare_doh',
     socks5Config: <String, String?>{},
-    i2pEndpoint: 'http://rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p:9067',
+    i2pEndpoint: 'http://5vjlbxmzx4gjfuwcot2qtfjdnxodzpe4jsw3ckx7i4maltz7j5qa.b32.i2p:9067',
     tlsPins: <Map<String, String>>[],
     torBridge: TorBridgeConfig(
       useBridges: false,
@@ -144,56 +144,55 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('shows all clearnet presets without hidden-service overflow', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
+  testWidgets(
+    'shows Auto and curated clearnet presets without retired servers',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          lightdEndpointConfigProvider.overrideWith(
-            (ref) async =>
-                const LightdEndpointConfig(url: 'http://64.23.167.130:9067'),
-          ),
-          transportConfigProvider.overrideWith(
-            _TestTransportConfigNotifier.new,
-          ),
-          endpointHealthProvider.overrideWith(_TestEndpointHealthNotifier.new),
-        ],
-        child: const MaterialApp(home: NodeSettingsScreen()),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            lightdEndpointConfigProvider.overrideWith(
+              (ref) async => const LightdEndpointConfig(
+                url: 'https://lightd1.pirate.black:443',
+                automaticFailover: true,
+              ),
+            ),
+            transportConfigProvider.overrideWith(
+              _TestTransportConfigNotifier.new,
+            ),
+            endpointHealthProvider.overrideWith(
+              _TestEndpointHealthNotifier.new,
+            ),
+          ],
+          child: const MaterialApp(home: NodeSettingsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('64.23.167.130:9067'), findsWidgets);
-    expect(find.text('lightd1.pirate.black:443'), findsOneWidget);
-    expect(find.text('lightd.pirate.black:443'), findsOneWidget);
-    expect(find.text('arrr.qortal.link:443'), findsOneWidget);
-    expect(find.text('arrr2.qortal.link:443'), findsOneWidget);
-    expect(find.text('arrr3.qortal.link:443'), findsOneWidget);
-    expect(find.text('lightwalletd1.cryptoforge.cc:443'), findsOneWidget);
-    expect(find.text('lightwalletd2.cryptoforge.cc:443'), findsOneWidget);
-    expect(find.text('pirate.mathnodes.com:443'), findsOneWidget);
-    expect(find.text('Dev server Mainnet (no TLS)'), findsOneWidget);
-    expect(find.text('Auto (Mainnet)'), findsOneWidget);
-    expect(find.text('Pirate Black Mainnet'), findsOneWidget);
-    expect(find.text('Qortal 1 Mainnet'), findsOneWidget);
-    expect(find.text('Qortal 2 Mainnet'), findsOneWidget);
-    expect(find.text('Qortal 3 Mainnet'), findsOneWidget);
-    expect(find.text('CryptoForge 1 Mainnet'), findsOneWidget);
-    expect(find.text('CryptoForge 2 Mainnet'), findsOneWidget);
-    expect(find.text('Mathnodes Mainnet'), findsOneWidget);
-    expect(find.textContaining('.onion'), findsNothing);
-    expect(find.textContaining('.b32.i2p'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.textContaining('64.23.167.130'), findsNothing);
+      expect(find.text('Automatic server selection'), findsOneWidget);
+      expect(find.text('Auto (Mainnet)'), findsOneWidget);
+      expect(find.text('Pirate Chain Mainnet'), findsOneWidget);
+      expect(find.text('Pirate Black Mainnet'), findsOneWidget);
+      expect(find.text('Qortal 1 Mainnet'), findsOneWidget);
+      expect(find.text('Qortal 2 Mainnet'), findsOneWidget);
+      expect(find.text('Qortal 3 Mainnet'), findsOneWidget);
+      expect(find.text('CryptoForge 1 Mainnet'), findsOneWidget);
+      expect(find.text('CryptoForge 2 Mainnet'), findsOneWidget);
+      expect(find.text('Mathnodes Mainnet'), findsOneWidget);
+      expect(find.text('Auto (Ironwood testnet)'), findsOneWidget);
+      expect(find.text('CryptoForge 1 Ironwood testnet'), findsOneWidget);
+      expect(find.text('CryptoForge 2 Ironwood testnet'), findsOneWidget);
+      expect(find.textContaining('.onion'), findsNothing);
+      expect(find.textContaining('.b32.i2p'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('shows only the reachable hidden service in I2P mode', (
-    tester,
-  ) async {
+  testWidgets('shows only the official I2P pools in I2P mode', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -203,7 +202,8 @@ void main() {
         overrides: [
           lightdEndpointConfigProvider.overrideWith(
             (ref) async => const LightdEndpointConfig(
-              url: 'http://rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p:9067',
+              url: 'http://5vjlbxmzx4gjfuwcot2qtfjdnxodzpe4jsw3ckx7i4maltz7j5qa.b32.i2p:9067',
+              automaticFailover: true,
             ),
           ),
           transportConfigProvider.overrideWith(
@@ -217,8 +217,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('.b32.i2p'), findsWidgets);
-    expect(find.text('Dev server Mainnet (no TLS)'), findsNothing);
-    expect(find.text('Auto (Mainnet)'), findsNothing);
+    expect(find.text('Auto (Mainnet)'), findsOneWidget);
+    expect(find.text('Auto (Ironwood testnet)'), findsOneWidget);
     expect(find.text('Mathnodes Mainnet'), findsNothing);
     expect(find.textContaining('.onion'), findsNothing);
     expect(tester.takeException(), isNull);

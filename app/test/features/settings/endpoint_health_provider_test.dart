@@ -78,7 +78,7 @@ void main() {
   test('routine checks probe only the selected endpoint', () async {
     final probed = <String>[];
     final container = _container(
-      config: const LightdEndpointConfig(url: 'http://64.23.167.130:9067'),
+      config: const LightdEndpointConfig(url: 'https://private.example:443'),
       probe: ({required url, tlsPin}) async {
         probed.add(url);
         return _probeResult(success: true, height: 4090000);
@@ -90,51 +90,62 @@ void main() {
     container.read(endpointHealthProvider);
     await container.read(endpointHealthProvider.notifier).checkNow();
 
-    expect(probed, <String>['http://64.23.167.130:9067']);
+    expect(probed, <String>['https://private.example:443']);
     expect(
       container.read(endpointHealthProvider).phase,
       EndpointHealthPhase.healthy,
     );
   });
 
-  test('confirmed failures switch to the healthiest curated server', () async {
-    final probed = <String>[];
-    String? selectedUrl;
-    final container = _container(
-      config: const LightdEndpointConfig(
-        url: 'https://lightd.pirate.black:443',
-      ),
-      probe: ({required url, tlsPin}) async {
-        probed.add(url);
-        if (url == 'https://lightd1.pirate.black:443') {
-          return _probeResult(success: true, height: 4090010);
-        }
-        return _probeResult(success: false);
-      },
-      setEndpoint: ({required url, tlsPin}) async => selectedUrl = url,
-    );
-    addTearDown(container.dispose);
+  test(
+    'Auto reports a healthy pool member without replacing the selection',
+    () async {
+      final probed = <String>[];
+      String? selectedUrl;
+      final container = _container(
+        config: const LightdEndpointConfig(
+          url: 'https://lightd1.pirate.black:443',
+          automaticFailover: true,
+        ),
+        probe: ({required url, tlsPin}) async {
+          probed.add(url);
+          if (url == 'https://lightd.pirate.black:443') {
+            return _probeResult(success: true, height: 4090010);
+          }
+          return _probeResult(success: false);
+        },
+        setEndpoint: ({required url, tlsPin}) async => selectedUrl = url,
+      );
+      addTearDown(container.dispose);
 
-    container.read(endpointHealthProvider);
-    final notifier = container.read(endpointHealthProvider.notifier);
-    await notifier.checkNow();
-    expect(probed, <String>['https://lightd.pirate.black:443']);
-    expect(
-      container.read(endpointHealthProvider).phase,
-      EndpointHealthPhase.degraded,
-    );
+      container.read(endpointHealthProvider);
+      final notifier = container.read(endpointHealthProvider.notifier);
+      await notifier.checkNow();
+      expect(probed, <String>['https://lightd1.pirate.black:443']);
+      expect(
+        container.read(endpointHealthProvider).phase,
+        EndpointHealthPhase.degraded,
+      );
 
-    await notifier.checkNow();
+      await notifier.checkNow();
 
-    expect(selectedUrl, 'https://lightd1.pirate.black:443');
-    expect(probed, contains('https://lightwalletd1.cryptoforge.cc:443'));
-    expect(probed, isNot(contains('https://pirate.mathnodes.com:443')));
-    expect(
-      container.read(endpointHealthProvider).switchedFrom,
-      'https://lightd.pirate.black:443',
-    );
-    expect(container.read(endpointHealthProvider).switchedTo, selectedUrl);
-  });
+      expect(selectedUrl, isNull);
+      expect(probed, contains('https://lightwalletd1.cryptoforge.cc:443'));
+      expect(probed, contains('https://pirate.mathnodes.com:443'));
+      expect(
+        container.read(endpointHealthProvider).switchedFrom,
+        'https://lightd1.pirate.black:443',
+      );
+      expect(
+        container.read(endpointHealthProvider).switchedTo,
+        'https://lightd.pirate.black:443',
+      );
+      expect(
+        container.read(endpointHealthProvider).activeUrl,
+        'https://lightd.pirate.black:443',
+      );
+    },
+  );
 
   test('custom endpoints remain under explicit user control', () async {
     final probed = <String>[];
@@ -171,6 +182,7 @@ void main() {
       config: const LightdEndpointConfig(
         url: 'https://lightd1.pirate.black:443',
         tlsPin: 'pinned-certificate',
+        automaticFailover: true,
       ),
       probe: ({required url, tlsPin}) async => _probeResult(success: false),
       setEndpoint: ({required url, tlsPin}) async => switchCount += 1,
@@ -190,7 +202,10 @@ void main() {
   });
 
   test('an in-flight probe cannot replace a newer endpoint choice', () async {
-    var config = const LightdEndpointConfig(url: 'http://64.23.167.130:9067');
+    var config = const LightdEndpointConfig(
+      url: 'https://lightd1.pirate.black:443',
+      automaticFailover: true,
+    );
     var currentProbeCount = 0;
     var switchCount = 0;
     final delayedProbeStarted = Completer<void>();
@@ -199,7 +214,7 @@ void main() {
       config: config,
       readConfig: () => config,
       probe: ({required url, tlsPin}) async {
-        if (url != 'http://64.23.167.130:9067') {
+        if (url != 'https://lightd1.pirate.black:443') {
           return _probeResult(success: true, height: 4090010);
         }
         currentProbeCount += 1;

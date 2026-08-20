@@ -13,7 +13,7 @@ class _TorTransportNotifier extends TransportConfigNotifier {
     mode: 'tor',
     dnsProvider: 'cloudflare_doh',
     socks5Config: <String, String?>{},
-    i2pEndpoint: 'http://rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p:9067',
+    i2pEndpoint: 'http://5vjlbxmzx4gjfuwcot2qtfjdnxodzpe4jsw3ckx7i4maltz7j5qa.b32.i2p:9067',
     tlsPins: <Map<String, String>>[],
     torBridge: TorBridgeConfig(
       useBridges: false,
