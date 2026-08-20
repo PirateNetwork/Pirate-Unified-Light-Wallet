@@ -17,14 +17,17 @@ void main() {
         includeTestnet: false,
       );
 
-      expect(
-        presets.map((endpoint) => endpoint.url),
-        containsAll(<String>[
-          'http://64.23.167.130:9067',
-          'https://lightd1.pirate.black:443',
-          'https://pirate.mathnodes.com:443',
-        ]),
-      );
+      expect(presets.map((endpoint) => endpoint.url).toList(), <String>[
+        'https://lightd1.pirate.black:443',
+        'https://lightd.pirate.black:443',
+        'https://arrr.qortal.link:443',
+        'https://arrr2.qortal.link:443',
+        'https://arrr3.qortal.link:443',
+        'https://lightwalletd1.cryptoforge.cc:443',
+        'https://lightwalletd2.cryptoforge.cc:443',
+        'https://pirate.mathnodes.com:443',
+        'http://64.23.167.130:9067',
+      ]);
       expect(
         presets.every((endpoint) => endpoint.route == LightdRoute.clearnet),
         isTrue,
@@ -74,6 +77,25 @@ void main() {
         LightdEndpoint.failoverCandidates(LightdEndpoint.unifiedMainnet, 'i2p'),
         isEmpty,
       );
+    });
+
+    test('automatic failover uses only the canonical live mainnet pool', () {
+      final candidates = LightdEndpoint.failoverCandidates(
+        LightdEndpoint.officialMainnet,
+        'direct',
+      );
+
+      expect(candidates.map((endpoint) => endpoint.url).toList(), <String>[
+        'https://lightd.pirate.black:443',
+        'https://arrr.qortal.link:443',
+        'https://arrr2.qortal.link:443',
+        'https://arrr3.qortal.link:443',
+        'https://lightwalletd1.cryptoforge.cc:443',
+        'https://lightwalletd2.cryptoforge.cc:443',
+      ]);
+      expect(candidates, isNot(contains(LightdEndpoint.mathNodesMainnet)));
+      expect(candidates, isNot(contains(LightdEndpoint.unifiedMainnet)));
+      expect(candidates, isNot(contains(LightdEndpoint.torMainnet)));
     });
 
     test('moves into I2P and restores a compatible clearnet endpoint', () {

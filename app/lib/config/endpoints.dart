@@ -8,6 +8,7 @@ const String kDevLightdHost = '64.23.167.130';
 const int kDevLightdPort = 9067;
 
 const String kOfficialLightdHost = 'lightd1.pirate.black';
+const String kPirateBlackLightdHost = 'lightd.pirate.black';
 const int kOfficialLightdPort = 443;
 const String kDefaultLightdHost = kOfficialLightdHost;
 const int kDefaultLightdPort = kOfficialLightdPort;
@@ -15,6 +16,11 @@ const String kDefaultLightd = '$kDefaultLightdHost:$kDefaultLightdPort';
 const String kDefaultLightdUrl = 'https://$kDefaultLightd';
 const String kMathNodesLightdHost = 'pirate.mathnodes.com';
 const int kMathNodesLightdPort = 443;
+const String kQortalLightdHost = 'arrr.qortal.link';
+const String kQortal2LightdHost = 'arrr2.qortal.link';
+const String kQortal3LightdHost = 'arrr3.qortal.link';
+const String kCryptoForge1LightdHost = 'lightwalletd1.cryptoforge.cc';
+const String kCryptoForge2LightdHost = 'lightwalletd2.cryptoforge.cc';
 
 const String kTorLightdHost =
     'lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion';
@@ -68,7 +74,6 @@ class LightdEndpoint {
     port: kDevLightdPort,
     tlsPin: kDefaultTlsPin.isEmpty ? null : kDefaultTlsPin,
     network: LightdNetwork.mainnet,
-    automaticFailover: true,
   );
 
   static final LightdEndpoint officialMainnet = LightdEndpoint(
@@ -84,6 +89,59 @@ class LightdEndpoint {
     id: 'mathnodes',
     host: kMathNodesLightdHost,
     port: kMathNodesLightdPort,
+    useTls: true,
+    network: LightdNetwork.mainnet,
+  );
+
+  static final LightdEndpoint pirateBlackMainnet = LightdEndpoint(
+    id: 'pirate-black',
+    host: kPirateBlackLightdHost,
+    port: 443,
+    useTls: true,
+    network: LightdNetwork.mainnet,
+    automaticFailover: true,
+  );
+
+  static final LightdEndpoint qortalMainnet = LightdEndpoint(
+    id: 'qortal',
+    host: kQortalLightdHost,
+    port: 443,
+    useTls: true,
+    network: LightdNetwork.mainnet,
+    automaticFailover: true,
+  );
+
+  static final LightdEndpoint qortal2Mainnet = LightdEndpoint(
+    id: 'qortal-2',
+    host: kQortal2LightdHost,
+    port: 443,
+    useTls: true,
+    network: LightdNetwork.mainnet,
+    automaticFailover: true,
+  );
+
+  static final LightdEndpoint qortal3Mainnet = LightdEndpoint(
+    id: 'qortal-3',
+    host: kQortal3LightdHost,
+    port: 443,
+    useTls: true,
+    network: LightdNetwork.mainnet,
+    automaticFailover: true,
+  );
+
+  static final LightdEndpoint cryptoForge1Mainnet = LightdEndpoint(
+    id: 'cryptoforge-1',
+    host: kCryptoForge1LightdHost,
+    port: 443,
+    useTls: true,
+    network: LightdNetwork.mainnet,
+    automaticFailover: true,
+  );
+
+  static final LightdEndpoint cryptoForge2Mainnet = LightdEndpoint(
+    id: 'cryptoforge-2',
+    host: kCryptoForge2LightdHost,
+    port: 443,
     useTls: true,
     network: LightdNetwork.mainnet,
     automaticFailover: true,
@@ -119,6 +177,12 @@ class LightdEndpoint {
   static final List<LightdEndpoint> mainnetPresets =
       List<LightdEndpoint>.unmodifiable([
         officialMainnet,
+        pirateBlackMainnet,
+        qortalMainnet,
+        qortal2Mainnet,
+        qortal3Mainnet,
+        cryptoForge1Mainnet,
+        cryptoForge2Mainnet,
         mathNodesMainnet,
         unifiedMainnet,
         torMainnet,
@@ -137,12 +201,28 @@ class LightdEndpoint {
     final presets = switch (normalizedMode) {
       'i2p' => <LightdEndpoint>[i2pMainnet],
       'tor' => <LightdEndpoint>[
-        unifiedMainnet,
         officialMainnet,
+        pirateBlackMainnet,
+        qortalMainnet,
+        qortal2Mainnet,
+        qortal3Mainnet,
+        cryptoForge1Mainnet,
+        cryptoForge2Mainnet,
         mathNodesMainnet,
+        unifiedMainnet,
         torMainnet,
       ],
-      _ => <LightdEndpoint>[officialMainnet, mathNodesMainnet, unifiedMainnet],
+      _ => <LightdEndpoint>[
+        officialMainnet,
+        pirateBlackMainnet,
+        qortalMainnet,
+        qortal2Mainnet,
+        qortal3Mainnet,
+        cryptoForge1Mainnet,
+        cryptoForge2Mainnet,
+        mathNodesMainnet,
+        unifiedMainnet,
+      ],
     };
     if (includeTestnet && normalizedMode != 'i2p') {
       presets.add(ironwoodTestnet);
@@ -163,12 +243,23 @@ class LightdEndpoint {
 
     final ordered = mode.toLowerCase() == 'tor'
         ? <LightdEndpoint>[
-            torMainnet,
             officialMainnet,
-            unifiedMainnet,
-            mathNodesMainnet,
+            pirateBlackMainnet,
+            qortalMainnet,
+            qortal2Mainnet,
+            qortal3Mainnet,
+            cryptoForge1Mainnet,
+            cryptoForge2Mainnet,
           ]
-        : <LightdEndpoint>[officialMainnet, mathNodesMainnet, unifiedMainnet];
+        : <LightdEndpoint>[
+            officialMainnet,
+            pirateBlackMainnet,
+            qortalMainnet,
+            qortal2Mainnet,
+            qortal3Mainnet,
+            cryptoForge1Mainnet,
+            cryptoForge2Mainnet,
+          ];
     return List<LightdEndpoint>.unmodifiable(
       ordered.where((candidate) => candidate.id != current.id),
     );
@@ -220,8 +311,14 @@ class LightdEndpoint {
   /// Localized preset label, or the user-supplied label for custom servers.
   String get displayLabel => switch (id) {
     'pirate-unified' => 'Dev server Mainnet (no TLS)'.tr,
-    'pirate-official' => 'Pirate Chain Mainnet'.tr,
+    'pirate-official' => 'Auto (Mainnet)'.tr,
+    'pirate-black' => 'Pirate Black Mainnet'.tr,
     'mathnodes' => 'Mathnodes Mainnet'.tr,
+    'qortal' => 'Qortal 1 Mainnet'.tr,
+    'qortal-2' => 'Qortal 2 Mainnet'.tr,
+    'qortal-3' => 'Qortal 3 Mainnet'.tr,
+    'cryptoforge-1' => 'CryptoForge 1 Mainnet'.tr,
+    'cryptoforge-2' => 'CryptoForge 2 Mainnet'.tr,
     'pirate-tor' => 'Tor'.tr,
     'pirate-i2p' => 'I2P'.tr,
     'ironwood-testnet' => 'Dev server Ironwood testnet (no TLS)'.tr,

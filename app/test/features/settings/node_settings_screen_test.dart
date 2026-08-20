@@ -170,9 +170,21 @@ void main() {
 
     expect(find.text('64.23.167.130:9067'), findsWidgets);
     expect(find.text('lightd1.pirate.black:443'), findsOneWidget);
+    expect(find.text('lightd.pirate.black:443'), findsOneWidget);
+    expect(find.text('arrr.qortal.link:443'), findsOneWidget);
+    expect(find.text('arrr2.qortal.link:443'), findsOneWidget);
+    expect(find.text('arrr3.qortal.link:443'), findsOneWidget);
+    expect(find.text('lightwalletd1.cryptoforge.cc:443'), findsOneWidget);
+    expect(find.text('lightwalletd2.cryptoforge.cc:443'), findsOneWidget);
     expect(find.text('pirate.mathnodes.com:443'), findsOneWidget);
     expect(find.text('Dev server Mainnet (no TLS)'), findsOneWidget);
-    expect(find.text('Pirate Chain Mainnet'), findsOneWidget);
+    expect(find.text('Auto (Mainnet)'), findsOneWidget);
+    expect(find.text('Pirate Black Mainnet'), findsOneWidget);
+    expect(find.text('Qortal 1 Mainnet'), findsOneWidget);
+    expect(find.text('Qortal 2 Mainnet'), findsOneWidget);
+    expect(find.text('Qortal 3 Mainnet'), findsOneWidget);
+    expect(find.text('CryptoForge 1 Mainnet'), findsOneWidget);
+    expect(find.text('CryptoForge 2 Mainnet'), findsOneWidget);
     expect(find.text('Mathnodes Mainnet'), findsOneWidget);
     expect(find.textContaining('.onion'), findsNothing);
     expect(find.textContaining('.b32.i2p'), findsNothing);
@@ -206,7 +218,7 @@ void main() {
 
     expect(find.textContaining('.b32.i2p'), findsWidgets);
     expect(find.text('Dev server Mainnet (no TLS)'), findsNothing);
-    expect(find.text('Pirate Chain Mainnet'), findsNothing);
+    expect(find.text('Auto (Mainnet)'), findsNothing);
     expect(find.text('Mathnodes Mainnet'), findsNothing);
     expect(find.textContaining('.onion'), findsNothing);
     expect(tester.takeException(), isNull);

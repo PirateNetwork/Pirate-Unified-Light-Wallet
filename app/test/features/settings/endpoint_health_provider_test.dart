@@ -101,7 +101,9 @@ void main() {
     final probed = <String>[];
     String? selectedUrl;
     final container = _container(
-      config: const LightdEndpointConfig(url: 'http://64.23.167.130:9067'),
+      config: const LightdEndpointConfig(
+        url: 'https://lightd.pirate.black:443',
+      ),
       probe: ({required url, tlsPin}) async {
         probed.add(url);
         if (url == 'https://lightd1.pirate.black:443') {
@@ -116,7 +118,7 @@ void main() {
     container.read(endpointHealthProvider);
     final notifier = container.read(endpointHealthProvider.notifier);
     await notifier.checkNow();
-    expect(probed, <String>['http://64.23.167.130:9067']);
+    expect(probed, <String>['https://lightd.pirate.black:443']);
     expect(
       container.read(endpointHealthProvider).phase,
       EndpointHealthPhase.degraded,
@@ -125,10 +127,11 @@ void main() {
     await notifier.checkNow();
 
     expect(selectedUrl, 'https://lightd1.pirate.black:443');
-    expect(probed, contains('https://pirate.mathnodes.com:443'));
+    expect(probed, contains('https://lightwalletd1.cryptoforge.cc:443'));
+    expect(probed, isNot(contains('https://pirate.mathnodes.com:443')));
     expect(
       container.read(endpointHealthProvider).switchedFrom,
-      'http://64.23.167.130:9067',
+      'https://lightd.pirate.black:443',
     );
     expect(container.read(endpointHealthProvider).switchedTo, selectedUrl);
   });
