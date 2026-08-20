@@ -274,6 +274,12 @@ pub enum WalletServiceRequest {
         url: String,
         tls_pin_opt: Option<String>,
     },
+    SetLightdEndpointPool {
+        wallet_id: WalletId,
+        url: String,
+        tls_pin_opt: Option<String>,
+        failover_endpoints: Vec<String>,
+    },
     GetTunnel,
     SetTunnel {
         mode: TunnelMode,
@@ -765,6 +771,15 @@ impl WalletService {
                 tls_pin_opt,
             } => {
                 ffi::set_lightd_endpoint(wallet_id, url, tls_pin_opt)?;
+                Ok(ack())
+            }
+            WalletServiceRequest::SetLightdEndpointPool {
+                wallet_id,
+                url,
+                tls_pin_opt,
+                failover_endpoints,
+            } => {
+                ffi::set_lightd_endpoint_pool(wallet_id, url, tls_pin_opt, failover_endpoints)?;
                 Ok(ack())
             }
             WalletServiceRequest::GetTunnel => serialize(ffi::get_tunnel()?),

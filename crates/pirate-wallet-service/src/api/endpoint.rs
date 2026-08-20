@@ -1,17 +1,18 @@
 use super::*;
 use pirate_sync_lightd::client::{
-    is_pirate_mainnet_auto_endpoint, LightClientConfig, RetryConfig, TlsConfig, TransportMode,
+    LightClientConfig, LightClientEndpoint, RetryConfig, TlsConfig, TransportMode,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::time::Duration;
 
 const IP_TLS_SERVER_NAME: &str = "lightd1.piratechain.com";
 const CUSTOM_ENDPOINT_LABEL: &str = "Custom";
-const OFFICIAL_ENDPOINT_LABEL: &str = "Auto (Mainnet)";
+const OFFICIAL_ENDPOINT_LABEL: &str = "Pirate Chain Mainnet";
 const DEV_LIGHTD_HOST: &str = "64.23.167.130";
 const DEV_LIGHTD_PORT: u16 = 9067;
 const IRONWOOD_TESTNET_PORT: u16 = 8067;
+const MAX_FAILOVER_ENDPOINTS: usize = 16;
 const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "lightd1.pirate.black",
     "lightd.pirate.black",
@@ -22,9 +23,26 @@ const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "arrr3.qortal.link",
     "lightwalletd1.cryptoforge.cc",
     "lightwalletd2.cryptoforge.cc",
-    "lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion",
-    "rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p",
+    "4kbfoltkqir44ab62l6dhkovugdrdevxzjtp6duv6gga3ixoe6kwkcqd.onion",
+    "ibdhmxvqg3imgf67el6y2zxakuf37h3dyug4ujpa6qb7zvrz7sacmnqd.onion",
+    "5vjlbxmzx4gjfuwcot2qtfjdnxodzpe4jsw3ckx7i4maltz7j5qa.b32.i2p",
+    "47go5e2vfmm2o5qdl7zr7rzf57hxjt6z4453ugvgyfkl3bbobwmq.b32.i2p",
 ];
+const IRONWOOD_TESTNET_LIGHTD_HOSTS: &[&str] = &[
+    "testlightwalletd1.cryptoforge.cc",
+    "testlightwalletd2.cryptoforge.cc",
+    "6rwymqddf6dxaphftoy5n3wfgpgwut2upf2lnk6shimjkum2z6uq.b32.i2p",
+    "g4vk6mdenflhm5j2c4kiujwkox7ygyftdfhwai6clgye4br2ujlq.b32.i2p",
+    "lzciy5lpujcqz42vtbr523ceik6rkzlvwtknxfnpyxcskpmx3swkfryd.onion",
+    "iwfhfhwyg6gfm3mqpe5clnwi5oh652hsd2aq4hiael7m7syl4nkyxiqd.onion",
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EndpointRoute {
+    Clearnet,
+    Tor,
+    I2p,
+}
 
 /// Default official Pirate Chain mainnet endpoint.
 pub const DEFAULT_LIGHTD_HOST: &str = pirate_sync_lightd::client::DEFAULT_LIGHTD_HOST;
@@ -51,6 +69,15 @@ pub struct LightdEndpoint {
     pub tls_pin: Option<String>,
     /// User label
     pub label: Option<String>,
+    /// Whether this endpoint uses an explicitly configured failover pool.
+    #[serde(default)]
+    pub automatic_failover: bool,
+    /// Same-network endpoints eligible for validated failover and historical striping.
+    #[serde(default)]
+    pub failover_endpoints: Vec<String>,
+    /// Whether the caller explicitly selected an endpoint mode.
+    #[serde(default)]
+    pub is_configured: bool,
 }
 
 impl Default for LightdEndpoint {
@@ -68,6 +95,9 @@ impl Default for LightdEndpoint {
                 None
             },
             label: Some(OFFICIAL_ENDPOINT_LABEL.to_string()),
+            automatic_failover: false,
+            failover_endpoints: Vec::new(),
+            is_configured: false,
         }
     }
 }
@@ -141,6 +171,9 @@ pub(super) fn endpoint_from_url(
         use_tls,
         tls_pin,
         label,
+        automatic_failover: false,
+        failover_endpoints: Vec::new(),
+        is_configured: false,
     })
 }
 
@@ -168,8 +201,10 @@ pub(super) fn load_registry_endpoints(db: &Database, wallets: &[WalletMeta]) -> 
     for wallet in wallets {
         let endpoint_key = format!("lightd_endpoint_{}", wallet.id);
         let pin_key = format!("lightd_tls_pin_{}", wallet.id);
+        let failover_key = format!("lightd_failover_endpoints_{}", wallet.id);
         let endpoint_url = get_registry_setting(db, &endpoint_key)?;
         let tls_pin = get_registry_setting(db, &pin_key)?;
+        let stored_failover = get_registry_setting(db, &failover_key)?;
 
         if let Some(url) = endpoint_url {
             match endpoint_from_url(
@@ -178,7 +213,25 @@ pub(super) fn load_registry_endpoints(db: &Database, wallets: &[WalletMeta]) -> 
                 tls_pin,
                 Some(CUSTOM_ENDPOINT_LABEL.to_string()),
             ) {
-                Ok(endpoint) => {
+                Ok(mut endpoint) => {
+                    endpoint.is_configured = true;
+                    if let Some(raw) = stored_failover {
+                        match serde_json::from_str::<Vec<String>>(&raw)
+                            .map_err(anyhow::Error::from)
+                            .and_then(|candidates| {
+                                normalize_failover_endpoints(&endpoint, candidates)
+                            }) {
+                            Ok(candidates) => {
+                                endpoint.automatic_failover = !candidates.is_empty();
+                                endpoint.failover_endpoints = candidates;
+                            }
+                            Err(error) => tracing::warn!(
+                                wallet_id = %wallet.id,
+                                %error,
+                                "Ignoring invalid persisted lightwalletd failover pool"
+                            ),
+                        }
+                    }
                     endpoints.insert(wallet.id.clone(), endpoint);
                 }
                 Err(e) => {
@@ -215,6 +268,10 @@ pub(super) fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEn
 pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<NetworkType> {
     let host_lower = host.to_ascii_lowercase();
 
+    if IRONWOOD_TESTNET_LIGHTD_HOSTS.contains(&host_lower.as_str()) {
+        return Some(NetworkType::Testnet);
+    }
+
     if host == DEFAULT_LIGHTD_HOST && port == DEFAULT_LIGHTD_PORT {
         return Some(NetworkType::Mainnet);
     }
@@ -248,10 +305,92 @@ pub(super) fn address_prefix_network_type_for_endpoint(
     endpoint: &LightdEndpoint,
     default_network: NetworkType,
 ) -> NetworkType {
-    if endpoint.host == DEV_LIGHTD_HOST && endpoint.port == IRONWOOD_TESTNET_PORT {
+    if is_ironwood_testnet_endpoint(endpoint) {
         return NetworkType::Mainnet;
     }
     default_network
+}
+
+fn is_ironwood_testnet_endpoint(endpoint: &LightdEndpoint) -> bool {
+    let host = endpoint.host.to_ascii_lowercase();
+    (endpoint.host == DEV_LIGHTD_HOST && endpoint.port == IRONWOOD_TESTNET_PORT)
+        || IRONWOOD_TESTNET_LIGHTD_HOSTS.contains(&host.as_str())
+}
+
+pub(super) fn normalize_failover_endpoints(
+    primary: &LightdEndpoint,
+    candidates: Vec<String>,
+) -> Result<Vec<String>> {
+    if candidates.len() > MAX_FAILOVER_ENDPOINTS {
+        return Err(anyhow!(
+            "A lightwalletd pool may contain at most {MAX_FAILOVER_ENDPOINTS} alternate endpoints"
+        ));
+    }
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    if primary
+        .tls_pin
+        .as_ref()
+        .is_some_and(|pin| !pin.trim().is_empty())
+    {
+        return Err(anyhow!(
+            "Automatic failover cannot be combined with a pinned primary endpoint"
+        ));
+    }
+
+    let primary_network = detect_network_from_endpoint(&primary.host, primary.port)
+        .ok_or_else(|| anyhow!("Automatic failover requires a recognized Pirate network"))?;
+    let primary_route = endpoint_route(&primary.host);
+    let primary_identity = primary.url().to_ascii_lowercase();
+    let mut seen = HashSet::from([primary_identity]);
+    let mut normalized = Vec::with_capacity(candidates.len());
+
+    for candidate_url in candidates {
+        let candidate = endpoint_from_url(&candidate_url, DEFAULT_LIGHTD_USE_TLS, None, None)?;
+        let candidate_network = detect_network_from_endpoint(&candidate.host, candidate.port)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Automatic failover endpoint {} has an unknown network",
+                    candidate.url()
+                )
+            })?;
+        if candidate_network != primary_network {
+            return Err(anyhow!(
+                "Automatic failover endpoint {} is on a different network",
+                candidate.url()
+            ));
+        }
+        if endpoint_route(&candidate.host) != primary_route {
+            return Err(anyhow!(
+                "Automatic failover endpoint {} uses a different network route",
+                candidate.url()
+            ));
+        }
+        if candidate.use_tls != primary.use_tls {
+            return Err(anyhow!(
+                "Automatic failover endpoint {} changes the connection security mode",
+                candidate.url()
+            ));
+        }
+        let url = candidate.url();
+        if seen.insert(url.to_ascii_lowercase()) {
+            normalized.push(url);
+        }
+    }
+
+    Ok(normalized)
+}
+
+fn endpoint_route(host: &str) -> EndpointRoute {
+    let host = host.to_ascii_lowercase();
+    if host.ends_with(".onion") {
+        EndpointRoute::Tor
+    } else if host.ends_with(".b32.i2p") || host.ends_with(".i2p") {
+        EndpointRoute::I2p
+    } else {
+        EndpointRoute::Clearnet
+    }
 }
 
 pub(super) fn tls_server_name(endpoint: &LightdEndpoint) -> Option<String> {
@@ -273,7 +412,7 @@ pub(super) fn build_light_client_config(
     connect_timeout: Duration,
     request_timeout: Duration,
 ) -> LightClientConfig {
-    let config = LightClientConfig {
+    let mut config = LightClientConfig {
         endpoint: endpoint.url(),
         transport,
         socks5_url,
@@ -288,11 +427,12 @@ pub(super) fn build_light_client_config(
         allow_direct_fallback,
         failover_endpoints: Vec::new(),
     };
-    if endpoint.tls_pin.is_none() && is_pirate_mainnet_auto_endpoint(&endpoint.url()) {
-        config.with_pirate_mainnet_auto_pool()
-    } else {
-        config
+    if endpoint.automatic_failover && endpoint.tls_pin.is_none() {
+        for candidate in &endpoint.failover_endpoints {
+            config = config.with_failover_endpoint(LightClientEndpoint::new(candidate));
+        }
     }
+    config
 }
 
 #[cfg(test)]
@@ -306,6 +446,7 @@ mod tests {
             use_tls: true,
             tls_pin: None,
             label: None,
+            ..LightdEndpoint::default()
         }
     }
 
@@ -359,11 +500,13 @@ mod tests {
     fn default_endpoint_uses_the_official_tls_server() {
         let endpoint = LightdEndpoint::default();
         assert_eq!(endpoint.url(), "https://lightd1.pirate.black:443");
-        assert_eq!(endpoint.label.as_deref(), Some("Auto (Mainnet)"));
+        assert_eq!(endpoint.label.as_deref(), Some("Pirate Chain Mainnet"));
+        assert!(!endpoint.automatic_failover);
+        assert!(!endpoint.is_configured);
     }
 
     #[test]
-    fn curated_endpoints_enable_the_canonical_auto_pool() {
+    fn curated_endpoints_remain_single_source_without_opt_in() {
         for host in [
             DEFAULT_LIGHTD_HOST,
             "lightd.pirate.black",
@@ -380,12 +523,94 @@ mod tests {
                 Duration::from_secs(30),
                 Duration::from_secs(180),
             );
-            assert!(!config.failover_endpoints.is_empty(), "{host}");
-            assert!(config
-                .failover_endpoints
-                .iter()
-                .all(|candidate| candidate.tls.enabled));
+            assert!(config.failover_endpoints.is_empty(), "{host}");
         }
+    }
+
+    #[test]
+    fn explicit_pool_adds_only_normalized_same_network_alternates() {
+        let mut endpoint = LightdEndpoint::default();
+        endpoint.is_configured = true;
+        endpoint.failover_endpoints = normalize_failover_endpoints(
+            &endpoint,
+            vec![
+                "https://lightwalletd1.cryptoforge.cc:443".to_string(),
+                "https://lightwalletd1.cryptoforge.cc:443/".to_string(),
+                endpoint.url(),
+            ],
+        )
+        .expect("valid mainnet pool");
+        endpoint.automatic_failover = true;
+
+        let config = build_light_client_config(
+            &endpoint,
+            TransportMode::Direct,
+            None,
+            false,
+            RetryConfig::default(),
+            Duration::from_secs(30),
+            Duration::from_secs(180),
+        );
+        assert_eq!(config.failover_endpoints.len(), 1);
+        assert_eq!(
+            config.failover_endpoints[0].endpoint,
+            "https://lightwalletd1.cryptoforge.cc:443"
+        );
+    }
+
+    #[test]
+    fn pool_rejects_pins_and_cross_network_candidates() {
+        let pinned = LightdEndpoint {
+            tls_pin: Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string()),
+            ..LightdEndpoint::default()
+        };
+        assert!(normalize_failover_endpoints(
+            &pinned,
+            vec!["https://lightwalletd1.cryptoforge.cc:443".to_string()]
+        )
+        .is_err());
+
+        assert!(normalize_failover_endpoints(
+            &LightdEndpoint::default(),
+            vec!["https://testlightwalletd1.cryptoforge.cc:443".to_string()]
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn empty_pool_keeps_custom_endpoints_compatible() {
+        let custom = endpoint_from_url(
+            "https://wallet.example:443",
+            true,
+            None,
+            Some("Custom".to_string()),
+        )
+        .expect("custom endpoint");
+        assert_eq!(
+            normalize_failover_endpoints(&custom, Vec::new()).unwrap(),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn pool_rejects_route_and_security_mode_changes() {
+        assert!(normalize_failover_endpoints(
+            &LightdEndpoint::default(),
+            vec![format!(
+                "http://{}:{}",
+                MAINNET_LIGHTD_HOSTS[8], DEV_LIGHTD_PORT
+            )]
+        )
+        .is_err());
+
+        assert!(normalize_failover_endpoints(
+            &LightdEndpoint::default(),
+            vec![format!(
+                "http://{}:{}",
+                DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT
+            )]
+        )
+        .is_err());
     }
 
     #[test]
@@ -414,10 +639,23 @@ mod tests {
             use_tls: false,
             tls_pin: None,
             label: None,
+            ..LightdEndpoint::default()
         };
         assert_eq!(
             address_prefix_network_type_for_endpoint(&endpoint, NetworkType::Testnet),
             NetworkType::Mainnet
         );
+
+        for host in IRONWOOD_TESTNET_LIGHTD_HOSTS {
+            let endpoint = tls_endpoint(host);
+            assert_eq!(
+                detect_network_from_endpoint(host, endpoint.port),
+                Some(NetworkType::Testnet)
+            );
+            assert_eq!(
+                address_prefix_network_type_for_endpoint(&endpoint, NetworkType::Testnet),
+                NetworkType::Mainnet
+            );
+        }
     }
 }

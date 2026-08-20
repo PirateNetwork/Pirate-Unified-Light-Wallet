@@ -1978,10 +1978,27 @@ pub fn set_lightd_endpoint(
     url: String,
     tls_pin_opt: Option<String>,
 ) -> Result<()> {
+    set_lightd_endpoint_pool(wallet_id, url, tls_pin_opt, Vec::new())
+}
+
+/// Set a lightwalletd endpoint with an explicit same-network failover pool.
+///
+/// Existing callers remain single-source because [`set_lightd_endpoint`] always
+/// supplies an empty pool. Applications must opt in and provide every alternate.
+pub fn set_lightd_endpoint_pool(
+    wallet_id: WalletId,
+    url: String,
+    tls_pin_opt: Option<String>,
+    failover_endpoints: Vec<String>,
+) -> Result<()> {
     ensure_wallet_registry_loaded()?;
     let was_running = sync_control::is_sync_running(wallet_id.clone()).unwrap_or(false);
-    let endpoint =
+    let mut endpoint =
         endpoint::endpoint_from_url(&url, DEFAULT_LIGHTD_USE_TLS, tls_pin_opt.clone(), None)?;
+    let failover_endpoints = endpoint::normalize_failover_endpoints(&endpoint, failover_endpoints)?;
+    endpoint.automatic_failover = !failover_endpoints.is_empty();
+    endpoint.failover_endpoints = failover_endpoints;
+    endpoint.is_configured = true;
     // Detect network type from endpoint (best effort).
     // Unknown endpoints keep current wallet network instead of forcing mainnet.
     let detected_network_type =
@@ -1999,11 +2016,17 @@ pub fn set_lightd_endpoint(
     let registry_db = open_wallet_registry()?;
     let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
     let pin_key = format!("lightd_tls_pin_{}", wallet_id);
+    let failover_key = format!("lightd_failover_endpoints_{}", wallet_id);
+    let failover_json = endpoint
+        .automatic_failover
+        .then(|| serde_json::to_string(&endpoint.failover_endpoints))
+        .transpose()?;
     let (old_network_type, new_network_type) =
         update_wallet_endpoint_metadata(&WALLETS, &wallet_id, detected_network_type, |wallet| {
             persist_wallet_meta(&registry_db, wallet)?;
             set_registry_setting(&registry_db, &endpoint_key, Some(&endpoint_url))?;
             set_registry_setting(&registry_db, &pin_key, tls_pin_opt.as_deref())?;
+            set_registry_setting(&registry_db, &failover_key, failover_json.as_deref())?;
             Ok(())
         })?;
     endpoint::cache_lightd_endpoint(wallet_id.clone(), endpoint);

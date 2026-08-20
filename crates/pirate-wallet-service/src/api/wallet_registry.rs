@@ -342,8 +342,10 @@ pub(super) fn delete_wallet(wallet_id: WalletId) -> Result<()> {
         delete_wallet_meta(&registry_db, &wallet_id)?;
         let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
         let pin_key = format!("lightd_tls_pin_{}", wallet_id);
+        let failover_key = format!("lightd_failover_endpoints_{}", wallet_id);
         set_registry_setting(&registry_db, &endpoint_key, None)?;
         set_registry_setting(&registry_db, &pin_key, None)?;
+        set_registry_setting(&registry_db, &failover_key, None)?;
 
         if ACTIVE_WALLET.read().as_ref() == Some(&wallet_id) {
             let next_active = wallets.first().map(|w| w.id.clone());
