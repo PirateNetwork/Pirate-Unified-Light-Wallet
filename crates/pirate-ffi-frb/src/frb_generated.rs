@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -872554908;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1940509816;
 
 // Section: executor
 
@@ -3118,6 +3118,40 @@ fn wire__crate__api__set_lightd_endpoint_impl(
         },
     )
 }
+fn wire__crate__api__set_lightd_endpoint_pool_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    url: impl CstDecode<String>,
+    tls_pin_opt: impl CstDecode<Option<String>>,
+    failover_endpoints: impl CstDecode<Vec<String>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_lightd_endpoint_pool",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_url = url.cst_decode();
+            let api_tls_pin_opt = tls_pin_opt.cst_decode();
+            let api_failover_endpoints = failover_endpoints.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::set_lightd_endpoint_pool(
+                            api_wallet_id,
+                            api_url,
+                            api_tls_pin_opt,
+                            api_failover_endpoints,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__set_panic_pin_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     pin: impl CstDecode<String>,
@@ -4431,12 +4465,18 @@ impl SseDecode for crate::api::endpoint::LightdEndpoint {
         let mut var_useTls = <bool>::sse_decode(deserializer);
         let mut var_tlsPin = <Option<String>>::sse_decode(deserializer);
         let mut var_label = <Option<String>>::sse_decode(deserializer);
+        let mut var_automaticFailover = <bool>::sse_decode(deserializer);
+        let mut var_failoverEndpoints = <Vec<String>>::sse_decode(deserializer);
+        let mut var_isConfigured = <bool>::sse_decode(deserializer);
         return crate::api::endpoint::LightdEndpoint {
             host: var_host,
             port: var_port,
             use_tls: var_useTls,
             tls_pin: var_tlsPin,
             label: var_label,
+            automatic_failover: var_automaticFailover,
+            failover_endpoints: var_failoverEndpoints,
+            is_configured: var_isConfigured,
         };
     }
 }
@@ -5626,6 +5666,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::endpoint::LightdEndpoint {
             self.use_tls.into_into_dart().into_dart(),
             self.tls_pin.into_into_dart().into_dart(),
             self.label.into_into_dart().into_dart(),
+            self.automatic_failover.into_into_dart().into_dart(),
+            self.failover_endpoints.into_into_dart().into_dart(),
+            self.is_configured.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -6420,6 +6463,9 @@ impl SseEncode for crate::api::endpoint::LightdEndpoint {
         <bool>::sse_encode(self.use_tls, serializer);
         <Option<String>>::sse_encode(self.tls_pin, serializer);
         <Option<String>>::sse_encode(self.label, serializer);
+        <bool>::sse_encode(self.automatic_failover, serializer);
+        <Vec<String>>::sse_encode(self.failover_endpoints, serializer);
+        <bool>::sse_encode(self.is_configured, serializer);
     }
 }
 
@@ -7351,6 +7397,9 @@ mod io {
                 use_tls: self.use_tls.cst_decode(),
                 tls_pin: self.tls_pin.cst_decode(),
                 label: self.label.cst_decode(),
+                automatic_failover: self.automatic_failover.cst_decode(),
+                failover_endpoints: self.failover_endpoints.cst_decode(),
+                is_configured: self.is_configured.cst_decode(),
             }
         }
     }
@@ -7996,6 +8045,9 @@ mod io {
                 use_tls: Default::default(),
                 tls_pin: core::ptr::null_mut(),
                 label: core::ptr::null_mut(),
+                automatic_failover: Default::default(),
+                failover_endpoints: core::ptr::null_mut(),
+                is_configured: Default::default(),
             }
         }
     }
@@ -9437,6 +9489,23 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_lightd_endpoint_pool(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        url: *mut wire_cst_list_prim_u_8_strict,
+        tls_pin_opt: *mut wire_cst_list_prim_u_8_strict,
+        failover_endpoints: *mut wire_cst_list_String,
+    ) {
+        wire__crate__api__set_lightd_endpoint_pool_impl(
+            port_,
+            wallet_id,
+            url,
+            tls_pin_opt,
+            failover_endpoints,
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_panic_pin(
         port_: i64,
         pin: *mut wire_cst_list_prim_u_8_strict,
@@ -10191,6 +10260,9 @@ mod io {
         use_tls: bool,
         tls_pin: *mut wire_cst_list_prim_u_8_strict,
         label: *mut wire_cst_list_prim_u_8_strict,
+        automatic_failover: bool,
+        failover_endpoints: *mut wire_cst_list_String,
+        is_configured: bool,
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -10831,8 +10903,8 @@ mod web {
                 .unwrap();
             assert_eq!(
                 self_.length(),
-                5,
-                "Expected 5 elements, got {}",
+                8,
+                "Expected 8 elements, got {}",
                 self_.length()
             );
             crate::api::endpoint::LightdEndpoint {
@@ -10841,6 +10913,9 @@ mod web {
                 use_tls: self_.get(2).cst_decode(),
                 tls_pin: self_.get(3).cst_decode(),
                 label: self_.get(4).cst_decode(),
+                automatic_failover: self_.get(5).cst_decode(),
+                failover_endpoints: self_.get(6).cst_decode(),
+                is_configured: self_.get(7).cst_decode(),
             }
         }
     }
@@ -12760,6 +12835,23 @@ mod web {
         tls_pin_opt: Option<String>,
     ) {
         wire__crate__api__set_lightd_endpoint_impl(port_, wallet_id, url, tls_pin_opt)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__set_lightd_endpoint_pool(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        url: String,
+        tls_pin_opt: Option<String>,
+        failover_endpoints: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+    ) {
+        wire__crate__api__set_lightd_endpoint_pool_impl(
+            port_,
+            wallet_id,
+            url,
+            tls_pin_opt,
+            failover_endpoints,
+        )
     }
 
     #[wasm_bindgen]

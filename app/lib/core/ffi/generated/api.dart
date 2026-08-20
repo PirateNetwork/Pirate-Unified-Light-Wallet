@@ -672,6 +672,19 @@ Future<void> setLightdEndpoint({
   tlsPinOpt: tlsPinOpt,
 );
 
+/// Set a lightwalletd endpoint with explicit same-network alternates.
+Future<void> setLightdEndpointPool({
+  required String walletId,
+  required String url,
+  String? tlsPinOpt,
+  required List<String> failoverEndpoints,
+}) => RustLib.instance.api.crateApiSetLightdEndpointPool(
+  walletId: walletId,
+  url: url,
+  tlsPinOpt: tlsPinOpt,
+  failoverEndpoints: failoverEndpoints,
+);
+
 /// Get lightwalletd endpoint
 Future<String> getLightdEndpoint({required String walletId}) =>
     RustLib.instance.api.crateApiGetLightdEndpoint(walletId: walletId);

@@ -1318,6 +1318,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     wireObj.use_tls = cst_encode_bool(apiObj.useTls);
     wireObj.tls_pin = cst_encode_opt_String(apiObj.tlsPin);
     wireObj.label = cst_encode_opt_String(apiObj.label);
+    wireObj.automatic_failover = cst_encode_bool(apiObj.automaticFailover);
+    wireObj.failover_endpoints = cst_encode_list_String(
+      apiObj.failoverEndpoints,
+    );
+    wireObj.is_configured = cst_encode_bool(apiObj.isConfigured);
   }
 
   @protected
@@ -5082,6 +5087,46 @@ class RustLibWire implements BaseWire {
             )
           >();
 
+  void wire__crate__api__set_lightd_endpoint_pool(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> url,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> tls_pin_opt,
+    ffi.Pointer<wire_cst_list_String> failover_endpoints,
+  ) {
+    return _wire__crate__api__set_lightd_endpoint_pool(
+      port_,
+      wallet_id,
+      url,
+      tls_pin_opt,
+      failover_endpoints,
+    );
+  }
+
+  late final _wire__crate__api__set_lightd_endpoint_poolPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_String>,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__set_lightd_endpoint_pool');
+  late final _wire__crate__api__set_lightd_endpoint_pool =
+      _wire__crate__api__set_lightd_endpoint_poolPtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_String>,
+            )
+          >();
+
   void wire__crate__api__set_panic_pin(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> pin,
@@ -6432,6 +6477,13 @@ final class wire_cst_list_output extends ffi.Struct {
   external int len;
 }
 
+final class wire_cst_list_String extends ffi.Struct {
+  external ffi.Pointer<ffi.Pointer<wire_cst_list_prim_u_8_strict>> ptr;
+
+  @ffi.Int32()
+  external int len;
+}
+
 final class wire_cst_lightd_endpoint extends ffi.Struct {
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> host;
 
@@ -6444,6 +6496,14 @@ final class wire_cst_lightd_endpoint extends ffi.Struct {
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> tls_pin;
 
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> label;
+
+  @ffi.Bool()
+  external bool automatic_failover;
+
+  external ffi.Pointer<wire_cst_list_String> failover_endpoints;
+
+  @ffi.Bool()
+  external bool is_configured;
 }
 
 final class wire_cst_transaction_cursor extends ffi.Struct {
@@ -6453,13 +6513,6 @@ final class wire_cst_transaction_cursor extends ffi.Struct {
 
   @ffi.Int64()
   external int amount;
-}
-
-final class wire_cst_list_String extends ffi.Struct {
-  external ffi.Pointer<ffi.Pointer<wire_cst_list_prim_u_8_strict>> ptr;
-
-  @ffi.Int32()
-  external int len;
 }
 
 final class wire_cst_pending_tx extends ffi.Struct {

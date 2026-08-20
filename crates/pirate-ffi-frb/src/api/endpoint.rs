@@ -1,7 +1,5 @@
 use super::*;
-use pirate_sync_lightd::client::{
-    is_pirate_mainnet_auto_endpoint, LightClientConfig, RetryConfig, TlsConfig, TransportMode,
-};
+use pirate_sync_lightd::client::{LightClientConfig, RetryConfig, TlsConfig, TransportMode};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
@@ -24,8 +22,18 @@ const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "arrr3.qortal.link",
     "lightwalletd1.cryptoforge.cc",
     "lightwalletd2.cryptoforge.cc",
-    "lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion",
-    "rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p",
+    "4kbfoltkqir44ab62l6dhkovugdrdevxzjtp6duv6gga3ixoe6kwkcqd.onion",
+    "ibdhmxvqg3imgf67el6y2zxakuf37h3dyug4ujpa6qb7zvrz7sacmnqd.onion",
+    "5vjlbxmzx4gjfuwcot2qtfjdnxodzpe4jsw3ckx7i4maltz7j5qa.b32.i2p",
+    "47go5e2vfmm2o5qdl7zr7rzf57hxjt6z4453ugvgyfkl3bbobwmq.b32.i2p",
+];
+const IRONWOOD_TESTNET_LIGHTD_HOSTS: &[&str] = &[
+    "testlightwalletd1.cryptoforge.cc",
+    "testlightwalletd2.cryptoforge.cc",
+    "6rwymqddf6dxaphftoy5n3wfgpgwut2upf2lnk6shimjkum2z6uq.b32.i2p",
+    "g4vk6mdenflhm5j2c4kiujwkox7ygyftdfhwai6clgye4br2ujlq.b32.i2p",
+    "lzciy5lpujcqz42vtbr523ceik6rkzlvwtknxfnpyxcskpmx3swkfryd.onion",
+    "iwfhfhwyg6gfm3mqpe5clnwi5oh652hsd2aq4hiael7m7syl4nkyxiqd.onion",
 ];
 
 lazy_static::lazy_static! {
@@ -40,6 +48,9 @@ pub struct LightdEndpoint {
     pub use_tls: bool,
     pub tls_pin: Option<String>,
     pub label: Option<String>,
+    pub automatic_failover: bool,
+    pub failover_endpoints: Vec<String>,
+    pub is_configured: bool,
 }
 
 impl Default for LightdEndpoint {
@@ -50,6 +61,9 @@ impl Default for LightdEndpoint {
             use_tls: DEFAULT_LIGHTD_USE_TLS,
             tls_pin: None,
             label: None,
+            automatic_failover: false,
+            failover_endpoints: Vec::new(),
+            is_configured: false,
         }
     }
 }
@@ -146,6 +160,9 @@ pub(super) fn endpoint_from_url(
         use_tls,
         tls_pin,
         label,
+        automatic_failover: false,
+        failover_endpoints: Vec::new(),
+        is_configured: false,
     })
 }
 
@@ -158,7 +175,7 @@ pub(super) fn build_light_client_config(
     connect_timeout: Duration,
     request_timeout: Duration,
 ) -> LightClientConfig {
-    let config = LightClientConfig {
+    LightClientConfig {
         endpoint: endpoint.url(),
         transport,
         socks5_url,
@@ -172,16 +189,14 @@ pub(super) fn build_light_client_config(
         request_timeout,
         allow_direct_fallback,
         failover_endpoints: Vec::new(),
-    };
-    if endpoint.tls_pin.is_none() && is_pirate_mainnet_auto_endpoint(&endpoint.url()) {
-        config.with_pirate_mainnet_auto_pool()
-    } else {
-        config
     }
 }
 
 pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<NetworkType> {
     let host_lower = host.to_ascii_lowercase();
+    if IRONWOOD_TESTNET_LIGHTD_HOSTS.contains(&host_lower.as_str()) {
+        return Some(NetworkType::Testnet);
+    }
     if port == 8067 {
         return Some(NetworkType::Testnet);
     }
@@ -206,7 +221,10 @@ pub(super) fn address_prefix_network_type_for_endpoint(
     endpoint: &LightdEndpoint,
     default_network: NetworkType,
 ) -> NetworkType {
-    if endpoint.host == DEV_LIGHTD_HOST && endpoint.port == IRONWOOD_TESTNET_PORT {
+    let host = endpoint.host.to_ascii_lowercase();
+    if (endpoint.host == DEV_LIGHTD_HOST && endpoint.port == IRONWOOD_TESTNET_PORT)
+        || IRONWOOD_TESTNET_LIGHTD_HOSTS.contains(&host.as_str())
+    {
         NetworkType::Mainnet
     } else {
         default_network
@@ -249,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn curated_endpoint_enables_the_canonical_auto_pool() {
+    fn default_endpoint_remains_single_source() {
         let endpoint = LightdEndpoint::default();
         let config = build_light_client_config(
             &endpoint,
@@ -260,10 +278,7 @@ mod tests {
             Duration::from_secs(30),
             Duration::from_secs(180),
         );
-        assert_eq!(
-            config.failover_endpoints.len(),
-            pirate_sync_lightd::client::MAINNET_AUTO_LIGHTD_URLS.len() - 1
-        );
+        assert!(config.failover_endpoints.is_empty());
     }
 
     #[test]
@@ -274,6 +289,7 @@ mod tests {
             use_tls: true,
             tls_pin: None,
             label: None,
+            ..LightdEndpoint::default()
         };
         assert_eq!(tls_server_name(&endpoint).as_deref(), Some("192.0.2.10"));
     }

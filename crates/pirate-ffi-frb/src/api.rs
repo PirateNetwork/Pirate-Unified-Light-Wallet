@@ -1447,6 +1447,16 @@ pub fn set_lightd_endpoint(
     service::set_lightd_endpoint(wallet_id, url, tls_pin_opt)
 }
 
+/// Set a lightwalletd endpoint with explicit same-network alternates.
+pub fn set_lightd_endpoint_pool(
+    wallet_id: WalletId,
+    url: String,
+    tls_pin_opt: Option<String>,
+    failover_endpoints: Vec<String>,
+) -> Result<()> {
+    service::set_lightd_endpoint_pool(wallet_id, url, tls_pin_opt, failover_endpoints)
+}
+
 /// Get lightwalletd endpoint
 pub fn get_lightd_endpoint(wallet_id: WalletId) -> Result<String> {
     service::get_lightd_endpoint(wallet_id)

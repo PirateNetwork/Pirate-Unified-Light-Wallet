@@ -73,7 +73,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -872554908;
+  int get rustContentHash => -1940509816;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -547,6 +547,13 @@ abstract class RustLibApi extends BaseApi {
     required String walletId,
     required String url,
     String? tlsPinOpt,
+  });
+
+  Future<void> crateApiSetLightdEndpointPool({
+    required String walletId,
+    required String url,
+    String? tlsPinOpt,
+    required List<String> failoverEndpoints,
   });
 
   Future<void> crateApiSetPanicPin({required String pin});
@@ -4162,6 +4169,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<void> crateApiSetLightdEndpointPool({
+    required String walletId,
+    required String url,
+    String? tlsPinOpt,
+    required List<String> failoverEndpoints,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(url);
+          var arg2 = cst_encode_opt_String(tlsPinOpt);
+          var arg3 = cst_encode_list_String(failoverEndpoints);
+          return wire.wire__crate__api__set_lightd_endpoint_pool(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetLightdEndpointPoolConstMeta,
+        argValues: [walletId, url, tlsPinOpt, failoverEndpoints],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSetLightdEndpointPoolConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_lightd_endpoint_pool",
+        argNames: ["walletId", "url", "tlsPinOpt", "failoverEndpoints"],
+      );
+
+  @override
   Future<void> crateApiSetPanicPin({required String pin}) {
     return handler.executeNormal(
       NormalTask(
@@ -5458,14 +5504,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   LightdEndpoint dco_decode_lightd_endpoint(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return LightdEndpoint(
       host: dco_decode_String(arr[0]),
       port: dco_decode_u_16(arr[1]),
       useTls: dco_decode_bool(arr[2]),
       tlsPin: dco_decode_opt_String(arr[3]),
       label: dco_decode_opt_String(arr[4]),
+      automaticFailover: dco_decode_bool(arr[5]),
+      failoverEndpoints: dco_decode_list_String(arr[6]),
+      isConfigured: dco_decode_bool(arr[7]),
     );
   }
 
@@ -6438,12 +6487,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_useTls = sse_decode_bool(deserializer);
     var var_tlsPin = sse_decode_opt_String(deserializer);
     var var_label = sse_decode_opt_String(deserializer);
+    var var_automaticFailover = sse_decode_bool(deserializer);
+    var var_failoverEndpoints = sse_decode_list_String(deserializer);
+    var var_isConfigured = sse_decode_bool(deserializer);
     return LightdEndpoint(
       host: var_host,
       port: var_port,
       useTls: var_useTls,
       tlsPin: var_tlsPin,
       label: var_label,
+      automaticFailover: var_automaticFailover,
+      failoverEndpoints: var_failoverEndpoints,
+      isConfigured: var_isConfigured,
     );
   }
 
@@ -7656,6 +7711,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.useTls, serializer);
     sse_encode_opt_String(self.tlsPin, serializer);
     sse_encode_opt_String(self.label, serializer);
+    sse_encode_bool(self.automaticFailover, serializer);
+    sse_encode_list_String(self.failoverEndpoints, serializer);
+    sse_encode_bool(self.isConfigured, serializer);
   }
 
   @protected

@@ -125,8 +125,16 @@ class LightdEndpointConfig {
   final String url;
   final String? tlsPin;
   final String? label;
+  final bool automaticFailover;
+  final bool isConfigured;
 
-  const LightdEndpointConfig({required this.url, this.tlsPin, this.label});
+  const LightdEndpointConfig({
+    required this.url,
+    this.tlsPin,
+    this.label,
+    this.automaticFailover = false,
+    this.isConfigured = true,
+  });
 
   /// Parse host from URL
   String get host {
@@ -169,6 +177,8 @@ class LightdEndpointConfig {
     'url': url,
     if (tlsPin != null) 'tlsPin': tlsPin,
     if (label != null) 'label': label,
+    'automaticFailover': automaticFailover,
+    'isConfigured': isConfigured,
   };
 
   factory LightdEndpointConfig.fromJson(Map<String, dynamic> json) {
@@ -176,6 +186,8 @@ class LightdEndpointConfig {
       url: json['url'] as String,
       tlsPin: json['tlsPin'] as String?,
       label: json['label'] as String?,
+      automaticFailover: json['automaticFailover'] as bool? ?? false,
+      isConfigured: json['isConfigured'] as bool? ?? true,
     );
   }
 }
@@ -1005,6 +1017,23 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  static Future<void> setLightdEndpointPool({
+    required WalletId walletId,
+    required String url,
+    required List<String> failoverEndpoints,
+  }) async {
+    if (kUseFrbBindings) {
+      await api.setLightdEndpointPool(
+        walletId: walletId,
+        url: url,
+        tlsPinOpt: null,
+        failoverEndpoints: failoverEndpoints,
+      );
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   static Future<String> getLightdEndpoint(WalletId id) async {
     if (kUseFrbBindings) {
       return await api.getLightdEndpoint(walletId: id);
@@ -1023,6 +1052,8 @@ class FfiBridge {
         url: url,
         tlsPin: config.tlsPin,
         label: config.label,
+        automaticFailover: config.automaticFailover,
+        isConfigured: config.isConfigured,
       );
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)

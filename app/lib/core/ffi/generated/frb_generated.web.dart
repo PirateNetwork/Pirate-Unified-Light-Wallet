@@ -937,6 +937,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_bool(raw.useTls),
       cst_encode_opt_String(raw.tlsPin),
       cst_encode_opt_String(raw.label),
+      cst_encode_bool(raw.automaticFailover),
+      cst_encode_list_String(raw.failoverEndpoints),
+      cst_encode_bool(raw.isConfigured),
     ].jsify()!;
   }
 
@@ -2772,6 +2775,20 @@ class RustLibWire implements BaseWire {
     tls_pin_opt,
   );
 
+  void wire__crate__api__set_lightd_endpoint_pool(
+    NativePortType port_,
+    String wallet_id,
+    String url,
+    String? tls_pin_opt,
+    JSAny failover_endpoints,
+  ) => wasmModule.wire__crate__api__set_lightd_endpoint_pool(
+    port_,
+    wallet_id,
+    url,
+    tls_pin_opt,
+    failover_endpoints,
+  );
+
   void wire__crate__api__set_panic_pin(NativePortType port_, String pin) =>
       wasmModule.wire__crate__api__set_panic_pin(port_, pin);
 
@@ -3655,6 +3672,14 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String wallet_id,
     String url,
     String? tls_pin_opt,
+  );
+
+  external void wire__crate__api__set_lightd_endpoint_pool(
+    NativePortType port_,
+    String wallet_id,
+    String url,
+    String? tls_pin_opt,
+    JSAny failover_endpoints,
   );
 
   external void wire__crate__api__set_panic_pin(

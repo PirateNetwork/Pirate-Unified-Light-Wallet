@@ -17,6 +17,9 @@ class LightdEndpoint {
   final bool useTls;
   final String? tlsPin;
   final String? label;
+  final bool automaticFailover;
+  final List<String> failoverEndpoints;
+  final bool isConfigured;
 
   const LightdEndpoint({
     required this.host,
@@ -24,6 +27,9 @@ class LightdEndpoint {
     required this.useTls,
     this.tlsPin,
     this.label,
+    required this.automaticFailover,
+    required this.failoverEndpoints,
+    required this.isConfigured,
   });
 
   static Future<LightdEndpoint> default_() =>
@@ -41,7 +47,10 @@ class LightdEndpoint {
       port.hashCode ^
       useTls.hashCode ^
       tlsPin.hashCode ^
-      label.hashCode;
+      label.hashCode ^
+      automaticFailover.hashCode ^
+      failoverEndpoints.hashCode ^
+      isConfigured.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -52,5 +61,8 @@ class LightdEndpoint {
           port == other.port &&
           useTls == other.useTls &&
           tlsPin == other.tlsPin &&
-          label == other.label;
+          label == other.label &&
+          automaticFailover == other.automaticFailover &&
+          failoverEndpoints == other.failoverEndpoints &&
+          isConfigured == other.isConfigured;
 }
