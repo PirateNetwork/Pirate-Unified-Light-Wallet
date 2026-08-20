@@ -61,6 +61,7 @@ pub const MAINNET_AUTO_LIGHTD_URLS: &[&str] = &[
     "https://arrr.qortal.link:443",
     "https://arrr2.qortal.link:443",
     "https://arrr3.qortal.link:443",
+    "https://pirate.mathnodes.com:443",
 ];
 
 const HISTORICAL_STRIPE_BLOCKS: u64 = 256;
@@ -1978,7 +1979,8 @@ impl LightClient {
                 return Ok(());
             }
             return Err(Error::Connection(
-                "no canonical Pirate mainnet lightwalletd endpoint is available".to_string(),
+                "no canonical lightwalletd endpoint in the configured pool is available"
+                    .to_string(),
             ));
         }
 
@@ -3821,14 +3823,13 @@ mod tests {
 
     #[test]
     fn canonical_mainnet_pool_contains_only_curated_tls_servers() {
-        assert_eq!(MAINNET_AUTO_LIGHTD_URLS.len(), 7);
+        assert_eq!(MAINNET_AUTO_LIGHTD_URLS.len(), 8);
         for endpoint in MAINNET_AUTO_LIGHTD_URLS {
             assert!(endpoint.starts_with("https://"), "{endpoint}");
             assert!(is_pirate_mainnet_auto_endpoint(endpoint), "{endpoint}");
         }
         for endpoint in [
             "http://64.23.167.130:9067",
-            "https://pirate.mathnodes.com:443",
             "http://example.com:9067",
             "http://lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion:9067",
         ] {
