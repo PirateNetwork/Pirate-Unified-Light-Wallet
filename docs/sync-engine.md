@@ -69,11 +69,17 @@ Parallel work produces immutable results. One owner performs every ordered datab
 
 **Technical detail:** The controller uses quantized size buckets, hysteresis, and separate network/cache observations. It reacts to sustained throughput rather than one noisy latency sample, which avoids oscillating between segment sizes. The continuous stream remains unchanged; this is an internal durability and buffering decision, not a different request fingerprint for every device.
 
-### Transport-Preserving Endpoint Failover
+### Validated Multi-Server Intake
 
-**In plain terms:** A stalled server can be replaced without silently bypassing the user's network choice or trusting a certificate pin from another server.
+**In plain terms:** Auto mode can use more than one healthy light server for old blocks, but the blocks still enter the wallet as one continuous chain. A stalled server can be replaced without silently bypassing the user's network choice.
 
-**Technical detail:** Endpoint health records detect connection failures, stalled streams, invalid ranges, and chain disagreement. Every endpoint retains its own URL and SPKI pin. Failover continues through the selected Direct, Tor, SOCKS5, or I2P transport and must agree on the same canonical chain before its data is accepted.
+**Technical detail:** Auto is a Pirate Unified Wallet policy layered over an explicit core API. Existing SDK, CLI, React Native, and Qortal calls remain single-server unless the caller deliberately supplies a pool. A pool is rejected if its members cross Pirate networks, mix clearnet, onion, or I2P routes, change the connection security mode, or combine automatic failover with a pinned primary.
+
+Candidates are probed through the selected Direct, Tor, SOCKS5, or I2P transport. They must agree on chain metadata and the hash at a common historical anchor before receiving work. When the selected server is available, its anchor is authoritative; otherwise a strict majority of responding candidates is required when more than one answer exists.
+
+Direct historical sync can use up to three validated streams, while Tor and SOCKS5 use at most two. I2P remains single-stream with validated failover to avoid multiplying tunnel pressure. The final 100 blocks are read from one source so ordinary tip movement cannot produce a striped view across competing tips.
+
+Each source receives a disjoint 256-block range. Results are buffered behind one byte semaphore, reordered by height, and checked for exact range coverage and parent-hash continuity across source boundaries. Only that validated prefix reaches the existing scanner and single persistence owner. A failed source is quarantined after bounded retries, and work resumes at the first height not yet accepted by the ordered assembler.
 
 ## Cryptographic scanning
 
