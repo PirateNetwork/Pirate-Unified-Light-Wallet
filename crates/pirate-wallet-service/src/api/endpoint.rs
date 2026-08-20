@@ -1,19 +1,27 @@
 use super::*;
-use pirate_sync_lightd::client::{LightClientConfig, RetryConfig, TlsConfig, TransportMode};
+use pirate_sync_lightd::client::{
+    is_pirate_mainnet_auto_endpoint, LightClientConfig, RetryConfig, TlsConfig, TransportMode,
+};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
 
 const IP_TLS_SERVER_NAME: &str = "lightd1.piratechain.com";
 const CUSTOM_ENDPOINT_LABEL: &str = "Custom";
-const OFFICIAL_ENDPOINT_LABEL: &str = "Pirate Chain Mainnet";
+const OFFICIAL_ENDPOINT_LABEL: &str = "Auto (Mainnet)";
 const DEV_LIGHTD_HOST: &str = "64.23.167.130";
 const DEV_LIGHTD_PORT: u16 = 9067;
 const IRONWOOD_TESTNET_PORT: u16 = 8067;
 const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "lightd1.pirate.black",
+    "lightd.pirate.black",
     "lightd1.piratechain.com",
     "pirate.mathnodes.com",
+    "arrr.qortal.link",
+    "arrr2.qortal.link",
+    "arrr3.qortal.link",
+    "lightwalletd1.cryptoforge.cc",
+    "lightwalletd2.cryptoforge.cc",
     "lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion",
     "rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p",
 ];
@@ -265,7 +273,7 @@ pub(super) fn build_light_client_config(
     connect_timeout: Duration,
     request_timeout: Duration,
 ) -> LightClientConfig {
-    LightClientConfig {
+    let config = LightClientConfig {
         endpoint: endpoint.url(),
         transport,
         socks5_url,
@@ -279,6 +287,11 @@ pub(super) fn build_light_client_config(
         request_timeout,
         allow_direct_fallback,
         failover_endpoints: Vec::new(),
+    };
+    if endpoint.tls_pin.is_none() && is_pirate_mainnet_auto_endpoint(&endpoint.url()) {
+        config.with_pirate_mainnet_auto_pool()
+    } else {
+        config
     }
 }
 
@@ -346,7 +359,51 @@ mod tests {
     fn default_endpoint_uses_the_official_tls_server() {
         let endpoint = LightdEndpoint::default();
         assert_eq!(endpoint.url(), "https://lightd1.pirate.black:443");
-        assert_eq!(endpoint.label.as_deref(), Some(OFFICIAL_ENDPOINT_LABEL));
+        assert_eq!(endpoint.label.as_deref(), Some("Auto (Mainnet)"));
+    }
+
+    #[test]
+    fn curated_endpoints_enable_the_canonical_auto_pool() {
+        for host in [
+            DEFAULT_LIGHTD_HOST,
+            "lightd.pirate.black",
+            "arrr2.qortal.link",
+            "lightwalletd2.cryptoforge.cc",
+        ] {
+            let endpoint = tls_endpoint(host);
+            let config = build_light_client_config(
+                &endpoint,
+                TransportMode::Direct,
+                None,
+                false,
+                RetryConfig::default(),
+                Duration::from_secs(30),
+                Duration::from_secs(180),
+            );
+            assert!(!config.failover_endpoints.is_empty(), "{host}");
+            assert!(config
+                .failover_endpoints
+                .iter()
+                .all(|candidate| candidate.tls.enabled));
+        }
+    }
+
+    #[test]
+    fn pinned_default_endpoint_remains_single_source() {
+        let endpoint = LightdEndpoint {
+            tls_pin: Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string()),
+            ..LightdEndpoint::default()
+        };
+        let config = build_light_client_config(
+            &endpoint,
+            TransportMode::Direct,
+            None,
+            false,
+            RetryConfig::default(),
+            Duration::from_secs(30),
+            Duration::from_secs(180),
+        );
+        assert!(config.failover_endpoints.is_empty());
     }
 
     #[test]
