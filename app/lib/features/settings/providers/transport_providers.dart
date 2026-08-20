@@ -268,13 +268,23 @@ class TransportConfig {
   factory TransportConfig.fromJson(Map<String, dynamic> json) {
     final torBridgeJson = json['tor_bridge'] as Map<String, dynamic>? ?? {};
     final storedI2pEndpoint = (json['i2p_endpoint'] as String?)?.trim();
+    final parsedI2pEndpoint = storedI2pEndpoint == null
+        ? null
+        : endpoints.LightdEndpoint.tryParse(storedI2pEndpoint);
+    final compatibleI2pEndpoint = parsedI2pEndpoint == null
+        ? null
+        : endpoints.LightdEndpoint.replacementForTransport(
+                mode: 'i2p',
+                current: parsedI2pEndpoint,
+              ) ??
+              parsedI2pEndpoint;
     return TransportConfig(
       mode: json['mode'] as String? ?? 'tor',
       dnsProvider: json['dns_provider'] as String? ?? 'cloudflare_doh',
       socks5Config: Map<String, String?>.from(json['socks5'] as Map? ?? {}),
       i2pEndpoint: storedI2pEndpoint == null || storedI2pEndpoint.isEmpty
           ? endpoints.kDefaultI2pLightdUrl
-          : storedI2pEndpoint,
+          : compatibleI2pEndpoint?.url ?? endpoints.kDefaultI2pLightdUrl,
       tlsPins: List<Map<String, String>>.from(
         (json['tls_pins'] as List?)?.map(
               (pin) => Map<String, String>.from(pin as Map),
@@ -311,6 +321,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   static const String _storageNonI2pEndpointKey =
       'transport_non_i2p_endpoint_v1';
   static const String _storageNonI2pTlsPinKey = 'transport_non_i2p_tls_pin_v1';
+  static const String _storageNonI2pAutoKey = 'transport_non_i2p_auto_v1';
   static const TransportConfig _defaultConfig = TransportConfig(
     mode: 'tor',
     dnsProvider: 'cloudflare_doh',
@@ -583,6 +594,10 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
         key: _storageNonI2pTlsPinKey,
         value: endpointConfig.tlsPin ?? '',
       );
+      await _storage.write(
+        key: _storageNonI2pAutoKey,
+        value: endpointConfig.automaticFailover ? 'true' : 'false',
+      );
     } catch (_) {}
   }
 
@@ -597,37 +612,50 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     final currentEndpoint = endpoints.LightdEndpoint.tryParse(
       current.url,
       tlsPin: current.tlsPin,
+      automaticFailover: current.automaticFailover,
     );
-    final configuredI2p = endpoints.LightdEndpoint.tryParse(
-      configuredI2pEndpoint,
-    );
+    final configuredI2p =
+        endpoints.LightdEndpoint.findPreset(
+          configuredI2pEndpoint,
+          automaticFailover: true,
+        ) ??
+        endpoints.LightdEndpoint.tryParse(configuredI2pEndpoint);
     endpoints.LightdEndpoint? storedEndpoint;
     if (mode != 'i2p') {
       String? storedUrl;
       String? storedPin;
+      bool storedAuto = false;
       try {
         storedUrl = (await _storage.read(key: _storageNonI2pEndpointKey))
             ?.trim();
         storedPin = (await _storage.read(key: _storageNonI2pTlsPinKey))?.trim();
+        storedAuto =
+            (await _storage.read(key: _storageNonI2pAutoKey)) == 'true';
       } catch (_) {
         // Unsigned desktop builds may not have secure storage available.
         // Continue with the curated fallback instead of retaining an I2P URL.
       }
       storedEndpoint = storedUrl == null || storedUrl.isEmpty
           ? null
-          : endpoints.LightdEndpoint.tryParse(storedUrl, tlsPin: storedPin);
+          : endpoints.LightdEndpoint.tryParse(
+              storedUrl,
+              tlsPin: storedPin,
+              automaticFailover: storedAuto,
+            );
     }
-    final target = endpoints.LightdEndpoint.replacementForTransport(
-      mode: mode,
-      current: currentEndpoint,
-      storedNonI2p: storedEndpoint,
-      configuredI2p: configuredI2p,
-    );
-    if (target == null || currentEndpoint?.url == target.url) return;
-    await ref.read(setLightdEndpointProvider)(
-      url: target.url,
-      tlsPin: target.tlsPin,
-    );
+    final target = current.isConfigured
+        ? endpoints.LightdEndpoint.replacementForTransport(
+            mode: mode,
+            current: currentEndpoint,
+            storedNonI2p: storedEndpoint,
+            configuredI2p: configuredI2p,
+          )
+        : endpoints.LightdEndpoint.automaticEndpointFor(
+            currentEndpoint?.network ?? endpoints.LightdNetwork.mainnet,
+            mode,
+          );
+    if (target == null || currentEndpoint == target) return;
+    await ref.read(setLightdEndpointSelectionProvider)(target);
   }
 
   void _invalidateSyncProviders() {

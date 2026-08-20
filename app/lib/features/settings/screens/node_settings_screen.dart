@@ -38,36 +38,48 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   bool _isLoading = false;
   bool _hasChanges = false;
   bool _isFetchingSpkiPin = false;
+  bool _automaticFailover = false;
   String? _spkiPinMessage;
   bool _spkiPinMessageIsError = false;
   String? _originalEndpoint;
   String? _originalTlsPin;
+  bool _originalAutomaticFailover = false;
+  ProviderSubscription<AsyncValue<ffi.LightdEndpointConfig>>?
+  _endpointSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadCurrentEndpoint();
+    _endpointSubscription = ref
+        .listenManual<AsyncValue<ffi.LightdEndpointConfig>>(
+          lightdEndpointConfigProvider,
+          (_, next) => next.whenData(_applyCurrentEndpoint),
+          fireImmediately: true,
+        );
   }
 
   @override
   void dispose() {
+    _endpointSubscription?.close();
     _endpointController.dispose();
     _tlsPinController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadCurrentEndpoint() async {
-    ref.read(lightdEndpointConfigProvider).whenData((config) {
-      final displayString = config.displayString;
-      final tlsPin = config.tlsPin ?? '';
+  void _applyCurrentEndpoint(ffi.LightdEndpointConfig config) {
+    if (_hasChanges || !mounted) return;
+    final displayString = config.displayString;
+    final tlsPin = config.tlsPin ?? '';
+    setState(() {
       _endpointController.text = displayString;
       _tlsPinController.text = tlsPin;
       _useTls = config.useTls;
+      _automaticFailover = config.automaticFailover;
       _originalEndpoint = displayString;
       _originalTlsPin = tlsPin;
+      _originalAutomaticFailover = config.automaticFailover;
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
-      if (mounted) setState(() {});
     });
   }
 
@@ -77,9 +89,11 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
           _tlsPinController.text.trim() == (_originalTlsPin ?? '')) {
         _tlsPinController.clear();
       }
+      _automaticFailover = false;
       _hasChanges =
           value != _originalEndpoint ||
-          _tlsPinController.text != (_originalTlsPin ?? '');
+          _tlsPinController.text != (_originalTlsPin ?? '') ||
+          _automaticFailover != _originalAutomaticFailover;
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
@@ -87,9 +101,11 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
   void _onTlsPinChanged(String value) {
     setState(() {
+      _automaticFailover = false;
       _hasChanges =
           _endpointController.text != _originalEndpoint ||
-          value != (_originalTlsPin ?? '');
+          value != (_originalTlsPin ?? '') ||
+          _automaticFailover != _originalAutomaticFailover;
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
@@ -179,6 +195,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         }
 
         _tlsPinController.text = normalizedPin;
+        _automaticFailover = false;
         await ref.read(setLightdEndpointProvider)(
           url: url,
           tlsPin: normalizedPin,
@@ -186,6 +203,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
         _originalEndpoint = parsed.displayString;
         _originalTlsPin = normalizedPin;
+        _originalAutomaticFailover = false;
         if (mounted) {
           setState(() {
             _hasChanges = false;
@@ -246,20 +264,31 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       final tlsPin = _normalizeSpkiPin(_tlsPinController.text.trim());
 
       // Build URL with scheme
-      final parsed = endpoints.LightdEndpoint.tryParse(endpoint);
+      final parsed = endpoints.LightdEndpoint.tryParse(
+        endpoint,
+        automaticFailover: _automaticFailover,
+      );
       if (parsed == null) {
         throw Exception('Invalid endpoint'.tr);
       }
 
-      final fullUrl = _useTls
-          ? 'https://${parsed.host}:${parsed.port}'
-          : 'http://${parsed.host}:${parsed.port}';
+      final selection = endpoints.LightdEndpoint(
+        id: parsed.id,
+        host: parsed.host,
+        port: parsed.port,
+        useTls: _useTls,
+        tlsPin: _automaticFailover || tlsPin.isEmpty ? null : tlsPin,
+        label: parsed.label,
+        network: parsed.network,
+        route: parsed.route,
+        automaticFailover: _automaticFailover,
+      );
 
-      final setEndpoint = ref.read(setLightdEndpointProvider);
-      await setEndpoint(url: fullUrl, tlsPin: tlsPin.isEmpty ? null : tlsPin);
+      await ref.read(setLightdEndpointSelectionProvider)(selection);
 
       _originalEndpoint = parsed.displayString;
       _originalTlsPin = tlsPin.isEmpty ? '' : tlsPin;
+      _originalAutomaticFailover = _automaticFailover;
 
       if (mounted) {
         setState(() {
@@ -287,13 +316,16 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   }
 
   void _resetToDefault() {
+    final defaultEndpoint = endpoints.LightdEndpoint.defaultEndpoint;
     setState(() {
-      _endpointController.text = endpoints.kDefaultLightd;
+      _endpointController.text = defaultEndpoint.displayString;
       _tlsPinController.text = '';
-      _useTls = endpoints.kDefaultUseTls;
+      _useTls = defaultEndpoint.useTls;
+      _automaticFailover = true;
       _hasChanges =
-          endpoints.kDefaultLightd != _originalEndpoint ||
-          (_originalTlsPin?.isNotEmpty ?? false);
+          defaultEndpoint.displayString != _originalEndpoint ||
+          (_originalTlsPin?.isNotEmpty ?? false) ||
+          !_originalAutomaticFailover;
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
@@ -304,9 +336,11 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       _endpointController.text = endpoint.displayString;
       _tlsPinController.text = endpoint.tlsPin ?? '';
       _useTls = endpoint.useTls;
+      _automaticFailover = endpoint.automaticFailover;
       _hasChanges =
           _endpointController.text != _originalEndpoint ||
-          _tlsPinController.text != (_originalTlsPin ?? '');
+          _tlsPinController.text != (_originalTlsPin ?? '') ||
+          _automaticFailover != _originalAutomaticFailover;
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
@@ -400,7 +434,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                       PInput(
                         controller: _endpointController,
                         label: 'Endpoint (host:port)'.tr,
-                        hint: '64.23.167.130:9067',
+                        hint: 'lightd1.pirate.black:443',
                         keyboardType: TextInputType.url,
                         validator: _validateEndpoint,
                         onChanged: _onEndpointChanged,
@@ -426,6 +460,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                         onChanged: (value) {
                           setState(() {
                             _useTls = value;
+                            _automaticFailover = false;
                             _hasChanges = true;
                           });
                         },
@@ -573,7 +608,30 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     ffi.LightdEndpointConfig config,
     EndpointHealthState health,
   ) {
-    final record = health.recordFor(config.url);
+    final configuredEndpoint = endpoints.LightdEndpoint.tryParse(
+      config.url,
+      automaticFailover: config.automaticFailover,
+    );
+    final route = configuredEndpoint?.route ?? endpoints.LightdRoute.clearnet;
+    final (securityIcon, securityLabel, securityColor) = switch (route) {
+      endpoints.LightdRoute.tor => (
+        Icons.security_outlined,
+        'Tor'.tr,
+        AppColors.accentPrimary,
+      ),
+      endpoints.LightdRoute.i2p => (
+        Icons.router_outlined,
+        'I2P'.tr,
+        AppColors.accentPrimary,
+      ),
+      endpoints.LightdRoute.clearnet =>
+        config.useTls
+            ? (Icons.lock, 'TLS Enabled'.tr, AppColors.success)
+            : (Icons.lock_open, 'TLS Disabled'.tr, AppColors.warning),
+    };
+    final record = health.recordFor(
+      config.automaticFailover ? (health.activeUrl ?? config.url) : config.url,
+    );
     final isChecking =
         health.phase == EndpointHealthPhase.checking ||
         health.phase == EndpointHealthPhase.switching;
@@ -606,13 +664,19 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              Text(
-                'Current Node'.tr,
-                style: AppTypography.labelLarge.copyWith(
-                  color: AppColors.textPrimary,
+              Expanded(
+                child: Text(
+                  config.automaticFailover
+                      ? 'Server selection'.tr
+                      : 'Current Node'.tr,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.labelLarge.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: AppSpacing.xs),
               if (isChecking)
                 const SizedBox(
                   width: 18,
@@ -642,46 +706,54 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
-                  config.displayString,
+                  config.automaticFailover
+                      ? 'Automatic server selection'.tr
+                      : config.displayString,
                   style: AppTypography.bodyMedium.copyWith(
                     color: AppColors.textPrimary,
                     fontFamily: 'monospace',
                   ),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.copy, size: 18),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: config.url));
-                  PSnack.show(
-                    context: context,
-                    message: 'Endpoint copied'.tr,
-                    variant: PSnackVariant.info,
-                  );
-                },
-                tooltip: 'Copy endpoint'.tr,
-                visualDensity: VisualDensity.compact,
-              ),
+              if (!config.automaticFailover)
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 18),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: config.url));
+                    PSnack.show(
+                      context: context,
+                      message: 'Endpoint copied'.tr,
+                      variant: PSnackVariant.info,
+                    );
+                  },
+                  tooltip: 'Copy endpoint'.tr,
+                  visualDensity: VisualDensity.compact,
+                ),
             ],
           ),
 
           const SizedBox(height: AppSpacing.sm),
+
+          if (config.automaticFailover) ...[
+            Text(
+              'Uses multiple verified servers and keeps results in chain order'
+                  .tr,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
 
           Wrap(
             spacing: AppSpacing.xs,
             runSpacing: AppSpacing.xs,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Icon(
-                config.useTls ? Icons.lock : Icons.lock_open,
-                color: config.useTls ? AppColors.success : AppColors.warning,
-                size: 16,
-              ),
+              Icon(securityIcon, color: securityColor, size: 16),
               Text(
-                config.useTls ? 'TLS Enabled'.tr : 'TLS Disabled'.tr,
-                style: AppTypography.bodySmall.copyWith(
-                  color: config.useTls ? AppColors.success : AppColors.warning,
-                ),
+                securityLabel,
+                style: AppTypography.bodySmall.copyWith(color: securityColor),
               ),
               if (config.tlsPin != null) ...[
                 const SizedBox(width: AppSpacing.md),
@@ -774,13 +846,16 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     final record = health.recordFor(endpoint.url);
     final selected =
         _endpointController.text.trim() == endpoint.displayString &&
-        _useTls == endpoint.useTls;
-    final routeIcon = switch (endpoint.route) {
-      endpoints.LightdRoute.tor => Icons.security_outlined,
-      endpoints.LightdRoute.i2p => Icons.router_outlined,
-      endpoints.LightdRoute.clearnet =>
-        endpoint.useTls ? Icons.lock_outline : Icons.dns_outlined,
-    };
+        _useTls == endpoint.useTls &&
+        _automaticFailover == endpoint.automaticFailover;
+    final routeIcon = endpoint.automaticFailover
+        ? Icons.hub_outlined
+        : switch (endpoint.route) {
+            endpoints.LightdRoute.tor => Icons.security_outlined,
+            endpoints.LightdRoute.i2p => Icons.router_outlined,
+            endpoints.LightdRoute.clearnet =>
+              endpoint.useTls ? Icons.lock_outline : Icons.dns_outlined,
+          };
     return PCard(
       onTap: () => _applySuggested(endpoint),
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -826,7 +901,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    endpoint.displayString,
+                    endpoint.displaySubtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.bodySmall.copyWith(

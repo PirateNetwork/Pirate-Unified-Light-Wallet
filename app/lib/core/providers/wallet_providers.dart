@@ -3,6 +3,8 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../config/endpoints.dart' as endpoints;
 import '../background/background_sync_handler.dart';
 import '../background/background_sync_manager.dart' as bg;
 import '../ffi/ffi_bridge.dart';
@@ -928,6 +930,33 @@ final setLightdEndpointProvider =
           url: url,
           tlsPin: tlsPin,
         );
+
+        ref
+          ..invalidate(lightdEndpointProvider)
+          ..invalidate(lightdEndpointConfigProvider);
+      };
+    });
+
+/// Apply a curated endpoint selection, including Flutter's opt-in Auto pool.
+final setLightdEndpointSelectionProvider =
+    Provider<Future<void> Function(endpoints.LightdEndpoint)>((ref) {
+      return (selection) async {
+        final walletId = ref.read(activeWalletProvider);
+        if (walletId == null) throw Exception('No active wallet');
+
+        if (selection.automaticFailover) {
+          await FfiBridge.setLightdEndpointPool(
+            walletId: walletId,
+            url: selection.url,
+            failoverEndpoints: selection.failoverUrls,
+          );
+        } else {
+          await FfiBridge.setLightdEndpoint(
+            walletId: walletId,
+            url: selection.url,
+            tlsPin: selection.tlsPin,
+          );
+        }
 
         ref
           ..invalidate(lightdEndpointProvider)

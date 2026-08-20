@@ -107,7 +107,7 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
   int _consecutiveFailures = 0;
   int _consecutiveStaleChecks = 0;
   int _checkGeneration = 0;
-  String? _observedUrl;
+  String? _observedSelection;
 
   @override
   EndpointHealthState build() {
@@ -122,12 +122,20 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
         _,
         next,
       ) {
-        final url = next.asData?.value.url;
-        if (url != null && url != _observedUrl) {
-          final endpointChanged = _observedUrl != null;
+        final config = next.asData?.value;
+        final selection = config == null
+            ? null
+            : '${config.url}|${config.automaticFailover}';
+        if (selection != null && selection != _observedSelection) {
+          final endpointChanged = _observedSelection != null;
           if (endpointChanged) _checkGeneration += 1;
-          _observedUrl = url;
+          _observedSelection = selection;
           _resetFailureTracking();
+          state = state.copyWith(
+            phase: EndpointHealthPhase.idle,
+            activeUrl: config!.url,
+            clearSwitch: true,
+          );
           _scheduleCheck(_startupDelay, probePool: false);
         }
       })
@@ -175,6 +183,7 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
       final current = LightdEndpoint.tryParse(
         config.url,
         tlsPin: config.tlsPin,
+        automaticFailover: config.automaticFailover,
       );
       if (current == null) {
         state = state.copyWith(
@@ -184,7 +193,7 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
         return;
       }
 
-      _observedUrl = current.url;
+      _observedSelection = '${current.url}|${current.automaticFailover}';
       state = state.copyWith(
         phase: EndpointHealthPhase.checking,
         activeUrl: current.url,
@@ -195,12 +204,16 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
       if (!ref.mounted || generation != _checkGeneration) return;
       _storeRecord(currentRecord);
 
-      final preset = LightdEndpoint.findPreset(current.url);
+      final preset = LightdEndpoint.findPreset(
+        current.url,
+        automaticFailover: config.automaticFailover,
+      );
       final canFailOver =
+          config.automaticFailover &&
           preset != null &&
           (config.tlsPin == null || config.tlsPin!.trim().isEmpty);
       final candidates = canFailOver
-          ? LightdEndpoint.failoverCandidates(preset, mode)
+          ? LightdEndpoint.failoverCandidates(preset)
           : const <LightdEndpoint>[];
 
       final nextFailureCount = currentRecord.healthy
@@ -241,11 +254,7 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
           return;
         }
         if (healthyCandidates.isNotEmpty) {
-          await _switchEndpoint(
-            current,
-            healthyCandidates.first.endpoint,
-            generation,
-          );
+          _selectHealthyPoolMember(current, healthyCandidates.first.endpoint);
           return;
         }
         state = state.copyWith(phase: EndpointHealthPhase.offline);
@@ -267,7 +276,7 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
           _scheduleCheck(_confirmationDelay, probePool: true);
           return;
         }
-        await _switchEndpoint(current, best!.endpoint, generation);
+        _selectHealthyPoolMember(current, best!.endpoint);
         return;
       }
 
@@ -325,25 +334,10 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
     }
   }
 
-  Future<void> _switchEndpoint(
+  void _selectHealthyPoolMember(
     LightdEndpoint current,
     LightdEndpoint replacement,
-    int generation,
-  ) async {
-    if (!ref.mounted || generation != _checkGeneration) return;
-    state = state.copyWith(phase: EndpointHealthPhase.switching);
-    final previouslyObserved = _observedUrl;
-    _observedUrl = replacement.url;
-    try {
-      await ref.read(setLightdEndpointProvider)(
-        url: replacement.url,
-        tlsPin: replacement.tlsPin,
-      );
-    } catch (_) {
-      _observedUrl = previouslyObserved;
-      rethrow;
-    }
-    if (!ref.mounted || generation != _checkGeneration) return;
+  ) {
     _resetFailureTracking();
     state = state.copyWith(
       phase: EndpointHealthPhase.healthy,
