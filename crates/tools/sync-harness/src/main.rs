@@ -8,7 +8,9 @@
 
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
-use pirate_sync_lightd::{LightClient, LightClientConfig, SyncConfig, SyncEngine};
+use pirate_sync_lightd::{
+    bootstrap_transport, LightClient, LightClientConfig, SyncConfig, SyncEngine, TransportMode,
+};
 use std::time::Duration;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
@@ -79,6 +81,14 @@ enum Commands {
         #[arg(long, default_value = "2")]
         concurrency: usize,
 
+        /// Use the canonical Pirate mainnet endpoint pool
+        #[arg(long)]
+        auto: bool,
+
+        /// Run only the continuous-stream strategy
+        #[arg(long)]
+        continuous_only: bool,
+
         /// Number of times to run all strategies
         #[arg(short, long, default_value = "1")]
         runs: u32,
@@ -115,6 +125,12 @@ enum Commands {
     },
 }
 
+#[derive(Clone, Copy)]
+struct TransportBenchmarkMode {
+    auto: bool,
+    continuous_only: bool,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize tracing
@@ -149,9 +165,23 @@ async fn main() -> anyhow::Result<()> {
             blocks,
             chunk_size,
             concurrency,
+            auto,
+            continuous_only,
             runs,
         } => {
-            run_transport_benchmark(endpoint, start, blocks, chunk_size, concurrency, runs).await?;
+            run_transport_benchmark(
+                endpoint,
+                start,
+                blocks,
+                chunk_size,
+                concurrency,
+                TransportBenchmarkMode {
+                    auto,
+                    continuous_only,
+                },
+                runs,
+            )
+            .await?;
         }
         Commands::InterruptTest {
             endpoint,
@@ -195,6 +225,7 @@ async fn run_transport_benchmark(
     blocks: u64,
     chunk_size: u64,
     concurrency: usize,
+    mode: TransportBenchmarkMode,
     runs: u32,
 ) -> anyhow::Result<()> {
     anyhow::ensure!(blocks > 0, "blocks must be greater than zero");
@@ -206,8 +237,32 @@ async fn run_transport_benchmark(
         "requested range exceeds the compact-block protocol height limit"
     );
 
-    let client = LightClient::with_config(LightClientConfig::direct(&endpoint));
-    client.connect().await?;
+    let config = LightClientConfig::direct(&endpoint);
+    let config = if mode.auto {
+        config.with_pirate_mainnet_auto_pool()
+    } else {
+        config
+    };
+    let client = LightClient::with_config(config);
+    if mode.auto {
+        bootstrap_transport(TransportMode::Direct, None).await?;
+        let health = client.probe_endpoints().await;
+        for health in &health {
+            info!(
+                "Endpoint pool: {:<48} healthy={} tip={} reason={}",
+                health.endpoint,
+                health.healthy,
+                health.tip_height.unwrap_or_default(),
+                health.reason.as_deref().unwrap_or("ok")
+            );
+        }
+        anyhow::ensure!(
+            health.iter().any(|endpoint| endpoint.healthy),
+            "no canonical endpoint passed validation"
+        );
+    } else {
+        client.connect().await?;
+    }
     let tip = client.get_latest_block().await?;
     let end = start
         .checked_add(blocks)
@@ -227,12 +282,16 @@ async fn run_transport_benchmark(
         runs
     );
 
-    let strategies = [
-        TransportStrategy::Sequential,
-        TransportStrategy::Concurrent,
-        TransportStrategy::Continuous,
-    ];
-    let mut totals = [Duration::ZERO; 3];
+    let strategies = if mode.continuous_only {
+        vec![TransportStrategy::Continuous]
+    } else {
+        vec![
+            TransportStrategy::Sequential,
+            TransportStrategy::Concurrent,
+            TransportStrategy::Continuous,
+        ]
+    };
+    let mut totals = vec![Duration::ZERO; strategies.len()];
 
     for run in 0..runs {
         // Rotate the order so repeated runs do not systematically favor the
