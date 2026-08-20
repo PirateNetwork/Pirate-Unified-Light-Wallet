@@ -16,7 +16,7 @@ use hyper::Request;
 use hyper_util::rt::TokioIo;
 use native_tls::TlsConnector as NativeTlsConnector;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
@@ -110,10 +110,10 @@ impl Default for TransportConfig {
 
 /// Privacy-preserving transport manager
 pub struct TransportManager {
-    config: Arc<Mutex<TransportConfig>>,
-    tor_client: Arc<Mutex<Option<TorClient>>>,
-    i2p_client: Arc<Mutex<Option<I2pClient>>>,
-    dns_resolver: Arc<Mutex<DnsResolver>>,
+    config: Arc<RwLock<TransportConfig>>,
+    tor_client: Arc<RwLock<Option<TorClient>>>,
+    i2p_client: Arc<RwLock<Option<I2pClient>>>,
+    dns_resolver: Arc<RwLock<DnsResolver>>,
     update_lock: Arc<Mutex<()>>,
 }
 
@@ -123,6 +123,13 @@ fn _assert_transport_manager_send_sync() {
     assert_send_sync::<TransportManager>();
 }
 
+fn read_state<T: Clone>(state: &RwLock<T>) -> T {
+    state
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
 trait AsyncReadWrite: AsyncRead + AsyncWrite {}
 
 impl<T: AsyncRead + AsyncWrite + ?Sized> AsyncReadWrite for T {}
@@ -130,7 +137,30 @@ impl<T: AsyncRead + AsyncWrite + ?Sized> AsyncReadWrite for T {}
 type BoxedStream = Box<dyn AsyncReadWrite + Send + Unpin>;
 type ConnectorStream = TokioIo<BoxedStream>;
 
+async fn fetch_peer_certificate_der(
+    connector: TlsConnector,
+    server_name: String,
+    stream: BoxedStream,
+) -> Result<Vec<u8>> {
+    let stream = connector
+        .connect(&server_name, stream)
+        .await
+        .map_err(|e| Error::Tls(format!("TLS handshake failed: {}", e)))?;
+    let cert = stream
+        .get_ref()
+        .peer_certificate()
+        .map_err(|e| Error::Tls(format!("TLS peer certificate error: {}", e)))?
+        .ok_or_else(|| Error::Tls("No peer certificate presented".to_string()))?;
+    cert.to_der()
+        .map_err(|e| Error::Tls(format!("Failed to read DER certificate: {}", e)))
+}
+
 impl TransportManager {
+    /// Whether this manager still owns the requested transport configuration.
+    pub fn matches_config(&self, config: &TransportConfig) -> bool {
+        read_state(&self.config) == *config
+    }
+
     /// Create new transport manager
     pub async fn new(config: TransportConfig) -> Result<Self> {
         info!("Creating transport manager: mode={:?}", config.mode);
@@ -187,26 +217,37 @@ impl TransportManager {
         let dns_resolver = DnsResolver::new(config.dns_config.clone());
 
         Ok(Self {
-            config: Arc::new(Mutex::new(config)),
-            tor_client: Arc::new(Mutex::new(tor_client)),
-            i2p_client: Arc::new(Mutex::new(i2p_client)),
-            dns_resolver: Arc::new(Mutex::new(dns_resolver)),
+            config: Arc::new(RwLock::new(config)),
+            tor_client: Arc::new(RwLock::new(tor_client)),
+            i2p_client: Arc::new(RwLock::new(i2p_client)),
+            dns_resolver: Arc::new(RwLock::new(dns_resolver)),
             update_lock: Arc::new(Mutex::new(())),
         })
     }
 
     /// Get current transport mode
     pub async fn mode(&self) -> TransportMode {
-        self.config.lock().await.mode
+        self.config
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .mode
     }
 
     /// Check if transport is privacy-preserving
     pub async fn is_private(&self) -> bool {
-        self.config.lock().await.mode.is_private()
+        self.config
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .mode
+            .is_private()
     }
 
-    async fn ensure_tor_bootstrapped(&self, config: &TransportConfig) -> Result<()> {
-        let tor_current = { self.tor_client.lock().await.clone() };
+    async fn ensure_tor_bootstrapped(self: Arc<Self>, config: TransportConfig) -> Result<()> {
+        let tor_current = self
+            .tor_client
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         if let Some(tor) = tor_current {
             let status = tor.status().await;
             if matches!(status, TorStatus::Ready) {
@@ -235,35 +276,49 @@ impl TransportManager {
             "transport_update_config_tor_recreate",
             "mode=Tor reason=missing_client",
         );
-        let client = TorClient::new(config.tor.clone())?;
+        let client = TorClient::new(config.tor)?;
         client.clone().bootstrap().await?;
-        *self.tor_client.lock().await = Some(client);
+        *self
+            .tor_client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
         Ok(())
     }
 
-    async fn ensure_i2p_started(&self, config: &TransportConfig) -> Result<()> {
-        let i2p_current = { self.i2p_client.lock().await.clone() };
+    async fn ensure_i2p_started(self: Arc<Self>, config: TransportConfig) -> Result<()> {
+        let i2p_current = self
+            .i2p_client
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         if let Some(i2p) = i2p_current {
             i2p.start().await?;
             return Ok(());
         }
 
-        let client = I2pClient::new(config.i2p.clone())?;
+        let client = I2pClient::new(config.i2p)?;
         client.clone().start().await?;
-        *self.i2p_client.lock().await = Some(client);
+        *self
+            .i2p_client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
         Ok(())
     }
 
     /// Ensure the active transport has completed any required startup.
-    pub async fn ensure_ready(&self) -> Result<()> {
-        let _update_guard = self.update_lock.lock().await;
-        let config = { self.config.lock().await.clone() };
+    pub async fn ensure_ready(self: Arc<Self>) -> Result<()> {
+        let _update_guard = Arc::clone(&self.update_lock).lock_owned().await;
+        let config = self
+            .config
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         match config.mode {
             TransportMode::Tor if config.tor.enabled => {
-                self.ensure_tor_bootstrapped(&config).await?;
+                self.clone().ensure_tor_bootstrapped(config).await?;
             }
             TransportMode::I2p if config.i2p.enabled => {
-                self.ensure_i2p_started(&config).await?;
+                self.clone().ensure_i2p_started(config).await?;
             }
             _ => {}
         }
@@ -271,19 +326,23 @@ impl TransportManager {
     }
 
     /// Update transport configuration
-    pub async fn update_config(&self, config: TransportConfig) -> Result<()> {
+    pub async fn update_config(self: Arc<Self>, config: TransportConfig) -> Result<()> {
         // Serialize config mutations to avoid concurrent Tor/I2P re-initialization
         // during rapid transport switches or parallel connection attempts.
-        let _update_guard = self.update_lock.lock().await;
-        let current_config = { self.config.lock().await.clone() };
+        let _update_guard = Arc::clone(&self.update_lock).lock_owned().await;
+        let current_config = self
+            .config
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         if current_config == config {
             match config.mode {
                 TransportMode::Tor if config.tor.enabled => {
-                    self.ensure_tor_bootstrapped(&config).await?;
+                    self.clone().ensure_tor_bootstrapped(config).await?;
                     return Ok(());
                 }
                 TransportMode::I2p if config.i2p.enabled => {
-                    self.ensure_i2p_started(&config).await?;
+                    self.clone().ensure_i2p_started(config).await?;
                     return Ok(());
                 }
                 _ => {}
@@ -319,7 +378,11 @@ impl TransportManager {
             ),
         );
 
-        let tor_current = { self.tor_client.lock().await.clone() };
+        let tor_current = self
+            .tor_client
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         if config.mode == TransportMode::Tor && config.tor.enabled {
             if let Some(tor) = tor_current {
                 tor.clone().update_config(config.tor.clone()).await;
@@ -328,14 +391,24 @@ impl TransportManager {
                 info!("Initializing Tor client...");
                 let client = TorClient::new(config.tor.clone())?;
                 client.clone().bootstrap().await?;
-                *self.tor_client.lock().await = Some(client);
+                *self
+                    .tor_client
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
             }
         } else if let Some(tor) = tor_current {
             tor.shutdown().await;
-            *self.tor_client.lock().await = None;
+            *self
+                .tor_client
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         }
 
-        let i2p_current = { self.i2p_client.lock().await.clone() };
+        let i2p_current = self
+            .i2p_client
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         if config.mode == TransportMode::I2p && config.i2p.enabled {
             if let Some(i2p) = i2p_current {
                 i2p.clone().update_config(config.i2p.clone()).await;
@@ -344,35 +417,44 @@ impl TransportManager {
                 info!("Initializing I2P router...");
                 let client = I2pClient::new(config.i2p.clone())?;
                 client.clone().start().await?;
-                *self.i2p_client.lock().await = Some(client);
+                *self
+                    .i2p_client
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
             }
         } else if let Some(i2p) = i2p_current {
             i2p.shutdown().await;
-            *self.i2p_client.lock().await = None;
+            *self
+                .i2p_client
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         }
 
         // Update DNS resolver
         self.dns_resolver
-            .lock()
-            .await
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .set_config(config.dns_config.clone());
 
         // Update config
-        *self.config.lock().await = config;
+        *self
+            .config
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = config;
 
         Ok(())
     }
 
     /// Create HTTP client with configured transport
     pub async fn create_http_client(&self) -> Result<reqwest::Client> {
-        let config = { self.config.lock().await.clone() };
+        let config = read_state(&self.config);
 
         let mut client_builder =
             reqwest::Client::builder().timeout(std::time::Duration::from_secs(60));
 
         match config.mode {
             TransportMode::Tor => {
-                let tor = { self.tor_client.lock().await.clone() };
+                let tor = read_state(&self.tor_client);
                 if let Some(tor) = tor {
                     if !tor.clone().is_ready().await {
                         warn!("Tor is not ready yet, waiting...");
@@ -388,7 +470,7 @@ impl TransportManager {
                 }
             }
             TransportMode::I2p => {
-                let i2p = { self.i2p_client.lock().await.clone() }
+                let i2p = read_state(&self.i2p_client)
                     .ok_or_else(|| Error::Network("I2P router not initialized".to_string()))?;
                 i2p.clone().start().await?;
                 let proxy = i2p.clone().proxy_config().await;
@@ -431,11 +513,11 @@ impl TransportManager {
         url: &str,
         headers: &[(String, String)],
     ) -> Result<Vec<u8>> {
-        let config = { self.config.lock().await.clone() };
+        let config = read_state(&self.config);
 
         match config.mode {
             TransportMode::Tor => {
-                let tor = { self.tor_client.lock().await.clone() }
+                let tor = read_state(&self.tor_client)
                     .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
                 fetch_url_bytes_via_tor(tor, url, headers, Duration::from_secs(60)).await
             }
@@ -447,10 +529,10 @@ impl TransportManager {
     }
 
     /// Create gRPC channel with configured transport
-    pub async fn create_grpc_channel(&self, endpoint: Endpoint) -> Result<Channel> {
-        let config = { self.config.lock().await.clone() };
-        let tor_client = { self.tor_client.lock().await.clone() };
-        let i2p_client = { self.i2p_client.lock().await.clone() };
+    pub async fn create_grpc_channel(self: Arc<Self>, endpoint: Endpoint) -> Result<Channel> {
+        let config = read_state(&self.config);
+        let tor_client = read_state(&self.tor_client);
+        let i2p_client = read_state(&self.i2p_client);
         let dns_config = config.dns_config.clone();
         let socks5_config = config.socks5.clone();
         let mode = config.mode;
@@ -511,35 +593,40 @@ impl TransportManager {
     }
 
     /// Open a raw stream using the configured transport mode.
-    async fn open_stream(&self, host: &str, port: u16) -> Result<BoxedStream> {
-        let config = { self.config.lock().await.clone() };
-        let tor_client = { self.tor_client.lock().await.clone() };
-        let i2p_client = { self.i2p_client.lock().await.clone() };
+    async fn open_stream(self: Arc<Self>, host: String, port: u16) -> Result<BoxedStream> {
+        let config = read_state(&self.config);
+        let tor_client = read_state(&self.tor_client);
+        let i2p_client = read_state(&self.i2p_client);
 
         match config.mode {
             TransportMode::Tor => {
                 let tor = tor_client
                     .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
-                connect_tor_stream(tor, host, port).await
+                connect_tor_stream(tor, &host, port).await
             }
             TransportMode::I2p => {
                 let i2p = i2p_client
                     .ok_or_else(|| Error::Network("I2P router not initialized".to_string()))?;
-                connect_i2p_stream(i2p, host, port).await
+                connect_i2p_stream(i2p, &host, port).await
             }
             TransportMode::Socks5 => {
                 let socks5 = config
                     .socks5
                     .ok_or_else(|| Error::Network("SOCKS5 config not provided".to_string()))?;
-                connect_socks5_stream(socks5, host, port).await
+                connect_socks5_stream(socks5, &host, port).await
             }
-            TransportMode::Direct => connect_direct_stream(config.dns_config, host, port).await,
+            TransportMode::Direct => connect_direct_stream(config.dns_config, &host, port).await,
         }
     }
 
     /// Fetch the SPKI pin from the server using the configured transport.
-    pub async fn fetch_spki_pin(&self, host: &str, port: u16, server_name: &str) -> Result<String> {
-        let stream = self.open_stream(host, port).await?;
+    pub async fn fetch_spki_pin(
+        self: Arc<Self>,
+        host: String,
+        port: u16,
+        server_name: String,
+    ) -> Result<String> {
+        let stream = self.clone().open_stream(host, port).await?;
         let connector = NativeTlsConnector::builder()
             // A pin is an additional constraint on a normally valid TLS
             // identity, not a replacement for certificate and hostname checks.
@@ -548,30 +635,19 @@ impl TransportManager {
             .build()
             .map_err(|e| Error::Tls(format!("TLS connector build failed: {}", e)))?;
         let connector = TlsConnector::from(connector);
-        let stream = connector
-            .connect(server_name, stream)
-            .await
-            .map_err(|e| Error::Tls(format!("TLS handshake failed: {}", e)))?;
-        let cert = stream
-            .get_ref()
-            .peer_certificate()
-            .map_err(|e| Error::Tls(format!("TLS peer certificate error: {}", e)))?
-            .ok_or_else(|| Error::Tls("No peer certificate presented".to_string()))?;
-        let der = cert
-            .to_der()
-            .map_err(|e| Error::Tls(format!("Failed to read DER certificate: {}", e)))?;
+        let der = fetch_peer_certificate_der(connector, server_name, stream).await?;
         extract_spki_from_cert_der(&der)
     }
 
     /// Resolve hostname via configured DNS
     pub async fn resolve_host(&self, hostname: &str) -> Result<Vec<std::net::IpAddr>> {
-        let resolver = { self.dns_resolver.lock().await.clone() };
+        let resolver = read_state(&self.dns_resolver);
         resolver.resolve(hostname).await
     }
 
     /// Get Tor bootstrap status
     pub async fn tor_status(&self) -> Option<crate::tor::TorStatus> {
-        let tor = { self.tor_client.lock().await.clone() };
+        let tor = read_state(&self.tor_client);
         if let Some(tor) = tor {
             Some(tor.status().await)
         } else {
@@ -581,7 +657,7 @@ impl TransportManager {
 
     /// Get I2P startup status
     pub async fn i2p_status(&self) -> Option<crate::i2p::I2pStatus> {
-        let i2p = { self.i2p_client.lock().await.clone() };
+        let i2p = read_state(&self.i2p_client);
         if let Some(i2p) = i2p {
             Some(i2p.status().await)
         } else {
@@ -591,7 +667,7 @@ impl TransportManager {
 
     /// Rotate Tor exit circuits by isolating future streams.
     pub async fn rotate_tor_exit(&self) -> Result<()> {
-        let mode = { self.config.lock().await.mode };
+        let mode = read_state(&self.config).mode;
         if mode != TransportMode::Tor {
             log_debug_event(
                 "transport.rs:TransportManager::rotate_tor_exit",
@@ -604,7 +680,7 @@ impl TransportManager {
             )));
         }
 
-        let tor = { self.tor_client.lock().await.clone() }
+        let tor = read_state(&self.tor_client)
             .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
         log_debug_event(
             "transport.rs:TransportManager::rotate_tor_exit",
@@ -658,14 +734,20 @@ impl TransportManager {
     pub async fn shutdown(&self) {
         info!("Shutting down transport manager...");
 
-        if let Some(tor) = { self.tor_client.lock().await.clone() } {
+        if let Some(tor) = read_state(&self.tor_client) {
             tor.shutdown().await;
         }
-        *self.tor_client.lock().await = None;
-        if let Some(i2p) = { self.i2p_client.lock().await.clone() } {
+        *self
+            .tor_client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        if let Some(i2p) = read_state(&self.i2p_client) {
             i2p.shutdown().await;
         }
-        *self.i2p_client.lock().await = None;
+        *self
+            .i2p_client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
     }
 }
 
@@ -932,7 +1014,7 @@ async fn connect_direct(
     dns_config.tunnel_dns = false;
     dns_config.socks_proxy = None;
     let resolver = DnsResolver::new(dns_config);
-    let addrs = resolver.resolve(&host).await?;
+    let addrs = resolver.resolve_owned(host.clone()).await?;
     let mut last_err = None;
 
     for ip in addrs {
@@ -1048,13 +1130,13 @@ async fn connect_socks5_stream(socks5: Socks5Config, host: &str, port: u16) -> R
 
 async fn connect_via_tor(tor: TorClient, uri: Uri) -> Result<ConnectorStream> {
     let (host, port) = uri_host_port(&uri)?;
-    let status = tor.clone().status().await;
+    let status = tor.clone().status_owned().await;
     log_debug_event(
         "transport.rs:connect_via_tor",
         "connect_tor_start",
         &format!("target={}:{} status={:?}", host, port, status),
     );
-    match tor.connect_stream(&host, port).await {
+    match tor.connect_stream_owned(host.clone(), port).await {
         Ok(stream) => {
             log_debug_event(
                 "transport.rs:connect_via_tor",
@@ -1075,7 +1157,7 @@ async fn connect_via_tor(tor: TorClient, uri: Uri) -> Result<ConnectorStream> {
 }
 
 async fn connect_tor_stream(tor: TorClient, host: &str, port: u16) -> Result<BoxedStream> {
-    let stream = tor.connect_stream(host, port).await?;
+    let stream = tor.connect_stream_owned(host.to_string(), port).await?;
     Ok(Box::new(stream))
 }
 
@@ -1143,7 +1225,12 @@ mod tests {
             ..Default::default()
         };
 
-        let manager = TransportManager::new(config).await.unwrap();
+        let manager = TransportManager::new(config.clone()).await.unwrap();
         assert_eq!(manager.mode().await, TransportMode::Direct);
+        assert!(manager.matches_config(&config));
+
+        let mut other = config;
+        other.mode = TransportMode::Socks5;
+        assert!(!manager.matches_config(&other));
     }
 }

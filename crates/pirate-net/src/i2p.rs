@@ -304,10 +304,10 @@ impl I2pClient {
     pub async fn update_config(self, config: I2pConfig) {
         self.clone().shutdown().await;
         self.shutdown_requested.store(false, Ordering::SeqCst);
-        *self.config.lock().await = config;
-        *self.child.lock().await = None;
-        *self.status.lock().await = I2pStatus::NotStarted;
-        *self.ephemeral_dir.lock().await = None;
+        *Arc::clone(&self.config).lock_owned().await = config;
+        *Arc::clone(&self.child).lock_owned().await = None;
+        *Arc::clone(&self.status).lock_owned().await = I2pStatus::NotStarted;
+        *Arc::clone(&self.ephemeral_dir).lock_owned().await = None;
         log_debug_event(
             "i2p.rs:I2pClient::update_config",
             "i2p_update_config",
@@ -329,32 +329,32 @@ impl I2pClient {
 
         let _guard = self.start_lock.clone().lock_owned().await;
         self.shutdown_requested.store(false, Ordering::SeqCst);
-        let status = { self.status.lock().await.clone() };
+        let status = Arc::clone(&self.status).lock_owned().await.clone();
         match status {
-            I2pStatus::Ready if self.child_is_running().await => return Ok(()),
+            I2pStatus::Ready if self.clone().child_is_running().await => return Ok(()),
             I2pStatus::Ready => {
-                *self.status.lock().await = I2pStatus::NotStarted;
+                *Arc::clone(&self.status).lock_owned().await = I2pStatus::NotStarted;
                 log_debug_event(
                     "i2p.rs:I2pClient::start",
                     "i2p_process_missing",
                     "status=not_started",
                 );
             }
-            I2pStatus::Starting if self.child_is_running().await => {
+            I2pStatus::Starting if self.clone().child_is_running().await => {
                 return self.clone().wait_for_ready().await;
             }
             I2pStatus::Starting => {
-                *self.status.lock().await = I2pStatus::NotStarted;
+                *Arc::clone(&self.status).lock_owned().await = I2pStatus::NotStarted;
             }
             I2pStatus::NotStarted | I2pStatus::Error(_) => {}
         }
 
         // A timed-out or crashed startup may leave a native process behind.
         // Reap it before selecting a port or launching a replacement.
-        self.terminate_child().await;
-        self.remove_ephemeral_dir().await;
+        self.clone().terminate_child().await;
+        self.clone().remove_ephemeral_dir().await;
 
-        let mut config = self.config.lock().await.clone();
+        let mut config = Arc::clone(&self.config).lock_owned().await.clone();
         if !config.enabled {
             return Err(Error::Network("I2P is disabled".to_string()));
         }
@@ -370,10 +370,10 @@ impl I2pClient {
                 &format!("from={} to={}", config.socks_port, selected_port),
             );
             config.socks_port = selected_port;
-            *self.config.lock().await = config.clone();
+            *Arc::clone(&self.config).lock_owned().await = config.clone();
         }
 
-        *self.status.lock().await = I2pStatus::Starting;
+        *Arc::clone(&self.status).lock_owned().await = I2pStatus::Starting;
         log_debug_event(
             "i2p.rs:I2pClient::start",
             "i2p_start",
@@ -384,7 +384,7 @@ impl I2pClient {
         );
 
         let data_dir = prepare_data_dir(&config)?;
-        *self.ephemeral_dir.lock().await = if config.ephemeral {
+        *Arc::clone(&self.ephemeral_dir).lock_owned().await = if config.ephemeral {
             Some(data_dir.clone())
         } else {
             None
@@ -419,7 +419,7 @@ impl I2pClient {
                 Error::Network(msg) => msg.clone(),
                 _ => e.to_string(),
             };
-            *self.status.lock().await = I2pStatus::Error(message.clone());
+            *Arc::clone(&self.status).lock_owned().await = I2pStatus::Error(message.clone());
             log_debug_event(
                 "i2p.rs:I2pClient::start",
                 "i2p_start_error",
@@ -457,13 +457,13 @@ impl I2pClient {
             Error::Network(message)
         })?;
 
-        *self.child.lock().await = Some(child);
+        *Arc::clone(&self.child).lock_owned().await = Some(child);
 
         if self.shutdown_requested.load(Ordering::SeqCst) {
-            if let Some(mut child) = self.child.lock().await.take() {
+            if let Some(mut child) = Arc::clone(&self.child).lock_owned().await.take() {
                 let _ = child.kill();
             }
-            *self.status.lock().await = I2pStatus::NotStarted;
+            *Arc::clone(&self.status).lock_owned().await = I2pStatus::NotStarted;
             return Err(Error::Network("I2P shutdown requested".to_string()));
         }
 
@@ -472,17 +472,17 @@ impl I2pClient {
 
     /// Get current status
     pub async fn status(self) -> I2pStatus {
-        self.status.lock().await.clone()
+        self.status.lock_owned().await.clone()
     }
 
     /// Check if I2P is ready
     pub async fn is_ready(self) -> bool {
-        matches!(*self.status.lock().await, I2pStatus::Ready)
+        matches!(*self.status.lock_owned().await, I2pStatus::Ready)
     }
 
     /// Get SOCKS proxy configuration
     pub async fn proxy_config(self) -> Socks5Config {
-        let config = self.config.lock().await.clone();
+        let config = self.config.lock_owned().await.clone();
         Socks5Config {
             host: config.address,
             port: config.socks_port,
@@ -494,8 +494,8 @@ impl I2pClient {
     /// Stop the embedded router
     pub async fn shutdown(self) {
         self.shutdown_requested.store(true, Ordering::SeqCst);
-        self.terminate_child().await;
-        *self.status.lock().await = I2pStatus::NotStarted;
+        self.clone().terminate_child().await;
+        *Arc::clone(&self.status).lock_owned().await = I2pStatus::NotStarted;
         log_debug_event(
             "i2p.rs:I2pClient::shutdown",
             "i2p_shutdown",
@@ -505,8 +505,8 @@ impl I2pClient {
         self.remove_ephemeral_dir().await;
     }
 
-    async fn child_is_running(&self) -> bool {
-        let mut child = self.child.lock().await;
+    async fn child_is_running(self) -> bool {
+        let mut child = self.child.lock_owned().await;
         let running = match child.as_mut() {
             Some(process) => matches!(process.try_wait(), Ok(None)),
             None => false,
@@ -517,8 +517,8 @@ impl I2pClient {
         running
     }
 
-    async fn terminate_child(&self) {
-        let Some(mut child) = self.child.lock().await.take() else {
+    async fn terminate_child(self) {
+        let Some(mut child) = self.child.lock_owned().await.take() else {
             return;
         };
         let _ = tokio::task::spawn_blocking(move || {
@@ -528,14 +528,14 @@ impl I2pClient {
         .await;
     }
 
-    async fn remove_ephemeral_dir(&self) {
-        if let Some(dir) = self.ephemeral_dir.lock().await.take() {
+    async fn remove_ephemeral_dir(self) {
+        if let Some(dir) = self.ephemeral_dir.lock_owned().await.take() {
             let _ = std::fs::remove_dir_all(dir);
         }
     }
 
     async fn wait_for_ready(self) -> Result<()> {
-        let config = self.config.lock().await.clone();
+        let config = Arc::clone(&self.config).lock_owned().await.clone();
         let addr = format!("{}:{}", config.address, config.socks_port);
         let shutdown_requested = self.shutdown_requested.clone();
 
@@ -555,7 +555,7 @@ impl I2pClient {
 
         match result {
             Ok(Ok(())) => {
-                *self.status.lock().await = I2pStatus::Ready;
+                *Arc::clone(&self.status).lock_owned().await = I2pStatus::Ready;
                 log_debug_event(
                     "i2p.rs:I2pClient::wait_for_ready",
                     "i2p_ready",
@@ -564,16 +564,16 @@ impl I2pClient {
                 Ok(())
             }
             Ok(Err(e)) => {
-                self.terminate_child().await;
-                self.remove_ephemeral_dir().await;
-                *self.status.lock().await = I2pStatus::NotStarted;
+                self.clone().terminate_child().await;
+                self.clone().remove_ephemeral_dir().await;
+                *Arc::clone(&self.status).lock_owned().await = I2pStatus::NotStarted;
                 Err(e)
             }
             Err(_) => {
                 let message = "I2P startup timed out".to_string();
-                self.terminate_child().await;
-                self.remove_ephemeral_dir().await;
-                *self.status.lock().await = I2pStatus::Error(message.clone());
+                self.clone().terminate_child().await;
+                self.clone().remove_ephemeral_dir().await;
+                *Arc::clone(&self.status).lock_owned().await = I2pStatus::Error(message.clone());
                 log_debug_event(
                     "i2p.rs:I2pClient::wait_for_ready",
                     "i2p_error",

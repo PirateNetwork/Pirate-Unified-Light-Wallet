@@ -4158,6 +4158,7 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "directories 5.0.1",
+ "futures-util",
  "group",
  "hex",
  "http",

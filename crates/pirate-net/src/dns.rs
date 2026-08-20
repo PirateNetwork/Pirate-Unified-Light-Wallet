@@ -92,31 +92,41 @@ impl DnsResolver {
 
     /// Resolve hostname to IP addresses
     pub async fn resolve(&self, hostname: &str) -> Result<Vec<IpAddr>> {
+        self.clone().resolve_owned(hostname.to_string()).await
+    }
+
+    /// Resolve an owned hostname without retaining a borrowed resolver across
+    /// awaits. This is used by detached endpoint health probes.
+    pub async fn resolve_owned(self, hostname: String) -> Result<Vec<IpAddr>> {
         debug!(
             "Resolving hostname: {} via {}",
             hostname,
             self.config.provider.name()
         );
 
-        match &self.config.provider {
-            DnsProvider::System => {
-                warn!("Using system DNS for {}: Privacy not guaranteed!", hostname);
-                self.resolve_system(hostname).await
-            }
-            provider if provider.doh_url().is_some() => self.resolve_doh(hostname).await,
-            _ => self.resolve_system(hostname).await,
+        if matches!(&self.config.provider, DnsProvider::System) {
+            warn!("Using system DNS for {}: Privacy not guaranteed!", hostname);
+            Self::resolve_system_owned(hostname).await
+        } else if self.config.provider.doh_url().is_some() {
+            Self::resolve_doh_owned(self.config, hostname).await
+        } else {
+            Self::resolve_system_owned(hostname).await
         }
     }
 
     /// Resolve via DNS-over-HTTPS
-    async fn resolve_doh(&self, hostname: &str) -> Result<Vec<IpAddr>> {
-        let doh_url = self.config.provider.doh_url().unwrap();
+    async fn resolve_doh_owned(config: DnsConfig, hostname: String) -> Result<Vec<IpAddr>> {
+        let doh_url = config
+            .provider
+            .doh_url()
+            .expect("DoH provider checked before resolution")
+            .to_string();
 
         debug!("DoH resolution: {} via {}", hostname, doh_url);
 
         // Build HTTP client
-        let client = if self.config.tunnel_dns {
-            if let Some(ref proxy) = self.config.socks_proxy {
+        let client = if config.tunnel_dns {
+            if let Some(proxy) = config.socks_proxy {
                 let proxy_url = if proxy.contains("://") {
                     proxy.clone()
                 } else {
@@ -172,14 +182,14 @@ impl DnsResolver {
                 "DoH returned no IPs for {}, falling back to system resolver",
                 hostname
             );
-            return self.resolve_system(hostname).await;
+            return Self::resolve_system_owned(hostname).await;
         }
 
         Ok(addrs)
     }
 
     /// Resolve via system resolver (NOT PRIVATE)
-    async fn resolve_system(&self, hostname: &str) -> Result<Vec<IpAddr>> {
+    async fn resolve_system_owned(hostname: String) -> Result<Vec<IpAddr>> {
         use tokio::net::lookup_host;
 
         warn!(

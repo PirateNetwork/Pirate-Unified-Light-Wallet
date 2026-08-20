@@ -9,6 +9,7 @@
 use crate::ordered_stream::{OrderedBlockAssembler, OrderedBlockChunk};
 use crate::proto_types as proto;
 use crate::{Error, Result};
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use once_cell::sync::Lazy;
 use percent_encoding::percent_decode_str;
 use pirate_net::{
@@ -19,7 +20,7 @@ use pirate_net::{
 };
 use prost::Message;
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::env;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -27,7 +28,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, OwnedSemaphorePermit, RwLock, Semaphore};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tracing::{debug, error, info, warn};
 
@@ -47,6 +48,28 @@ pub const DEFAULT_LIGHTD_USE_TLS: bool = true;
 pub const DEFAULT_LIGHTD_SPKI_PIN: &str = "";
 /// Default endpoint URL
 pub const DEFAULT_LIGHTD_URL: &str = "https://lightd1.pirate.black:443";
+
+/// Curated Pirate Chain mainnet servers eligible for automatic historical sync.
+///
+/// Every candidate is still probed through the selected transport and must
+/// match the canonical chain metadata and block hash before it receives work.
+pub const MAINNET_AUTO_LIGHTD_URLS: &[&str] = &[
+    DEFAULT_LIGHTD_URL,
+    "https://lightd.pirate.black:443",
+    "https://lightwalletd1.cryptoforge.cc:443",
+    "https://lightwalletd2.cryptoforge.cc:443",
+    "https://arrr.qortal.link:443",
+    "https://arrr2.qortal.link:443",
+    "https://arrr3.qortal.link:443",
+];
+
+const HISTORICAL_STRIPE_BLOCKS: u64 = 256;
+const HISTORICAL_STRIPE_MIN_BLOCKS: u64 = HISTORICAL_STRIPE_BLOCKS * 2;
+const HISTORICAL_STRIPE_TIP_MARGIN: u64 = 100;
+const HISTORICAL_STRIPE_MAX_TIP_LAG: u64 = 24;
+const HISTORICAL_STRIPE_MAX_SOURCES: usize = 3;
+const HISTORICAL_STRIPE_HANDOFF_BYTES: u64 = 4 * 1024 * 1024;
+const HISTORICAL_STRIPE_SOURCE_FAILURES: u32 = 2;
 
 /// Retry configuration for network operations
 #[derive(Debug, Clone)]
@@ -94,32 +117,41 @@ impl TransportMode {
 }
 
 struct GlobalTransportState {
-    manager: RwLock<Option<Arc<NetTransportManager>>>,
-    initialization: Mutex<()>,
+    manager: Arc<RwLock<Option<Arc<NetTransportManager>>>>,
+    initialization: Arc<Mutex<()>>,
 }
 
 impl GlobalTransportState {
-    async fn get_or_init(&self, requested: NetTransportConfig) -> Result<Arc<NetTransportManager>> {
+    async fn get_or_init(
+        self: Arc<Self>,
+        requested: NetTransportConfig,
+    ) -> Result<Arc<NetTransportManager>> {
         let config = resolve_transport_config(requested.clone());
         let existing = {
-            let guard = self.manager.read().await;
+            let guard = Arc::clone(&self.manager).read_owned().await;
             guard.as_ref().map(Arc::clone)
         };
         if let Some(manager) = existing {
-            manager.update_config(config).await.map_err(map_net_error)?;
+            Arc::clone(&manager)
+                .update_config(config)
+                .await
+                .map_err(map_net_error)?;
             return Ok(manager);
         }
 
         // Constructing a manager can start native transports. Serialize the
         // empty-state path so concurrent bootstrap and connection requests
         // cannot launch separate embedded routers before either is published.
-        let _initialization_guard = self.initialization.lock().await;
+        let _initialization_guard = Arc::clone(&self.initialization).lock_owned().await;
         let config = resolve_transport_config(requested);
         if let Some(manager) = {
-            let guard = self.manager.read().await;
+            let guard = Arc::clone(&self.manager).read_owned().await;
             guard.as_ref().map(Arc::clone)
         } {
-            manager.update_config(config).await.map_err(map_net_error)?;
+            Arc::clone(&manager)
+                .update_config(config)
+                .await
+                .map_err(map_net_error)?;
             return Ok(manager);
         }
 
@@ -128,22 +160,38 @@ impl GlobalTransportState {
                 .await
                 .map_err(map_net_error)?,
         );
-        *self.manager.write().await = Some(Arc::clone(&created));
+        *Arc::clone(&self.manager).write_owned().await = Some(Arc::clone(&created));
         Ok(created)
     }
 
-    async fn get(&self) -> Option<Arc<NetTransportManager>> {
+    async fn get(self: Arc<Self>) -> Option<Arc<NetTransportManager>> {
         let manager = {
-            let guard = self.manager.read().await;
+            let guard = Arc::clone(&self.manager).read_owned().await;
             guard.as_ref().map(Arc::clone)
         };
         manager
     }
 
-    async fn shutdown(&self) {
-        let _initialization_guard = self.initialization.lock().await;
+    async fn get_matching(
+        self: Arc<Self>,
+        requested: NetTransportConfig,
+    ) -> Option<Arc<NetTransportManager>> {
+        if desired_transport_config()
+            .as_ref()
+            .is_some_and(|desired| *desired != requested)
+        {
+            return None;
+        }
+        let config = resolve_transport_config(requested);
+        self.get()
+            .await
+            .filter(|manager| manager.matches_config(&config))
+    }
+
+    async fn shutdown(self: Arc<Self>) {
+        let _initialization_guard = Arc::clone(&self.initialization).lock_owned().await;
         let manager = {
-            let mut guard = self.manager.write().await;
+            let mut guard = Arc::clone(&self.manager).write_owned().await;
             let manager = guard.as_ref().map(Arc::clone);
             *guard = None;
             manager
@@ -154,9 +202,11 @@ impl GlobalTransportState {
     }
 }
 
-static GLOBAL_TRANSPORT: Lazy<GlobalTransportState> = Lazy::new(|| GlobalTransportState {
-    manager: RwLock::new(None),
-    initialization: Mutex::new(()),
+static GLOBAL_TRANSPORT: Lazy<Arc<GlobalTransportState>> = Lazy::new(|| {
+    Arc::new(GlobalTransportState {
+        manager: Arc::new(RwLock::new(None)),
+        initialization: Arc::new(Mutex::new(())),
+    })
 });
 
 static DESIRED_TRANSPORT_CONFIG: Lazy<StdRwLock<Option<NetTransportConfig>>> =
@@ -410,6 +460,43 @@ impl LightClientConfig {
         self.failover_endpoints.push(endpoint);
         self
     }
+
+    /// Enable the curated Pirate Chain mainnet endpoint pool.
+    ///
+    /// The primary endpoint remains authoritative when available. Alternate
+    /// endpoints inherit the selected transport, retain independent TLS host
+    /// validation, and are rejected unless their metadata and canonical anchor
+    /// match. A custom SPKI-pinned primary is intentionally left single-source.
+    pub fn with_pirate_mainnet_auto_pool(mut self) -> Self {
+        if self.transport == TransportMode::I2p
+            || self.tls.spki_pin.is_some()
+            || !self.failover_endpoints.is_empty()
+            || !is_pirate_mainnet_auto_endpoint(&self.endpoint)
+        {
+            return self;
+        }
+
+        let primary = normalize_endpoint_identity(&self.endpoint);
+        for endpoint in MAINNET_AUTO_LIGHTD_URLS {
+            if normalize_endpoint_identity(endpoint) != primary {
+                self.failover_endpoints
+                    .push(LightClientEndpoint::new(*endpoint));
+            }
+        }
+        self
+    }
+}
+
+fn normalize_endpoint_identity(endpoint: &str) -> String {
+    endpoint.trim().trim_end_matches('/').to_ascii_lowercase()
+}
+
+/// Whether an endpoint belongs to the curated Pirate Chain mainnet pool.
+pub fn is_pirate_mainnet_auto_endpoint(endpoint: &str) -> bool {
+    let endpoint = normalize_endpoint_identity(endpoint);
+    MAINNET_AUTO_LIGHTD_URLS
+        .iter()
+        .any(|candidate| normalize_endpoint_identity(candidate) == endpoint)
 }
 
 fn map_net_error(err: pirate_net::Error) -> Error {
@@ -773,20 +860,21 @@ fn is_transport_not_ready_error(err: &Error) -> bool {
 pub async fn bootstrap_transport(mode: TransportMode, socks5_url: Option<String>) -> Result<()> {
     let config = build_transport_config_from_mode(mode, socks5_url.as_deref())?;
     set_desired_transport_config(config.clone());
-    let manager = GLOBAL_TRANSPORT.get_or_init(config).await?;
+    let manager = GLOBAL_TRANSPORT.clone().get_or_init(config).await?;
     manager.ensure_ready().await.map_err(map_net_error)?;
     Ok(())
 }
 
 /// Get current Tor status if transport manager is initialized.
 pub async fn tor_status() -> Option<pirate_net::TorStatus> {
-    let manager = GLOBAL_TRANSPORT.get().await?;
+    let manager = GLOBAL_TRANSPORT.clone().get().await?;
     manager.tor_status().await
 }
 
 /// Rotate Tor exit circuits by isolating future streams.
 pub async fn rotate_tor_exit() -> Result<()> {
     let manager = GLOBAL_TRANSPORT
+        .clone()
         .get()
         .await
         .ok_or_else(|| Error::Connection("Transport manager not initialized".to_string()))?;
@@ -803,10 +891,10 @@ pub async fn fetch_spki_pin(
     socks5_url: Option<String>,
 ) -> Result<String> {
     let config = build_transport_config_from_mode(mode, socks5_url.as_deref())?;
-    let manager = GLOBAL_TRANSPORT.get_or_init(config).await?;
+    let manager = GLOBAL_TRANSPORT.clone().get_or_init(config).await?;
     let server_name = server_name.unwrap_or_else(|| host.to_string());
     manager
-        .fetch_spki_pin(host, port, &server_name)
+        .fetch_spki_pin(host.to_string(), port, server_name)
         .await
         .map_err(map_net_error)
 }
@@ -819,7 +907,7 @@ pub async fn fetch_http_bytes(
     socks5_url: Option<String>,
 ) -> Result<Vec<u8>> {
     let config = build_transport_config_from_mode(mode, socks5_url.as_deref())?;
-    let manager = GLOBAL_TRANSPORT.get_or_init(config).await?;
+    let manager = GLOBAL_TRANSPORT.clone().get_or_init(config).await?;
     manager
         .fetch_url_bytes(&url, &headers)
         .await
@@ -828,14 +916,14 @@ pub async fn fetch_http_bytes(
 
 /// Get current I2P status if transport manager is initialized.
 pub async fn i2p_status() -> Option<pirate_net::I2pStatus> {
-    let manager = GLOBAL_TRANSPORT.get().await?;
+    let manager = GLOBAL_TRANSPORT.clone().get().await?;
     manager.i2p_status().await
 }
 
 /// Shutdown any active transport manager.
 pub async fn shutdown_transport() {
     clear_desired_transport_config();
-    GLOBAL_TRANSPORT.shutdown().await;
+    GLOBAL_TRANSPORT.clone().shutdown().await;
 }
 
 /// Compact block data received from lightwalletd
@@ -1184,7 +1272,118 @@ struct EndpointPoolState {
     healthy_indices: Vec<usize>,
     failures: HashMap<usize, u32>,
     tips: HashMap<usize, u64>,
+    probe_latencies: HashMap<usize, Duration>,
     channels: HashMap<usize, Channel>,
+}
+
+struct EndpointProbe {
+    info: LightdInfo,
+    tip: u64,
+    channel: Channel,
+    elapsed: Duration,
+}
+
+#[derive(Clone, Debug)]
+struct HistoricalStripePlan {
+    candidate_indices: Vec<usize>,
+    end_exclusive: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct StripeRange {
+    start: u64,
+    end_exclusive: u64,
+    attempt: u32,
+}
+
+enum StripeEvent {
+    Chunk {
+        worker_index: usize,
+        range: StripeRange,
+        chunk: CompactBlockChunk,
+        _permit: OwnedSemaphorePermit,
+    },
+    Complete {
+        worker_index: usize,
+    },
+    Failed {
+        worker_index: usize,
+        range: StripeRange,
+        resume_height: u64,
+        error: Error,
+    },
+}
+
+struct BufferedStripeChunk {
+    chunk: CompactBlockChunk,
+    _permit: OwnedSemaphorePermit,
+}
+
+#[derive(Default)]
+struct StripeWorkerGuard {
+    handles: Vec<tokio::task::JoinHandle<()>>,
+}
+
+impl StripeWorkerGuard {
+    fn push(&mut self, handle: tokio::task::JoinHandle<()>) {
+        self.handles.push(handle);
+    }
+}
+
+impl Drop for StripeWorkerGuard {
+    fn drop(&mut self) {
+        for handle in &self.handles {
+            handle.abort();
+        }
+    }
+}
+
+fn historical_source_buffer_bytes(max_buffer_bytes: u64, source_count: usize) -> u64 {
+    let source_count = source_count.max(1) as u64;
+    (max_buffer_bytes / source_count).clamp(1, HISTORICAL_STRIPE_HANDOFF_BYTES)
+}
+
+fn should_leave_historical_striping(
+    range: StripeRange,
+    resume_height: u64,
+    worker_failures: u32,
+    max_attempts: u32,
+) -> bool {
+    resume_height < range.end_exclusive
+        && (range.attempt >= max_attempts.max(1)
+            || worker_failures >= HISTORICAL_STRIPE_SOURCE_FAILURES)
+}
+
+fn preferred_active_endpoint(
+    healthy_indices: &[usize],
+    tips: &HashMap<usize, u64>,
+    probe_latencies: &HashMap<usize, Duration>,
+) -> Option<usize> {
+    let highest_tip = healthy_indices
+        .iter()
+        .filter_map(|index| tips.get(index).copied())
+        .max()?;
+    if healthy_indices.contains(&0)
+        && tips
+            .get(&0)
+            .is_some_and(|tip| tip.saturating_add(HISTORICAL_STRIPE_MAX_TIP_LAG) >= highest_tip)
+    {
+        return Some(0);
+    }
+
+    healthy_indices.iter().copied().max_by(|left, right| {
+        tips.get(left)
+            .copied()
+            .unwrap_or_default()
+            .cmp(&tips.get(right).copied().unwrap_or_default())
+            .then_with(|| {
+                probe_latencies
+                    .get(right)
+                    .copied()
+                    .unwrap_or(Duration::MAX)
+                    .cmp(&probe_latencies.get(left).copied().unwrap_or(Duration::MAX))
+            })
+    })
 }
 
 /// Lightwalletd gRPC client.
@@ -1292,6 +1491,10 @@ impl LightClient {
         !self.config.failover_endpoints.is_empty()
     }
 
+    pub(crate) async fn endpoint_pool_is_probed(&self) -> bool {
+        Arc::clone(&self.endpoint_pool).read_owned().await.probed
+    }
+
     fn endpoint_candidate(&self, index: usize) -> Option<LightClientEndpoint> {
         if index == 0 {
             return Some(LightClientEndpoint {
@@ -1319,16 +1522,17 @@ impl LightClient {
 
     async fn connected_candidate_client(&self, index: usize) -> Option<Self> {
         let candidate = self.endpoint_candidate(index)?;
-        let channel = if index == 0 {
-            self.channel.lock().await.clone()
-        } else {
-            self.endpoint_pool
-                .read()
-                .await
-                .channels
-                .get(&index)
-                .cloned()
-        }?;
+        let pooled_channel = Arc::clone(&self.endpoint_pool)
+            .read_owned()
+            .await
+            .channels
+            .get(&index)
+            .cloned();
+        let channel = match pooled_channel {
+            Some(channel) => channel,
+            None if index == 0 => Arc::clone(&self.channel).lock_owned().await.clone()?,
+            None => return None,
+        };
         let mut config = self.config.clone();
         config.endpoint = candidate.endpoint;
         config.tls = candidate.tls;
@@ -1346,9 +1550,41 @@ impl LightClient {
         1usize.saturating_add(self.config.failover_endpoints.len())
     }
 
+    async fn probe_candidate(config: LightClientConfig) -> Result<(LightdInfo, u64, Channel)> {
+        let channel = Self::try_connect(config, false).await?;
+        let mut client = CompactTxStreamerClient::new(channel.clone());
+        let info = client
+            .get_lightd_info(tonic::Request::new(Empty {}))
+            .await?
+            .into_inner();
+        let tip = client
+            .get_latest_block(tonic::Request::new(ChainSpec {
+                network: String::new(),
+            }))
+            .await?
+            .into_inner()
+            .height;
+        Ok((LightdInfo::from(info), tip, channel))
+    }
+
+    async fn probe_candidate_anchor(channel: Channel, height: u32) -> Result<CompactBlock> {
+        let mut client = CompactTxStreamerClient::new(channel);
+        let response = client
+            .get_block(tonic::Request::new(BlockId {
+                height: u64::from(height),
+                hash: Vec::new(),
+            }))
+            .await?;
+        Ok(CompactBlock::from(response.into_inner()))
+    }
+
     /// Probe configured endpoints through the selected transport and retain only
-    /// candidates that match the primary endpoint at a common chain anchor.
+    /// candidates that match a canonical endpoint at a common chain anchor.
     pub async fn probe_endpoints(&self) -> Vec<EndpointHealth> {
+        self.clone().probe_endpoints_owned().await
+    }
+
+    async fn probe_endpoints_owned(self) -> Vec<EndpointHealth> {
         let endpoint_count = self.endpoint_count();
         let probe_timeout = match self.config.transport {
             TransportMode::Direct => Duration::from_secs(12),
@@ -1356,149 +1592,215 @@ impl LightClient {
                 Duration::from_secs(35)
             }
         };
-        let mut probes: Vec<Option<(LightdInfo, u64, Channel)>> =
-            Vec::with_capacity(endpoint_count);
-        let mut health = Vec::with_capacity(endpoint_count);
-
+        let mut probes: Vec<Option<EndpointProbe>> = std::iter::repeat_with(|| None)
+            .take(endpoint_count)
+            .collect();
+        let mut health = (0..endpoint_count)
+            .filter_map(|index| {
+                self.endpoint_candidate(index)
+                    .map(|candidate| EndpointHealth {
+                        endpoint: candidate.endpoint,
+                        healthy: false,
+                        tip_height: None,
+                        reason: Some("endpoint has not completed validation".to_string()),
+                    })
+            })
+            .collect::<Vec<_>>();
+        let mut pending_probes = FuturesUnordered::new();
         for index in 0..endpoint_count {
             let Some(candidate) = self.candidate_client(index) else {
                 continue;
             };
-            let endpoint = candidate.endpoint().to_string();
-            let result = tokio::time::timeout(probe_timeout, async {
-                candidate.connect().await?;
-                let info = candidate.get_lightd_info().await?;
-                let tip = candidate.get_latest_block().await?;
-                Ok::<_, Error>((info, tip))
-            })
-            .await;
-
+            pending_probes.push(async move {
+                let started = Instant::now();
+                let result =
+                    tokio::time::timeout(probe_timeout, Self::probe_candidate(candidate.config))
+                        .await;
+                (index, started.elapsed(), result)
+            });
+        }
+        while let Some((index, elapsed, result)) = pending_probes.next().await {
             match result {
-                Ok(Ok((info, tip))) => {
-                    let channel = candidate.channel.lock().await.clone();
-                    probes.push(channel.map(|channel| (info, tip, channel)));
-                    health.push(EndpointHealth {
-                        endpoint,
-                        healthy: true,
-                        tip_height: Some(tip),
-                        reason: None,
+                Ok(Ok((info, tip, channel))) => {
+                    probes[index] = Some(EndpointProbe {
+                        info,
+                        tip,
+                        channel,
+                        elapsed,
                     });
+                    health[index].tip_height = Some(tip);
+                    health[index].reason = None;
                 }
-                Ok(Err(error)) => {
-                    probes.push(None);
-                    health.push(EndpointHealth {
-                        endpoint,
-                        healthy: false,
-                        tip_height: None,
-                        reason: Some(error.to_string()),
-                    });
-                }
+                Ok(Err(error)) => health[index].reason = Some(error.to_string()),
                 Err(_) => {
-                    probes.push(None);
-                    health.push(EndpointHealth {
-                        endpoint,
-                        healthy: false,
-                        tip_height: None,
-                        reason: Some(format!("health probe timed out after {:?}", probe_timeout)),
-                    });
+                    health[index].reason =
+                        Some(format!("health probe timed out after {:?}", probe_timeout));
                 }
             }
         }
 
-        let Some((primary_info, primary_tip, primary_channel)) =
-            probes.first().and_then(Option::as_ref)
+        let Some(reference_index) = probes
+            .first()
+            .is_some_and(Option::is_some)
+            .then_some(0)
+            .or_else(|| probes.iter().position(Option::is_some))
         else {
-            for entry in health.iter_mut().skip(1) {
-                entry.healthy = false;
-                entry.reason = Some(
-                    "primary endpoint unavailable; same-chain failover anchor could not be established"
-                        .to_string(),
-                );
-            }
-            let mut state = self.endpoint_pool.write().await;
+            let mut state = Arc::clone(&self.endpoint_pool).write_owned().await;
             state.probed = true;
             state.active_index = 0;
             state.healthy_indices.clear();
             state.tips.clear();
+            state.probe_latencies.clear();
             state.channels.clear();
             return health;
         };
-        *self.channel.lock().await = Some(primary_channel.clone());
+        let (reference_info, reference_tip) = {
+            let reference = probes[reference_index]
+                .as_ref()
+                .expect("reference endpoint exists");
+            (reference.info.clone(), reference.tip)
+        };
+
+        let mut metadata_matches = vec![false; endpoint_count];
+        for (index, probe) in probes.iter().enumerate() {
+            let Some(probe) = probe else {
+                continue;
+            };
+            let matches = probe
+                .info
+                .chain_name
+                .eq_ignore_ascii_case(&reference_info.chain_name)
+                && probe.info.sapling_activation_height == reference_info.sapling_activation_height
+                && (probe.tip != reference_tip
+                    || probe.info.consensus_branch_id == reference_info.consensus_branch_id);
+            metadata_matches[index] = matches;
+            if !matches {
+                health[index].reason =
+                    Some("server chain metadata differs from canonical reference".to_string());
+            }
+        }
 
         let common_anchor = probes
             .iter()
-            .filter_map(|probe| probe.as_ref().map(|(_, tip, _)| *tip))
+            .enumerate()
+            .filter(|(index, _)| metadata_matches[*index])
+            .filter_map(|(_, probe)| probe.as_ref().map(|probe| probe.tip))
             .min()
-            .unwrap_or(*primary_tip)
+            .unwrap_or(reference_tip)
             .saturating_sub(10);
         let common_anchor_u32 = u32::try_from(common_anchor).unwrap_or(u32::MAX);
-        let primary_anchor = match self.candidate_client(0) {
-            Some(mut primary) => {
-                primary.channel = Arc::new(Mutex::new(Some(primary_channel.clone())));
-                tokio::time::timeout(probe_timeout, primary.get_block(common_anchor_u32))
-                    .await
-                    .ok()
-                    .and_then(std::result::Result::ok)
-                    .map(|block| block.hash)
-            }
-            None => None,
-        };
-
-        for index in 1..endpoint_count {
-            let Some((info, tip, channel)) = probes.get(index).and_then(Option::as_ref) else {
-                continue;
-            };
-            let metadata_matches = info
-                .chain_name
-                .eq_ignore_ascii_case(&primary_info.chain_name)
-                && info.sapling_activation_height == primary_info.sapling_activation_height
-                && (*tip != *primary_tip
-                    || info.consensus_branch_id == primary_info.consensus_branch_id);
-            if !metadata_matches {
-                if let Some(entry) = health.get_mut(index) {
-                    entry.healthy = false;
-                    entry.reason = Some("server chain metadata differs from primary".to_string());
-                }
+        let mut anchor_hashes: Vec<Option<Vec<u8>>> = std::iter::repeat_with(|| None)
+            .take(endpoint_count)
+            .collect();
+        let mut pending_anchors = FuturesUnordered::new();
+        for index in 0..endpoint_count {
+            if !metadata_matches[index] {
                 continue;
             }
-
-            let alternate_anchor = match self.candidate_client(index) {
-                Some(mut candidate) => {
-                    candidate.channel = Arc::new(Mutex::new(Some(channel.clone())));
-                    tokio::time::timeout(probe_timeout, candidate.get_block(common_anchor_u32))
-                        .await
-                        .ok()
-                        .and_then(std::result::Result::ok)
-                        .map(|block| block.hash)
-                }
-                None => None,
+            let Some(channel) = probes[index].as_ref().map(|probe| probe.channel.clone()) else {
+                continue;
             };
-            if primary_anchor.is_none() || alternate_anchor != primary_anchor {
-                if let Some(entry) = health.get_mut(index) {
-                    entry.healthy = false;
-                    entry.reason = Some(format!(
-                        "server block hash differs from primary at height {}",
-                        common_anchor
+            pending_anchors.push(async move {
+                let started = Instant::now();
+                let result = tokio::time::timeout(
+                    probe_timeout,
+                    Self::probe_candidate_anchor(channel, common_anchor_u32),
+                )
+                .await;
+                (index, started.elapsed(), result)
+            });
+        }
+        while let Some((index, elapsed, result)) = pending_anchors.next().await {
+            if let Some(probe) = probes[index].as_mut() {
+                probe.elapsed = probe.elapsed.saturating_add(elapsed);
+            }
+            match result {
+                Ok(Ok(block)) => anchor_hashes[index] = Some(block.hash),
+                Ok(Err(error)) => health[index].reason = Some(error.to_string()),
+                Err(_) => {
+                    health[index].reason = Some(format!(
+                        "canonical anchor probe timed out after {:?}",
+                        probe_timeout
                     ));
                 }
             }
         }
 
-        let healthy_indices = health
+        let canonical_anchor = if let Some(primary) = anchor_hashes.first().and_then(Clone::clone) {
+            Some(primary)
+        } else {
+            let mut counts = HashMap::<Vec<u8>, usize>::new();
+            for hash in anchor_hashes.iter().flatten() {
+                *counts.entry(hash.clone()).or_default() += 1;
+            }
+            let responding = counts.values().sum::<usize>();
+            counts
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .filter(|(_, count)| responding <= 1 || count.saturating_mul(2) > responding)
+                .map(|(hash, _)| hash)
+        };
+
+        for index in 0..endpoint_count {
+            if !metadata_matches[index] {
+                continue;
+            }
+            match (&canonical_anchor, &anchor_hashes[index]) {
+                (Some(canonical), Some(candidate)) if candidate == canonical => {
+                    health[index].healthy = true;
+                    health[index].reason = None;
+                }
+                (Some(_), Some(_)) => {
+                    health[index].reason = Some(format!(
+                        "server block hash differs at canonical height {}",
+                        common_anchor
+                    ));
+                }
+                (None, _) => {
+                    health[index].reason = Some(format!(
+                        "no majority block hash at canonical height {}",
+                        common_anchor
+                    ));
+                }
+                _ => {}
+            }
+        }
+
+        let mut healthy_indices = health
             .iter()
             .enumerate()
             .filter_map(|(index, entry)| entry.healthy.then_some(index))
             .collect::<Vec<_>>();
-        let mut state = self.endpoint_pool.write().await;
-        state.probed = true;
-        state.active_index = healthy_indices.first().copied().unwrap_or(0);
-        state.healthy_indices = healthy_indices;
-        state.failures.clear();
-        state.tips = probes
+        let tips = probes
             .iter()
             .enumerate()
-            .filter_map(|(index, probe)| probe.as_ref().map(|(_, tip, _)| (index, *tip)))
-            .collect();
+            .filter_map(|(index, probe)| probe.as_ref().map(|probe| (index, probe.tip)))
+            .collect::<HashMap<_, _>>();
+        let probe_latencies = probes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, probe)| probe.as_ref().map(|probe| (index, probe.elapsed)))
+            .collect::<HashMap<_, _>>();
+        let active_index = preferred_active_endpoint(&healthy_indices, &tips, &probe_latencies);
+        if let Some(channel) = active_index
+            .and_then(|index| probes[index].as_ref())
+            .map(|probe| probe.channel.clone())
+        {
+            *Arc::clone(&self.channel).lock_owned().await = Some(channel);
+        }
+        healthy_indices.sort_by_key(|index| {
+            probes[*index]
+                .as_ref()
+                .map(|probe| probe.elapsed)
+                .unwrap_or(Duration::MAX)
+        });
+        let mut state = Arc::clone(&self.endpoint_pool).write_owned().await;
+        state.probed = true;
+        state.active_index = active_index.unwrap_or(0);
+        state.healthy_indices = healthy_indices;
+        state.failures.clear();
+        state.tips = tips;
+        state.probe_latencies = probe_latencies;
         state.channels = probes
             .into_iter()
             .enumerate()
@@ -1506,7 +1808,7 @@ impl LightClient {
                 health
                     .get(index)
                     .is_some_and(|entry| entry.healthy)
-                    .then(|| probe.map(|(_, _, channel)| (index, channel)))
+                    .then(|| probe.map(|probe| (index, probe.channel)))
                     .flatten()
             })
             .collect();
@@ -1528,6 +1830,73 @@ impl LightClient {
         }
         candidates.retain(|index| state.tips.get(index).is_none_or(|tip| *tip >= minimum_tip));
         candidates
+    }
+
+    async fn historical_stripe_plan(
+        &self,
+        start: u64,
+        end_exclusive: u64,
+    ) -> Option<HistoricalStripePlan> {
+        if self.config.transport == TransportMode::I2p
+            || end_exclusive.saturating_sub(start) < HISTORICAL_STRIPE_MIN_BLOCKS
+        {
+            return None;
+        }
+
+        let state = self.endpoint_pool.read().await;
+        if !state.probed || state.healthy_indices.len() < 2 {
+            return None;
+        }
+        let highest_tip = state.tips.values().copied().max()?;
+        let max_sources = match self.config.transport {
+            TransportMode::Direct => HISTORICAL_STRIPE_MAX_SOURCES,
+            TransportMode::Tor | TransportMode::Socks5 => 2,
+            TransportMode::I2p => 1,
+        };
+        let mut candidate_indices = state
+            .healthy_indices
+            .iter()
+            .copied()
+            .filter(|index| {
+                state.failures.get(index).copied().unwrap_or_default()
+                    < HISTORICAL_STRIPE_SOURCE_FAILURES
+            })
+            .filter(|index| {
+                state.tips.get(index).is_some_and(|tip| {
+                    tip.saturating_add(HISTORICAL_STRIPE_MAX_TIP_LAG) >= highest_tip
+                        && *tip >= start
+                })
+            })
+            .collect::<Vec<_>>();
+        candidate_indices.sort_by_key(|index| {
+            state
+                .probe_latencies
+                .get(index)
+                .copied()
+                .unwrap_or(Duration::MAX)
+        });
+        candidate_indices.truncate(max_sources);
+        if candidate_indices.len() < 2 {
+            return None;
+        }
+
+        let stable_tip = candidate_indices
+            .iter()
+            .filter_map(|index| state.tips.get(index).copied())
+            .min()?;
+        let stable_end_exclusive = end_exclusive.min(
+            stable_tip
+                .saturating_sub(HISTORICAL_STRIPE_TIP_MARGIN)
+                .saturating_add(1),
+        );
+        if stable_end_exclusive.saturating_sub(start) < HISTORICAL_STRIPE_MIN_BLOCKS {
+            return None;
+        }
+
+        Some(HistoricalStripePlan {
+            candidate_indices,
+            end_exclusive: stable_end_exclusive,
+        })
     }
 
     async fn record_candidate_success(&self, index: usize) {
@@ -1553,19 +1922,88 @@ impl LightClient {
 
     /// Connect to lightwalletd server with retry
     pub async fn connect(&self) -> Result<()> {
+        if self.has_failover_endpoints() {
+            let primary = self
+                .candidate_client(0)
+                .expect("the primary endpoint is always present");
+            if primary.clone().connect_single_endpoint().await.is_ok() {
+                let channel = Arc::clone(&primary.channel)
+                    .lock_owned()
+                    .await
+                    .clone()
+                    .ok_or_else(|| {
+                        Error::Connection(
+                            "connected primary lightwalletd endpoint has no channel".to_string(),
+                        )
+                    })?;
+                *Arc::clone(&self.channel).lock_owned().await = Some(channel);
+                if !self.endpoint_pool_is_probed().await {
+                    let pool_client = self.clone();
+                    let runtime = tokio::runtime::Handle::current();
+                    tokio::task::spawn_blocking(move || {
+                        let health = runtime.block_on(pool_client.probe_endpoints_owned());
+                        let healthy = health.iter().filter(|endpoint| endpoint.healthy).count();
+                        if healthy > 0 {
+                            info!(
+                                healthy,
+                                total = health.len(),
+                                "Validated canonical lightwalletd endpoint pool"
+                            );
+                        } else {
+                            warn!(
+                                total = health.len(),
+                                "No canonical lightwalletd alternate passed validation"
+                            );
+                        }
+                    });
+                }
+                info!(
+                    "Connected to selected lightwalletd endpoint {}; validating alternates in the background",
+                    self.config.endpoint
+                );
+                return Ok(());
+            }
+
+            warn!(
+                "Selected lightwalletd endpoint {} is unavailable; probing canonical alternates",
+                self.config.endpoint
+            );
+            let health = self.probe_endpoints().await;
+            if health.iter().any(|endpoint| endpoint.healthy) {
+                info!(
+                    healthy = health.iter().filter(|endpoint| endpoint.healthy).count(),
+                    total = health.len(),
+                    "Connected to canonical lightwalletd endpoint pool"
+                );
+                return Ok(());
+            }
+            return Err(Error::Connection(
+                "no canonical Pirate mainnet lightwalletd endpoint is available".to_string(),
+            ));
+        }
+
+        self.clone().connect_single_endpoint().await
+    }
+
+    async fn connect_single_endpoint(self) -> Result<()> {
+        let LightClient {
+            config,
+            channel: channel_state,
+            ..
+        } = self;
         let mut attempt = 0;
-        let mut backoff = self.config.retry.initial_backoff;
+        let mut backoff = config.retry.initial_backoff;
 
         loop {
-            match self.try_connect().await {
+            match Self::try_connect(config.clone(), true).await {
                 Ok(channel) => {
-                    info!("Connected to lightwalletd at {}", self.config.endpoint);
-                    *self.channel.lock().await = Some(channel);
+                    info!("Connected to lightwalletd at {}", config.endpoint);
+                    *channel_state.lock_owned().await = Some(channel);
                     return Ok(());
                 }
                 Err(e) => {
                     attempt += 1;
-                    if attempt >= self.config.retry.max_attempts {
+                    if attempt >= config.retry.max_attempts {
                         error!("Failed to connect after {} attempts: {}", attempt, e);
                         return Err(e);
                     }
@@ -1579,10 +2017,9 @@ impl LightClient {
 
                     backoff = std::cmp::min(
                         Duration::from_millis(
-                            (backoff.as_millis() as f64 * self.config.retry.backoff_multiplier)
-                                as u64,
+                            (backoff.as_millis() as f64 * config.retry.backoff_multiplier) as u64,
                         ),
-                        self.config.retry.max_backoff,
+                        config.retry.max_backoff,
                     );
                 }
             }
@@ -1595,12 +2032,9 @@ impl LightClient {
         info!("Disconnected from lightwalletd");
     }
 
-    async fn try_connect(&self) -> Result<Channel> {
-        let endpoint_url = &self.config.endpoint;
-        debug!(
-            "Connecting to {} via {:?}",
-            endpoint_url, self.config.transport
-        );
+    async fn try_connect(config: LightClientConfig, initialize_transport: bool) -> Result<Channel> {
+        let endpoint_url = config.endpoint.clone();
+        debug!("Connecting to {} via {:?}", endpoint_url, config.transport);
 
         // #region agent log
         pirate_core::debug_log::with_locked_file(|file| {
@@ -1612,12 +2046,7 @@ impl LightClient {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:448","message":"try_connect entry","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#,
-                id,
-                ts,
-                endpoint_url,
-                self.config.tls.enabled,
-                self.config.transport,
-                self.config.tls.server_name
+                id, ts, endpoint_url, config.tls.enabled, config.transport, config.tls.server_name
             );
         });
         // #endregion
@@ -1636,8 +2065,8 @@ impl LightClient {
         };
 
         endpoint = endpoint
-            .connect_timeout(self.config.connect_timeout)
-            .timeout(self.config.request_timeout);
+            .connect_timeout(config.connect_timeout)
+            .timeout(config.request_timeout);
 
         // Keepalive to avoid hung streams after network transitions (mobile background/resume,
         // Tor circuit changes, etc.). We avoid keepalives while idle to reduce background chatter.
@@ -1663,23 +2092,23 @@ impl LightClient {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:467","message":"TLS check","data":{{"tls_enabled":{},"endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
-                id, ts, self.config.tls.enabled, endpoint_url
+                id, ts, config.tls.enabled, endpoint_url
             );
         });
         // #endregion
-        if self.config.tls.enabled {
+        if config.tls.enabled {
             // `ClientTlsConfig::new()` starts with an empty trust store. Keep
             // public CA validation enabled when overriding Tonic's automatic
             // HTTPS configuration to set an explicit server name.
             let mut tls_config = ClientTlsConfig::new().with_enabled_roots();
 
             // Set server name for SNI (required for TLS)
-            if let Some(ref server_name) = self.config.tls.server_name {
+            if let Some(ref server_name) = config.tls.server_name {
                 debug!("Using explicit server name for TLS: {}", server_name);
                 tls_config = tls_config.domain_name(server_name.clone());
             } else {
                 // Extract hostname from endpoint for SNI
-                if let Some(host) = extract_host(endpoint_url) {
+                if let Some(host) = extract_host(&endpoint_url) {
                     debug!("Extracted hostname for TLS SNI: {}", host);
                     tls_config = tls_config.domain_name(host);
                 } else {
@@ -1694,7 +2123,7 @@ impl LightClient {
             // Note: SPKI pinning verification happens after connection
             // tonic doesn't support custom certificate verifiers directly
             // We verify the SPKI pin via a post-connect check (see verify_spki_pin)
-            if self.config.tls.spki_pin.is_some() {
+            if config.tls.spki_pin.is_some() {
                 debug!("SPKI pin configured, will verify after connection");
             }
 
@@ -1707,29 +2136,47 @@ impl LightClient {
             })?;
         }
 
-        if self.config.transport == TransportMode::Direct {
+        if config.transport == TransportMode::Direct {
             warn!("Using DIRECT connection - IP address exposed to server!");
         }
 
-        let transport_config = build_transport_config(&self.config)?;
-        let manager = GLOBAL_TRANSPORT.get_or_init(transport_config).await?;
-        if self.config.tls.enabled {
-            if let Some(expected_pin) = self.config.tls.spki_pin.as_deref() {
-                let host = extract_host(endpoint_url).ok_or_else(|| {
+        let transport_config = build_transport_config(&config)?;
+        let manager = if initialize_transport {
+            GLOBAL_TRANSPORT
+                .clone()
+                .get_or_init(transport_config.clone())
+                .await?
+        } else {
+            GLOBAL_TRANSPORT
+                .clone()
+                .get_matching(transport_config.clone())
+                .await
+                .ok_or_else(|| Error::Cancelled)?
+        };
+        if !initialize_transport
+            && desired_transport_config()
+                .as_ref()
+                .is_some_and(|desired| desired != &transport_config)
+        {
+            return Err(Error::Cancelled);
+        }
+        if config.tls.enabled {
+            if let Some(expected_pin) = config.tls.spki_pin.as_deref() {
+                let host = extract_host(&endpoint_url).ok_or_else(|| {
                     Error::Connection(format!(
                         "Could not extract host from endpoint URL '{}'",
                         endpoint_url
                     ))
                 })?;
-                let port = extract_port(endpoint_url).unwrap_or(DEFAULT_LIGHTD_PORT);
-                let server_name = self
-                    .config
+                let port = extract_port(&endpoint_url).unwrap_or(DEFAULT_LIGHTD_PORT);
+                let server_name = config
                     .tls
                     .server_name
                     .clone()
                     .unwrap_or_else(|| host.clone());
                 let actual_pin = manager
-                    .fetch_spki_pin(&host, port, &server_name)
+                    .clone()
+                    .fetch_spki_pin(host.clone(), port, server_name.clone())
                     .await
                     .map_err(map_net_error)?;
                 if normalize_spki_pin(expected_pin) != normalize_spki_pin(&actual_pin) {
@@ -1740,6 +2187,13 @@ impl LightClient {
                 }
             }
         }
+        if !initialize_transport
+            && desired_transport_config()
+                .as_ref()
+                .is_some_and(|desired| desired != &transport_config)
+        {
+            return Err(Error::Cancelled);
+        }
         let result = manager.create_grpc_channel(endpoint).await;
 
         match result {
@@ -1748,7 +2202,7 @@ impl LightClient {
                 error!("Connection failed to {}: {}", endpoint_url, e);
                 let error_msg = e.to_string();
 
-                if matches!(self.config.transport, TransportMode::Direct) {
+                if matches!(config.transport, TransportMode::Direct) {
                     let cleaned = error_msg.to_lowercase();
                     if cleaned.contains("certificate")
                         || cleaned.contains("tls")
@@ -1793,7 +2247,7 @@ impl LightClient {
     }
 
     async fn get_client(&self) -> Result<CompactTxStreamerClient<Channel>> {
-        let guard = self.channel.lock().await;
+        let guard = Arc::clone(&self.channel).lock_owned().await;
         let channel = guard
             .as_ref()
             .ok_or_else(|| Error::Connection("Not connected".to_string()))?
@@ -1986,18 +2440,97 @@ impl LightClient {
 
         let start = u64::from(range.start);
         let end_exclusive = u64::from(range.end);
+        let assembler_bytes = if self.has_failover_endpoints() {
+            max_chunk_bytes.min(HISTORICAL_STRIPE_HANDOFF_BYTES)
+        } else {
+            max_chunk_bytes
+        };
         let mut assembler = OrderedBlockAssembler::with_limits(
             start,
             end_exclusive,
-            max_chunk_bytes,
+            assembler_bytes,
             segment_block_target.load(Ordering::Acquire),
         )?;
+
+        while self.has_failover_endpoints()
+            && !self.endpoint_pool_is_probed().await
+            && assembler.next_height() < end_exclusive
+        {
+            let prefix_end = assembler
+                .next_height()
+                .saturating_add(HISTORICAL_STRIPE_BLOCKS)
+                .min(end_exclusive);
+            self.stream_remaining_with_failover(
+                prefix_end,
+                wallet_id.clone(),
+                &segment_block_target,
+                &sender,
+                &mut assembler,
+            )
+            .await?;
+        }
+
+        let stripe_plan = self
+            .historical_stripe_plan(assembler.next_height(), end_exclusive)
+            .await;
+        if let Some(plan) = stripe_plan {
+            info!(
+                sources = plan.candidate_indices.len(),
+                start,
+                end_exclusive = plan.end_exclusive,
+                "Starting canonical historical compact-block striping"
+            );
+            if let Err(error) = self
+                .stream_historical_stripes(
+                    &plan,
+                    wallet_id.clone(),
+                    assembler_bytes,
+                    &segment_block_target,
+                    &sender,
+                    &mut assembler,
+                )
+                .await
+            {
+                if matches!(error, Error::Cancelled) || Self::is_non_retryable_error(&error) {
+                    return Err(error);
+                }
+                warn!(
+                    resume_height = assembler.next_height(),
+                    error = %error,
+                    "Historical endpoint striping degraded; resuming through one validated endpoint"
+                );
+            }
+        }
+
+        self.stream_remaining_with_failover(
+            end_exclusive,
+            wallet_id,
+            &segment_block_target,
+            &sender,
+            &mut assembler,
+        )
+        .await?;
+
+        if let Some(chunk) = assembler.finish()? {
+            send_ordered_chunk(&sender, chunk, self.endpoint().to_string()).await?;
+        }
+        Ok(())
+    }
+
+    async fn stream_remaining_with_failover(
+        &self,
+        end_exclusive: u64,
+        wallet_id: Option<String>,
+        segment_block_target: &AtomicU64,
+        sender: &mpsc::Sender<Result<CompactBlockChunk>>,
+        assembler: &mut OrderedBlockAssembler,
+    ) -> Result<()> {
         let max_rounds = self.config.retry.max_attempts.max(1);
         let mut round = 0u32;
         let mut backoff = self.config.retry.initial_backoff;
         let mut last_error = None;
 
-        while !assembler.is_complete() && round < max_rounds {
+        while assembler.next_height() < end_exclusive && round < max_rounds {
             let candidates = self.candidate_order(end_exclusive.saturating_sub(1)).await;
             if candidates.is_empty() {
                 return Err(Error::Connection(format!(
@@ -2022,25 +2555,22 @@ impl LightClient {
                         attempt_start,
                         end_exclusive,
                         wallet_id.clone(),
-                        &mut assembler,
-                        &segment_block_target,
-                        &sender,
+                        assembler,
+                        segment_block_target,
+                        sender,
                     )
                     .await
                 {
                     Ok(()) => {
                         self.record_candidate_success(index).await;
-                        if assembler.is_complete() {
-                            if let Some(chunk) = assembler.take_partial() {
-                                send_ordered_chunk(&sender, chunk, endpoint).await?;
-                            }
+                        if assembler.next_height() >= end_exclusive {
                             return Ok(());
                         }
                     }
                     Err(error) if Self::is_non_retryable_error(&error) => return Err(error),
                     Err(error) => {
                         if let Some(chunk) = assembler.take_partial() {
-                            send_ordered_chunk(&sender, chunk, endpoint).await?;
+                            send_ordered_chunk(sender, chunk, endpoint).await?;
                         }
                         self.record_candidate_failure(index).await;
                         last_error = Some(error);
@@ -2049,7 +2579,7 @@ impl LightClient {
             }
 
             round = round.saturating_add(1);
-            if !assembler.is_complete() && round < max_rounds {
+            if assembler.next_height() < end_exclusive && round < max_rounds {
                 tokio::time::sleep(jitter_duration(backoff)).await;
                 backoff = std::cmp::min(
                     Duration::from_millis(
@@ -2060,10 +2590,7 @@ impl LightClient {
             }
         }
 
-        if assembler.is_complete() {
-            if let Some(chunk) = assembler.finish()? {
-                send_ordered_chunk(&sender, chunk, self.endpoint().to_string()).await?;
-            }
+        if assembler.next_height() >= end_exclusive {
             return Ok(());
         }
 
@@ -2074,6 +2601,344 @@ impl LightClient {
                 end_exclusive
             ))
         }))
+    }
+
+    async fn stream_historical_stripes(
+        &self,
+        plan: &HistoricalStripePlan,
+        wallet_id: Option<String>,
+        max_buffer_bytes: u64,
+        segment_block_target: &AtomicU64,
+        sender: &mpsc::Sender<Result<CompactBlockChunk>>,
+        assembler: &mut OrderedBlockAssembler,
+    ) -> Result<()> {
+        let source_count = plan.candidate_indices.len();
+        let source_buffer_bytes = historical_source_buffer_bytes(max_buffer_bytes, source_count);
+        let (event_sender, mut event_receiver) = mpsc::channel(source_count.saturating_mul(2));
+        let mut command_senders = Vec::with_capacity(source_count);
+        let mut worker_handles = StripeWorkerGuard::default();
+
+        for (worker_index, candidate_index) in plan.candidate_indices.iter().copied().enumerate() {
+            let candidate = self
+                .connected_candidate_client(candidate_index)
+                .await
+                .ok_or_else(|| {
+                    Error::Connection(format!(
+                        "validated lightwalletd endpoint {} has no connected channel",
+                        candidate_index
+                    ))
+                })?;
+            let (command_sender, command_receiver) = mpsc::channel(1);
+            let worker_events = event_sender.clone();
+            let worker_wallet = wallet_id.clone();
+            let permits = Arc::new(Semaphore::new(
+                source_buffer_bytes.min(u64::from(u32::MAX)) as usize
+            ));
+            let handle = tokio::spawn(Self::run_historical_stripe_worker(
+                worker_index,
+                candidate,
+                command_receiver,
+                worker_events,
+                permits,
+                source_buffer_bytes,
+                worker_wallet,
+            ));
+            command_senders.push(command_sender);
+            worker_handles.push(handle);
+        }
+        drop(event_sender);
+
+        let mut idle_workers = (0..source_count).collect::<VecDeque<_>>();
+        let mut disabled_workers = vec![false; source_count];
+        let mut worker_failures = vec![0u32; source_count];
+        let mut pending_ranges = VecDeque::<StripeRange>::new();
+        let mut next_unassigned = assembler.next_height();
+        let mut active_ranges = 0usize;
+        let mut buffered = BTreeMap::<u64, BufferedStripeChunk>::new();
+
+        loop {
+            while let Some(worker_index) = idle_workers.pop_front() {
+                if disabled_workers[worker_index] {
+                    continue;
+                }
+                let range = if let Some(range) = pending_ranges.pop_front() {
+                    Some(range)
+                } else if next_unassigned < plan.end_exclusive {
+                    let range = StripeRange {
+                        start: next_unassigned,
+                        end_exclusive: next_unassigned
+                            .saturating_add(HISTORICAL_STRIPE_BLOCKS)
+                            .min(plan.end_exclusive),
+                        attempt: 1,
+                    };
+                    next_unassigned = range.end_exclusive;
+                    Some(range)
+                } else {
+                    None
+                };
+                let Some(range) = range else {
+                    idle_workers.push_front(worker_index);
+                    break;
+                };
+                if command_senders[worker_index].send(range).await.is_err() {
+                    disabled_workers[worker_index] = true;
+                    pending_ranges.push_front(range);
+                    continue;
+                }
+                active_ranges = active_ranges.saturating_add(1);
+            }
+
+            Self::flush_canonical_stripe_chunks(
+                &mut buffered,
+                assembler,
+                segment_block_target,
+                sender,
+            )
+            .await?;
+            if assembler.next_height() >= plan.end_exclusive {
+                return Ok(());
+            }
+            if active_ranges == 0 {
+                return Err(Error::Network(format!(
+                    "all canonical historical sources stopped before height {}",
+                    assembler.next_height()
+                )));
+            }
+
+            let Some(event) = event_receiver.recv().await else {
+                return Err(Error::Network(format!(
+                    "historical source workers ended before height {}",
+                    assembler.next_height()
+                )));
+            };
+            match event {
+                StripeEvent::Chunk {
+                    worker_index,
+                    range,
+                    chunk,
+                    _permit,
+                } => {
+                    let chunk_start = chunk.start_height().ok_or_else(|| {
+                        Error::Sync("historical source returned an empty chunk".to_string())
+                    })?;
+                    let chunk_end = chunk.end_height().ok_or_else(|| {
+                        Error::Sync("historical source returned an empty chunk".to_string())
+                    })?;
+                    if chunk_start < range.start
+                        || chunk_end >= range.end_exclusive
+                        || chunk_start < assembler.next_height()
+                        || buffered.contains_key(&chunk_start)
+                    {
+                        return Err(Error::Sync(format!(
+                            "historical source {} returned overlapping range {}-{} for {}..{}",
+                            worker_index, chunk_start, chunk_end, range.start, range.end_exclusive
+                        )));
+                    }
+                    buffered.insert(chunk_start, BufferedStripeChunk { chunk, _permit });
+                }
+                StripeEvent::Complete { worker_index } => {
+                    active_ranges = active_ranges.saturating_sub(1);
+                    worker_failures[worker_index] = 0;
+                    self.record_candidate_success(plan.candidate_indices[worker_index])
+                        .await;
+                    idle_workers.push_back(worker_index);
+                }
+                StripeEvent::Failed {
+                    worker_index,
+                    range,
+                    resume_height,
+                    error,
+                } => {
+                    active_ranges = active_ranges.saturating_sub(1);
+                    self.record_candidate_failure(plan.candidate_indices[worker_index])
+                        .await;
+                    worker_failures[worker_index] = worker_failures[worker_index].saturating_add(1);
+                    if resume_height < range.end_exclusive {
+                        if should_leave_historical_striping(
+                            range,
+                            resume_height,
+                            worker_failures[worker_index],
+                            self.config.retry.max_attempts,
+                        ) {
+                            // A future range may already occupy every other
+                            // worker's bounded handoff buffer. Leaving striped
+                            // mode here releases those buffers and lets the
+                            // ordinary failover path resume at the last
+                            // contiguous validated height without deadlocking.
+                            Self::flush_canonical_stripe_chunks(
+                                &mut buffered,
+                                assembler,
+                                segment_block_target,
+                                sender,
+                            )
+                            .await?;
+                            return Err(error);
+                        }
+                        pending_ranges.push_front(StripeRange {
+                            start: resume_height,
+                            end_exclusive: range.end_exclusive,
+                            attempt: range.attempt.saturating_add(1),
+                        });
+                    }
+                    if worker_failures[worker_index] >= HISTORICAL_STRIPE_SOURCE_FAILURES {
+                        disabled_workers[worker_index] = true;
+                    } else {
+                        idle_workers.push_back(worker_index);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn run_historical_stripe_worker(
+        worker_index: usize,
+        candidate: LightClient,
+        mut commands: mpsc::Receiver<StripeRange>,
+        events: mpsc::Sender<StripeEvent>,
+        permits: Arc<Semaphore>,
+        chunk_bytes: u64,
+        wallet_id: Option<String>,
+    ) {
+        let permit_capacity = chunk_bytes.min(u64::from(u32::MAX)).max(1);
+        while let Some(range) = commands.recv().await {
+            let start_u32 = match u32::try_from(range.start) {
+                Ok(height) => height,
+                Err(_) => {
+                    let _ = events
+                        .send(StripeEvent::Failed {
+                            worker_index,
+                            range,
+                            resume_height: range.start,
+                            error: Error::Sync(format!(
+                                "historical stripe height {} exceeds u32",
+                                range.start
+                            )),
+                        })
+                        .await;
+                    continue;
+                }
+            };
+            let end_u32 = match u32::try_from(range.end_exclusive) {
+                Ok(height) => height,
+                Err(_) => {
+                    let _ = events
+                        .send(StripeEvent::Failed {
+                            worker_index,
+                            range,
+                            resume_height: range.start,
+                            error: Error::Sync(format!(
+                                "historical stripe end {} exceeds u32",
+                                range.end_exclusive
+                            )),
+                        })
+                        .await;
+                    continue;
+                }
+            };
+            let mut receiver = candidate.compact_block_segment_stream(
+                start_u32..end_u32,
+                chunk_bytes,
+                u64::MAX,
+                1,
+                wallet_id.clone(),
+            );
+            let mut next_height = range.start;
+            let mut failure = None;
+            while let Some(result) = receiver.recv().await {
+                match result {
+                    Ok(chunk) => {
+                        let Some(chunk_start) = chunk.start_height() else {
+                            failure = Some(Error::Sync(
+                                "historical source returned an empty chunk".to_string(),
+                            ));
+                            break;
+                        };
+                        let Some(chunk_end) = chunk.end_height() else {
+                            failure = Some(Error::Sync(
+                                "historical source returned an empty chunk".to_string(),
+                            ));
+                            break;
+                        };
+                        if chunk_start != next_height || chunk_end >= range.end_exclusive {
+                            failure = Some(Error::Sync(format!(
+                                "historical stripe expected {}, received {}-{}",
+                                next_height, chunk_start, chunk_end
+                            )));
+                            break;
+                        }
+                        let charge = chunk.encoded_bytes.max(1).min(permit_capacity) as u32;
+                        let permit = match Arc::clone(&permits).acquire_many_owned(charge).await {
+                            Ok(permit) => permit,
+                            Err(_) => return,
+                        };
+                        next_height = chunk_end.saturating_add(1);
+                        if events
+                            .send(StripeEvent::Chunk {
+                                worker_index,
+                                range,
+                                chunk,
+                                _permit: permit,
+                            })
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                    Err(error) => {
+                        failure = Some(error);
+                        break;
+                    }
+                }
+            }
+
+            let event = if let Some(error) = failure {
+                StripeEvent::Failed {
+                    worker_index,
+                    range,
+                    resume_height: next_height,
+                    error,
+                }
+            } else if next_height == range.end_exclusive {
+                StripeEvent::Complete { worker_index }
+            } else {
+                StripeEvent::Failed {
+                    worker_index,
+                    range,
+                    resume_height: next_height,
+                    error: Error::Network(format!(
+                        "historical source ended at {}, expected {}",
+                        next_height, range.end_exclusive
+                    )),
+                }
+            };
+            if events.send(event).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    async fn flush_canonical_stripe_chunks(
+        buffered: &mut BTreeMap<u64, BufferedStripeChunk>,
+        assembler: &mut OrderedBlockAssembler,
+        segment_block_target: &AtomicU64,
+        sender: &mpsc::Sender<Result<CompactBlockChunk>>,
+    ) -> Result<()> {
+        while let Some(buffered_chunk) = buffered.remove(&assembler.next_height()) {
+            let endpoint = buffered_chunk.chunk.endpoint;
+            for (block, encoded_bytes) in buffered_chunk
+                .chunk
+                .blocks
+                .into_iter()
+                .zip(buffered_chunk.chunk.encoded_block_bytes)
+            {
+                assembler.set_next_chunk_max_blocks(segment_block_target.load(Ordering::Acquire));
+                if let Some(chunk) = assembler.push(block, encoded_bytes)? {
+                    send_ordered_chunk(sender, chunk, endpoint.clone()).await?;
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn stream_compact_blocks_once(
@@ -2155,7 +3020,7 @@ impl LightClient {
             received = received.saturating_add(1);
         }
 
-        if assembler.is_complete() {
+        if assembler.next_height() >= end_exclusive {
             Ok(())
         } else {
             Err(Error::Network(format!(
@@ -2756,11 +3621,55 @@ pub struct TransactionStatus {
 mod tests {
     use super::*;
 
+    static TRANSPORT_STATE_TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    fn auto_pool_client(transport: TransportMode) -> LightClient {
+        let mut config = LightClientConfig::direct(DEFAULT_LIGHTD_URL);
+        config.transport = transport;
+        if transport == TransportMode::Socks5 {
+            config.socks5_url = Some("socks5://127.0.0.1:9050".to_string());
+        }
+        LightClient::with_config(config.with_pirate_mainnet_auto_pool())
+    }
+
+    async fn seed_endpoint_pool(client: &LightClient, tips: &[u64], failures: &[(usize, u32)]) {
+        let mut state = Arc::clone(&client.endpoint_pool).write_owned().await;
+        state.probed = true;
+        state.healthy_indices = (0..tips.len()).collect();
+        state.tips = tips.iter().copied().enumerate().collect();
+        state.probe_latencies = (0..tips.len())
+            .map(|index| (index, Duration::from_millis((index + 1) as u64)))
+            .collect();
+        state.failures = failures.iter().copied().collect();
+    }
+
     fn valid_subtree_root(height: u64) -> SubtreeRoot {
         SubtreeRoot {
             root_hash: vec![1; 32],
             completing_block_hash: vec![2; 32],
             completing_block_height: height,
+        }
+    }
+
+    fn compact_block(height: u64, hash_byte: u8, previous_hash: Vec<u8>) -> CompactBlock {
+        CompactBlock {
+            proto_version: 1,
+            height,
+            hash: vec![hash_byte; 32],
+            prev_hash: previous_hash,
+            time: height as u32,
+            header: Vec::new(),
+            transactions: Vec::new(),
+        }
+    }
+
+    async fn buffered_chunk(
+        chunk: CompactBlockChunk,
+        permits: Arc<Semaphore>,
+    ) -> BufferedStripeChunk {
+        BufferedStripeChunk {
+            chunk,
+            _permit: permits.acquire_owned().await.expect("buffer permit"),
         }
     }
 
@@ -2911,6 +3820,248 @@ mod tests {
     }
 
     #[test]
+    fn canonical_mainnet_pool_contains_only_curated_tls_servers() {
+        assert_eq!(MAINNET_AUTO_LIGHTD_URLS.len(), 7);
+        for endpoint in MAINNET_AUTO_LIGHTD_URLS {
+            assert!(endpoint.starts_with("https://"), "{endpoint}");
+            assert!(is_pirate_mainnet_auto_endpoint(endpoint), "{endpoint}");
+        }
+        for endpoint in [
+            "http://64.23.167.130:9067",
+            "https://pirate.mathnodes.com:443",
+            "http://example.com:9067",
+            "http://lx34l6evvk7vynbulx6brxqyzzes4balb3owhteb4jyqpdoosbfc3oid.onion:9067",
+        ] {
+            assert!(!is_pirate_mainnet_auto_endpoint(endpoint), "{endpoint}");
+        }
+    }
+
+    #[test]
+    fn automatic_pool_preserves_transport_and_endpoint_tls_identity() {
+        for transport in [
+            TransportMode::Direct,
+            TransportMode::Tor,
+            TransportMode::Socks5,
+        ] {
+            let client = auto_pool_client(transport);
+            assert_eq!(client.endpoint_count(), MAINNET_AUTO_LIGHTD_URLS.len());
+            let mut identities = vec![normalize_endpoint_identity(client.endpoint())];
+            for index in 1..client.endpoint_count() {
+                let candidate = client.candidate_client(index).expect("pool candidate");
+                assert_eq!(candidate.config.transport, transport);
+                assert_eq!(candidate.config.socks5_url, client.config.socks5_url);
+                assert!(candidate.config.tls.enabled);
+                assert!(candidate.config.tls.spki_pin.is_none());
+                identities.push(normalize_endpoint_identity(candidate.endpoint()));
+            }
+            identities.sort();
+            identities.dedup();
+            assert_eq!(identities.len(), MAINNET_AUTO_LIGHTD_URLS.len());
+        }
+    }
+
+    #[test]
+    fn pinned_custom_and_i2p_endpoints_remain_single_source() {
+        let pinned = LightClientConfig::direct(DEFAULT_LIGHTD_URL)
+            .with_spki_pin("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+            .with_pirate_mainnet_auto_pool();
+        assert!(pinned.failover_endpoints.is_empty());
+
+        let custom =
+            LightClientConfig::direct("https://example.com:443").with_pirate_mainnet_auto_pool();
+        assert!(custom.failover_endpoints.is_empty());
+
+        let mut i2p = LightClientConfig::direct(DEFAULT_LIGHTD_URL);
+        i2p.transport = TransportMode::I2p;
+        assert!(i2p
+            .with_pirate_mainnet_auto_pool()
+            .failover_endpoints
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn historical_striping_uses_current_sources_and_preserves_tip_margin() {
+        let client = auto_pool_client(TransportMode::Direct);
+        seed_endpoint_pool(&client, &[1_000, 995, 1_000, 900], &[]).await;
+
+        let plan = client
+            .historical_stripe_plan(100, 1_001)
+            .await
+            .expect("historical stripe plan");
+        assert_eq!(plan.candidate_indices, vec![0, 1, 2]);
+        assert_eq!(plan.end_exclusive, 896);
+    }
+
+    #[tokio::test]
+    async fn historical_striping_respects_transport_and_failure_bounds() {
+        let tor_client = auto_pool_client(TransportMode::Tor);
+        seed_endpoint_pool(
+            &tor_client,
+            &[2_000, 2_000, 2_000, 2_000],
+            &[(0, HISTORICAL_STRIPE_SOURCE_FAILURES)],
+        )
+        .await;
+        let plan = tor_client
+            .historical_stripe_plan(1_000, 1_900)
+            .await
+            .expect("Tor stripe plan");
+        assert_eq!(plan.candidate_indices, vec![1, 2]);
+
+        let i2p_client = auto_pool_client(TransportMode::I2p);
+        seed_endpoint_pool(&i2p_client, &[2_000, 2_000], &[]).await;
+        assert!(i2p_client
+            .historical_stripe_plan(1_000, 1_900)
+            .await
+            .is_none());
+
+        let short_client = auto_pool_client(TransportMode::Direct);
+        seed_endpoint_pool(&short_client, &[2_000, 2_000], &[]).await;
+        assert!(short_client
+            .historical_stripe_plan(1_000, 1_511)
+            .await
+            .is_none());
+    }
+
+    #[test]
+    fn historical_handoff_memory_is_bounded_across_sources() {
+        for source_count in 1..=HISTORICAL_STRIPE_MAX_SOURCES {
+            let per_source =
+                historical_source_buffer_bytes(HISTORICAL_STRIPE_HANDOFF_BYTES, source_count);
+            assert!(per_source >= 1);
+            assert!(
+                per_source.saturating_mul(source_count as u64) <= HISTORICAL_STRIPE_HANDOFF_BYTES
+            );
+        }
+    }
+
+    #[test]
+    fn quarantined_incomplete_source_leaves_striped_mode() {
+        let range = StripeRange {
+            start: 1_000,
+            end_exclusive: 1_256,
+            attempt: 2,
+        };
+        assert!(should_leave_historical_striping(
+            range,
+            1_128,
+            HISTORICAL_STRIPE_SOURCE_FAILURES,
+            5,
+        ));
+        assert!(!should_leave_historical_striping(range, 1_128, 1, 5,));
+        assert!(!should_leave_historical_striping(
+            range,
+            range.end_exclusive,
+            HISTORICAL_STRIPE_SOURCE_FAILURES,
+            5,
+        ));
+    }
+
+    #[test]
+    fn active_endpoint_prefers_the_selected_primary_unless_it_is_stale() {
+        let healthy = vec![0, 1, 2];
+        let latencies = HashMap::from([
+            (0, Duration::from_millis(20)),
+            (1, Duration::from_millis(5)),
+            (2, Duration::from_millis(10)),
+        ]);
+        let current_tips = HashMap::from([(0, 1_000), (1, 1_010), (2, 1_010)]);
+        assert_eq!(
+            preferred_active_endpoint(&healthy, &current_tips, &latencies),
+            Some(0)
+        );
+
+        let stale_tips = HashMap::from([(0, 900), (1, 1_010), (2, 1_010)]);
+        assert_eq!(
+            preferred_active_endpoint(&healthy, &stale_tips, &latencies),
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn striped_chunks_wait_for_and_preserve_canonical_order() {
+        let permits = Arc::new(Semaphore::new(2));
+        let mut buffered = BTreeMap::new();
+        buffered.insert(
+            11,
+            buffered_chunk(
+                CompactBlockChunk {
+                    blocks: vec![compact_block(11, 11, vec![10; 32])],
+                    encoded_block_bytes: vec![20],
+                    encoded_bytes: 20,
+                    endpoint: "second.example".to_string(),
+                },
+                Arc::clone(&permits),
+            )
+            .await,
+        );
+        let mut assembler = OrderedBlockAssembler::with_limits(10, 12, 100, 1).unwrap();
+        let target = AtomicU64::new(1);
+        let (sender, mut receiver) = mpsc::channel(2);
+
+        LightClient::flush_canonical_stripe_chunks(&mut buffered, &mut assembler, &target, &sender)
+            .await
+            .unwrap();
+        assert!(receiver.try_recv().is_err());
+
+        buffered.insert(
+            10,
+            buffered_chunk(
+                CompactBlockChunk {
+                    blocks: vec![compact_block(10, 10, vec![9; 32])],
+                    encoded_block_bytes: vec![20],
+                    encoded_bytes: 20,
+                    endpoint: "first.example".to_string(),
+                },
+                permits,
+            )
+            .await,
+        );
+        LightClient::flush_canonical_stripe_chunks(&mut buffered, &mut assembler, &target, &sender)
+            .await
+            .unwrap();
+
+        let first = receiver.recv().await.unwrap().unwrap();
+        let second = receiver.recv().await.unwrap().unwrap();
+        assert_eq!(first.start_height(), Some(10));
+        assert_eq!(second.start_height(), Some(11));
+        assert!(assembler.is_complete());
+    }
+
+    #[tokio::test]
+    async fn striped_chunks_reject_cross_source_chain_discontinuity() {
+        let permits = Arc::new(Semaphore::new(2));
+        let mut buffered = BTreeMap::new();
+        for (height, previous_hash) in [(20, vec![19; 32]), (21, vec![99; 32])] {
+            buffered.insert(
+                height,
+                buffered_chunk(
+                    CompactBlockChunk {
+                        blocks: vec![compact_block(height, height as u8, previous_hash)],
+                        encoded_block_bytes: vec![20],
+                        encoded_bytes: 20,
+                        endpoint: format!("source-{height}"),
+                    },
+                    Arc::clone(&permits),
+                )
+                .await,
+            );
+        }
+        let mut assembler = OrderedBlockAssembler::with_limits(20, 22, 100, 1).unwrap();
+        let target = AtomicU64::new(1);
+        let (sender, _receiver) = mpsc::channel(2);
+
+        let error = LightClient::flush_canonical_stripe_chunks(
+            &mut buffered,
+            &mut assembler,
+            &target,
+            &sender,
+        )
+        .await
+        .expect_err("disconnected striped chain");
+        assert!(error.to_string().contains("disconnected at height 21"));
+    }
+
+    #[test]
     fn failover_inherits_transport_and_keeps_its_own_spki_pin() {
         let primary_pin = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
         let alternate_pin = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
@@ -3034,10 +4185,11 @@ mod tests {
 
     #[tokio::test]
     async fn global_transport_initialization_is_single_flight() {
+        let _test_guard = TRANSPORT_STATE_TEST_LOCK.lock().await;
         clear_desired_transport_config();
         let state = Arc::new(GlobalTransportState {
-            manager: RwLock::new(None),
-            initialization: Mutex::new(()),
+            manager: Arc::new(RwLock::new(None)),
+            initialization: Arc::new(Mutex::new(())),
         });
         let config = NetTransportConfig {
             mode: NetTransportMode::Direct,
@@ -3056,6 +4208,33 @@ mod tests {
 
         assert!(Arc::ptr_eq(&first, &second));
         state.shutdown().await;
+        clear_desired_transport_config();
+    }
+
+    #[tokio::test]
+    async fn stale_background_probe_cannot_reselect_an_old_transport() {
+        let _test_guard = TRANSPORT_STATE_TEST_LOCK.lock().await;
+        clear_desired_transport_config();
+        let state = Arc::new(GlobalTransportState {
+            manager: Arc::new(RwLock::new(None)),
+            initialization: Arc::new(Mutex::new(())),
+        });
+        let direct = NetTransportConfig {
+            mode: NetTransportMode::Direct,
+            ..NetTransportConfig::default()
+        };
+        state
+            .clone()
+            .get_or_init(direct.clone())
+            .await
+            .expect("direct transport");
+
+        let tor = NetTransportConfig::default();
+        set_desired_transport_config(tor);
+        assert!(state.clone().get_matching(direct).await.is_none());
+
+        state.shutdown().await;
+        clear_desired_transport_config();
     }
 
     #[tokio::test]

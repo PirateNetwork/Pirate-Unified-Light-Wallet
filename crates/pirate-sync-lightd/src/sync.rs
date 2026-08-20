@@ -3822,21 +3822,10 @@ impl SyncEngine {
         mut end: u64,
         follow_tip: bool,
     ) -> Result<()> {
-        if self.client.has_failover_endpoints() {
-            let health = self.client.probe_endpoints().await;
-            for endpoint in health {
-                if endpoint.healthy {
-                    tracing::info!(
-                        "Validated lightwalletd failover endpoint at tip {}",
-                        endpoint.tip_height.unwrap_or(0)
-                    );
-                } else {
-                    tracing::warn!(
-                        "Rejected lightwalletd failover endpoint: {}",
-                        endpoint.reason.as_deref().unwrap_or("health check failed")
-                    );
-                }
-            }
+        if self.client.has_failover_endpoints() && !self.client.endpoint_pool_is_probed().await {
+            tracing::debug!(
+                "Canonical lightwalletd endpoint validation is continuing beside sync setup"
+            );
         }
         let run_db = match self.storage.as_ref() {
             Some(sink) => Some(Database::open_existing(

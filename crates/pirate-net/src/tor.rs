@@ -506,6 +506,11 @@ impl TorClient {
         self.status.lock().await.clone()
     }
 
+    /// Get bootstrap status from an owned handle.
+    pub async fn status_owned(self) -> TorStatus {
+        self.status.lock_owned().await.clone()
+    }
+
     /// Check if Tor is ready
     pub async fn is_ready(&self) -> bool {
         matches!(*self.status.lock().await, TorStatus::Ready)
@@ -536,6 +541,41 @@ impl TorClient {
                     ))
                 })?
                 .map_err(|e| Error::Tor(format!("Tor connect failed: {}", e)))?;
+        Ok(stream)
+    }
+
+    /// Connect to a target using only owned state so the operation can run in
+    /// a detached multi-endpoint health task.
+    pub async fn connect_stream_owned(
+        self,
+        host: String,
+        port: u16,
+    ) -> Result<arti_client::DataStream> {
+        let config = Arc::clone(&self.config).lock_owned().await.clone();
+        self.clone().bootstrap().await?;
+        self.clone()
+            .wait_for_ready(config.bootstrap_timeout)
+            .await?;
+
+        let client = Arc::clone(&self.client)
+            .lock_owned()
+            .await
+            .clone()
+            .ok_or_else(|| Error::Tor("Tor client not initialized".to_string()))?;
+        let prefs = Arc::clone(&self.stream_prefs).lock_owned().await.clone();
+        let target = format!("{}:{}", host, port);
+        let stream = tokio::time::timeout(
+            config.connect_timeout,
+            client.connect_with_prefs(target, &prefs),
+        )
+        .await
+        .map_err(|_| {
+            Error::Tor(format!(
+                "Tor connect timed out to {}:{} (port may be blocked by Tor exits)",
+                host, port
+            ))
+        })?
+        .map_err(|e| Error::Tor(format!("Tor connect failed: {}", e)))?;
         Ok(stream)
     }
 
