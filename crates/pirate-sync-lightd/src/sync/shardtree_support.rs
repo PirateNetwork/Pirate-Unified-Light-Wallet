@@ -3212,6 +3212,11 @@ async fn fetch_subtree_roots_with_timeout<H: HashSer + Hashable + Clone + Eq>(
     max_end_height: u64,
     timeout: Duration,
 ) -> Result<HashMap<u64, HistoricalSubtreeRoot<H>>> {
+    // Pool discovery is a background setup optimization and has its own bounded
+    // validation budget. Keep it outside the RPC timeout so an automatic pool
+    // can find a canonically validated capable member before the short optional
+    // subtree-root request budget begins.
+    client.prepare_subtree_root_routing().await;
     match tokio::time::timeout(
         timeout,
         fetch_subtree_roots::<H>(client, protocol, start_index, max_end_height),

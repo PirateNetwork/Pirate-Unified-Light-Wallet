@@ -20,7 +20,7 @@ use pirate_net::{
 };
 use prost::Message;
 use rand::Rng;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::env;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -1475,7 +1475,7 @@ pub struct LightClient {
     subtree_root_capabilities: Arc<StdRwLock<HashMap<(String, i32), SubtreeRootCapability>>>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SubtreeRootCapability {
     Available,
     RetryAfter(Instant),
@@ -1734,6 +1734,26 @@ impl LightClient {
             Self::report_endpoint_pool_health(&health);
         });
         true
+    }
+
+    pub(crate) async fn start_historical_endpoint_pool_probe(
+        &self,
+        start: u64,
+        end_exclusive: u64,
+    ) -> bool {
+        if !should_probe_historical_pool(self.config.transport, start, end_exclusive) {
+            return false;
+        }
+        self.start_endpoint_pool_probe().await
+    }
+
+    pub(crate) async fn prepare_subtree_root_routing(&self) {
+        if !self.has_failover_endpoints() || self.endpoint_pool_is_probed().await {
+            return;
+        }
+
+        self.start_endpoint_pool_probe().await;
+        self.wait_for_endpoint_pool_probe().await;
     }
 
     async fn wait_for_endpoint_pool_probe(&self) {
@@ -3694,16 +3714,43 @@ impl LightClient {
         .await
     }
 
-    /// Return whether the endpoint's cached capability permits an optional probe.
-    pub(crate) fn subtree_root_probe_allowed(&self, protocol: ShieldedProtocol) -> bool {
-        let key = (self.config.endpoint.clone(), protocol as i32);
+    fn subtree_root_capability_key(endpoint: &str, protocol: ShieldedProtocol) -> (String, i32) {
+        (normalize_endpoint_identity(endpoint), protocol as i32)
+    }
+
+    fn subtree_root_capability(
+        &self,
+        endpoint: &str,
+        protocol: ShieldedProtocol,
+    ) -> Option<SubtreeRootCapability> {
+        let key = Self::subtree_root_capability_key(endpoint, protocol);
         self.subtree_root_capabilities
             .read()
             .ok()
             .and_then(|capabilities| capabilities.get(&key).copied())
-            .is_none_or(|capability| match capability {
-                SubtreeRootCapability::Available => true,
-                SubtreeRootCapability::RetryAfter(retry_after) => Instant::now() >= retry_after,
+    }
+
+    fn subtree_root_endpoint_priority(
+        &self,
+        endpoint: &str,
+        protocol: ShieldedProtocol,
+        now: Instant,
+    ) -> Option<u8> {
+        match self.subtree_root_capability(endpoint, protocol) {
+            Some(SubtreeRootCapability::Available) => Some(0),
+            Some(SubtreeRootCapability::RetryAfter(retry_after)) if now < retry_after => None,
+            Some(SubtreeRootCapability::RetryAfter(_)) | None => Some(1),
+        }
+    }
+
+    /// Return whether any configured endpoint's cached capability permits an optional probe.
+    pub(crate) fn subtree_root_probe_allowed(&self, protocol: ShieldedProtocol) -> bool {
+        let now = Instant::now();
+        (0..self.endpoint_count())
+            .filter_map(|index| self.endpoint_candidate(index))
+            .any(|candidate| {
+                self.subtree_root_endpoint_priority(&candidate.endpoint, protocol, now)
+                    .is_some()
             })
     }
 
@@ -3722,21 +3769,53 @@ impl LightClient {
             }
         };
         if let Ok(mut capabilities) = self.subtree_root_capabilities.write() {
-            capabilities.insert((self.config.endpoint.clone(), protocol as i32), capability);
+            capabilities.insert(
+                Self::subtree_root_capability_key(&self.config.endpoint, protocol),
+                capability,
+            );
         }
     }
 
     pub(crate) fn record_subtree_root_timeout(&self, protocol: ShieldedProtocol) {
+        // The outer prefill timeout cannot identify which member of an automatic
+        // pool was in flight. Candidate clients record their own deterministic
+        // and transient results, so avoid poisoning the configured primary here.
+        if self.has_failover_endpoints() {
+            return;
+        }
         if let Ok(mut capabilities) = self.subtree_root_capabilities.write() {
             capabilities.insert(
-                (self.config.endpoint.clone(), protocol as i32),
+                Self::subtree_root_capability_key(&self.config.endpoint, protocol),
                 SubtreeRootCapability::RetryAfter(Instant::now() + SUBTREE_ROOT_TIMEOUT_RETRY),
             );
         }
     }
 
-    /// Fetch historical subtree roots for a shielded pool.
-    pub async fn get_subtree_roots(
+    async fn subtree_root_candidate_order(&self, protocol: ShieldedProtocol) -> Vec<usize> {
+        let state = self.endpoint_pool.read().await;
+        let mut candidates = if state.probed {
+            state.healthy_indices.clone()
+        } else {
+            vec![0]
+        };
+        let now = Instant::now();
+        candidates.retain(|index| {
+            self.endpoint_candidate(*index).is_some_and(|candidate| {
+                self.subtree_root_endpoint_priority(&candidate.endpoint, protocol, now)
+                    .is_some()
+            })
+        });
+        candidates.sort_by_key(|index| {
+            self.endpoint_candidate(*index)
+                .and_then(|candidate| {
+                    self.subtree_root_endpoint_priority(&candidate.endpoint, protocol, now)
+                })
+                .unwrap_or(u8::MAX)
+        });
+        candidates
+    }
+
+    async fn get_subtree_roots_single_endpoint(
         &self,
         start_index: u32,
         shielded_protocol: ShieldedProtocol,
@@ -3772,6 +3851,90 @@ impl LightClient {
             .await;
         self.record_subtree_root_result(shielded_protocol, &result);
         result
+    }
+
+    /// Fetch historical subtree roots for a shielded pool.
+    pub async fn get_subtree_roots(
+        &self,
+        start_index: u32,
+        shielded_protocol: ShieldedProtocol,
+        max_entries: u32,
+    ) -> Result<Vec<SubtreeRoot>> {
+        let mut pool_ready = self.endpoint_pool_is_probed().await;
+        if self.has_failover_endpoints() && !pool_ready {
+            self.start_endpoint_pool_probe().await;
+        }
+
+        let mut attempted = HashSet::new();
+        let mut last_error = None;
+        loop {
+            for index in self.subtree_root_candidate_order(shielded_protocol).await {
+                let Some(candidate_endpoint) = self.endpoint_candidate(index) else {
+                    continue;
+                };
+                let identity = normalize_endpoint_identity(&candidate_endpoint.endpoint);
+                if !attempted.insert(identity) {
+                    continue;
+                }
+                let candidate = match self.connected_candidate_client(index).await {
+                    Some(candidate) => candidate,
+                    None if !pool_ready && index == 0 => {
+                        let Some(candidate) = self.candidate_client(index) else {
+                            continue;
+                        };
+                        candidate
+                    }
+                    None => continue,
+                };
+
+                debug!(
+                    endpoint = %candidate.endpoint(),
+                    protocol = ?shielded_protocol,
+                    start_index,
+                    "Requesting subtree roots from validated endpoint"
+                );
+                match candidate
+                    .get_subtree_roots_single_endpoint(start_index, shielded_protocol, max_entries)
+                    .await
+                {
+                    Ok(roots) => {
+                        debug!(
+                            endpoint = %candidate.endpoint(),
+                            protocol = ?shielded_protocol,
+                            roots = roots.len(),
+                            "Subtree-root endpoint completed optional request"
+                        );
+                        return Ok(roots);
+                    }
+                    Err(Error::Cancelled) => return Err(Error::Cancelled),
+                    Err(error) => {
+                        debug!(
+                            endpoint = %candidate.endpoint(),
+                            protocol = ?shielded_protocol,
+                            %error,
+                            "Subtree-root endpoint unavailable; trying another validated endpoint"
+                        );
+                        last_error = Some(error);
+                    }
+                }
+            }
+
+            if self.has_failover_endpoints() && !pool_ready {
+                self.wait_for_endpoint_pool_probe().await;
+                pool_ready = self.endpoint_pool_is_probed().await;
+                if pool_ready {
+                    continue;
+                }
+            }
+            break;
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            Error::Network(format!(
+                "No validated lightwalletd endpoint currently supports {:?} subtree roots",
+                shielded_protocol
+            ))
+        }))
     }
 
     /// Get a single block by height
@@ -4015,7 +4178,7 @@ mod tests {
     }
 
     #[test]
-    fn subtree_root_capability_cache_is_per_pool_and_recovers_on_success() {
+    fn single_endpoint_subtree_root_capability_recovers_on_success() {
         let client = LightClient::new("https://roots.example:443".to_string());
         assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Sapling));
         assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Ironwood));
@@ -4027,6 +4190,59 @@ mod tests {
         let success = Ok(Vec::new());
         client.record_subtree_root_result(ShieldedProtocol::Sapling, &success);
         assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Sapling));
+    }
+
+    #[tokio::test]
+    async fn subtree_root_capabilities_are_scoped_to_the_actual_endpoint() {
+        let client = auto_pool_client(TransportMode::Direct);
+        seed_endpoint_pool(&client, &[1_000, 1_000, 1_000], &[]).await;
+        let primary = client.candidate_client(0).expect("primary endpoint");
+        let crypto_forge = client.candidate_client(1).expect("alternate endpoint");
+
+        let unsupported: Result<Vec<SubtreeRoot>> = Err(Error::Status(
+            tonic::Status::unimplemented("GetSubtreeRoots is unavailable"),
+        ));
+        primary.record_subtree_root_result(ShieldedProtocol::Sapling, &unsupported);
+        let success = Ok(Vec::new());
+        crypto_forge.record_subtree_root_result(ShieldedProtocol::Sapling, &success);
+
+        assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Sapling));
+        assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Ironwood));
+        let order = client
+            .subtree_root_candidate_order(ShieldedProtocol::Sapling)
+            .await;
+        assert_eq!(order.first(), Some(&1));
+        assert!(!order.contains(&0));
+    }
+
+    #[tokio::test]
+    async fn subtree_root_routing_uses_only_validated_pool_members() {
+        let client = auto_pool_client(TransportMode::Direct);
+        seed_endpoint_pool(&client, &[1_000, 1_000, 1_000], &[]).await;
+        {
+            let mut state = client.endpoint_pool.write().await;
+            state.healthy_indices = vec![0, 2];
+        }
+        let unvalidated = client.candidate_client(1).expect("unvalidated endpoint");
+        let success = Ok(Vec::new());
+        unvalidated.record_subtree_root_result(ShieldedProtocol::Sapling, &success);
+
+        let order = client
+            .subtree_root_candidate_order(ShieldedProtocol::Sapling)
+            .await;
+        assert_eq!(order, vec![0, 2]);
+    }
+
+    #[test]
+    fn automatic_pool_timeout_is_not_attributed_to_its_primary() {
+        let client = auto_pool_client(TransportMode::Direct);
+        client.record_subtree_root_timeout(ShieldedProtocol::Sapling);
+
+        assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Sapling));
+        assert_eq!(
+            client.subtree_root_capability(DEFAULT_LIGHTD_URL, ShieldedProtocol::Sapling),
+            None
+        );
     }
 
     #[test]
@@ -4876,6 +5092,45 @@ mod integration_tests {
             "historical stream should use at least two validated endpoints; got {source_endpoints:?}"
         );
         println!("historical stream sources: {source_endpoints:?}");
+        shutdown_transport().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires live network connection"]
+    async fn test_live_mainnet_subtree_root_capability_routing() {
+        let config = LightClientConfig::direct(DEFAULT_LIGHTD_URL).with_pirate_mainnet_auto_pool();
+        let client = LightClient::with_config(config);
+        client
+            .candidate_client(0)
+            .expect("primary endpoint")
+            .connect_single_endpoint()
+            .await
+            .expect("connect primary endpoint and initialize transport");
+
+        let health = client.probe_endpoints().await;
+        assert!(
+            health.iter().any(|endpoint| endpoint.healthy),
+            "automatic endpoint pool has no canonical member"
+        );
+        let roots = client
+            .get_subtree_roots(0, ShieldedProtocol::Sapling, 1)
+            .await
+            .expect("a validated endpoint should provide Sapling subtree roots");
+        assert_eq!(roots.len(), 1);
+
+        let capable = MAINNET_AUTO_LIGHTD_URLS
+            .iter()
+            .filter(|endpoint| {
+                client.subtree_root_capability(endpoint, ShieldedProtocol::Sapling)
+                    == Some(SubtreeRootCapability::Available)
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        assert!(
+            !capable.is_empty(),
+            "successful subtree-root endpoint was not cached"
+        );
+        println!("Sapling subtree-root endpoints: {capable:?}");
         shutdown_transport().await;
     }
 

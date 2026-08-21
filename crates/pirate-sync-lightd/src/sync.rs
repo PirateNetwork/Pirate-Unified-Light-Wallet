@@ -3822,10 +3822,12 @@ impl SyncEngine {
         mut end: u64,
         follow_tip: bool,
     ) -> Result<()> {
-        if self.client.has_failover_endpoints() && !self.client.endpoint_pool_is_probed().await {
-            tracing::debug!(
-                "Canonical lightwalletd endpoint validation is continuing beside sync setup"
-            );
+        if self
+            .client
+            .start_historical_endpoint_pool_probe(start, end.saturating_add(1))
+            .await
+        {
+            tracing::debug!("Canonical lightwalletd endpoint validation started beside sync setup");
         }
         let run_db = match self.storage.as_ref() {
             Some(sink) => Some(Database::open_existing(
