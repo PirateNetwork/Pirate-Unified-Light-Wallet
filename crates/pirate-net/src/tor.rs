@@ -27,6 +27,11 @@ use tokio::sync::{oneshot, Mutex};
 use tor_rtcompat::{PreferredRuntime, ToplevelBlockOn};
 use tracing::{info, warn};
 
+const TOR_STATE_DIR_ENV: &str = "PIRATE_TOR_STATE_DIR";
+const TOR_CACHE_DIR_ENV: &str = "PIRATE_TOR_CACHE_DIR";
+const TOR_BASE_DIR_ENV: &str = "PIRATE_TOR_DIR";
+const WALLET_DB_DIR_ENV: &str = "PIRATE_WALLET_DB_DIR";
+
 /// Tor bootstrap status
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TorStatus {
@@ -110,8 +115,20 @@ impl Default for TorConfig {
 fn tor_base_candidates() -> Vec<PathBuf> {
     let mut bases = Vec::new();
 
+    if let Some(base) = non_empty_env_path(TOR_BASE_DIR_ENV) {
+        bases.push(base);
+    }
+    if let Some(wallet_dir) = non_empty_env_path(WALLET_DB_DIR_ENV) {
+        let candidate = wallet_dir.join("tor");
+        if !bases.iter().any(|path| path == &candidate) {
+            bases.push(candidate);
+        }
+    }
     if let Some(dirs) = ProjectDirs::from("com", "Pirate", "PirateWallet") {
-        bases.push(dirs.data_local_dir().join("tor"));
+        let candidate = dirs.data_local_dir().join("tor");
+        if !bases.iter().any(|path| path == &candidate) {
+            bases.push(candidate);
+        }
     }
     if let Some(base) = BaseDirs::new() {
         let candidate = base.data_local_dir().join("PirateWallet").join("tor");
@@ -132,12 +149,32 @@ fn tor_base_candidates() -> Vec<PathBuf> {
     bases
 }
 
+fn non_empty_env_path(name: &str) -> Option<PathBuf> {
+    env::var_os(name)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+fn resolve_tor_dirs(
+    fallback_base: PathBuf,
+    state_override: Option<PathBuf>,
+    cache_override: Option<PathBuf>,
+) -> (PathBuf, PathBuf) {
+    let state_dir = state_override.unwrap_or_else(|| fallback_base.join("state"));
+    let cache_dir = cache_override.unwrap_or_else(|| fallback_base.join("cache"));
+    (state_dir, cache_dir)
+}
+
 fn default_tor_dirs() -> (PathBuf, PathBuf) {
     let base = tor_base_candidates()
         .into_iter()
         .next()
         .unwrap_or_else(|| env::temp_dir().join("pirate_wallet").join("tor"));
-    (base.join("state"), base.join("cache"))
+    resolve_tor_dirs(
+        base,
+        non_empty_env_path(TOR_STATE_DIR_ENV),
+        non_empty_env_path(TOR_CACHE_DIR_ENV),
+    )
 }
 
 fn ensure_tor_dirs(state_dir: &Path, cache_dir: &Path) -> Result<(PathBuf, PathBuf)> {
@@ -997,6 +1034,29 @@ mod tests {
         let config = TorConfig::default();
         assert!(config.enabled);
         assert!(!config.debug);
+    }
+
+    #[test]
+    fn host_owned_tor_directories_override_platform_defaults() {
+        let fallback = PathBuf::from("fallback");
+        let state = PathBuf::from("private").join("state");
+        let cache = PathBuf::from("private").join("cache");
+
+        assert_eq!(
+            resolve_tor_dirs(fallback, Some(state.clone()), Some(cache.clone())),
+            (state, cache)
+        );
+    }
+
+    #[test]
+    fn partial_host_override_keeps_the_other_directory_on_the_fallback() {
+        let fallback = PathBuf::from("fallback");
+        let state = PathBuf::from("private").join("state");
+
+        assert_eq!(
+            resolve_tor_dirs(fallback.clone(), Some(state.clone()), None),
+            (state, fallback.join("cache"))
+        );
     }
 
     #[tokio::test]

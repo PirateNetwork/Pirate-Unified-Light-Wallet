@@ -291,10 +291,14 @@ class MainActivity: FlutterFragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             val walletDir = File(filesDir, "wallets")
+            val torStateDir = File(filesDir, "tor/state")
+            val torCacheDir = File(cacheDir, "pirate_wallet/tor")
             if (!walletDir.exists()) {
                 walletDir.mkdirs()
             }
             Os.setenv("PIRATE_WALLET_DB_DIR", walletDir.absolutePath, true)
+            Os.setenv("PIRATE_TOR_STATE_DIR", torStateDir.absolutePath, true)
+            Os.setenv("PIRATE_TOR_CACHE_DIR", torCacheDir.absolutePath, true)
         } catch (_: Exception) {
             // Best-effort; Rust will fall back if env cannot be set.
         }
