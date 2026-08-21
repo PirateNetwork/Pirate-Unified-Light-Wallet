@@ -4194,6 +4194,45 @@ mod tests {
     }
 
     #[test]
+    fn endpoint_pool_probe_is_reserved_for_large_network_ranges() {
+        assert!(!should_probe_historical_pool(
+            TransportMode::Direct,
+            1_000,
+            1_511
+        ));
+        assert!(should_probe_historical_pool(
+            TransportMode::Direct,
+            1_000,
+            1_512
+        ));
+        assert!(should_probe_historical_pool(
+            TransportMode::Tor,
+            1_000,
+            2_000
+        ));
+        assert!(!should_probe_historical_pool(
+            TransportMode::I2p,
+            1_000,
+            2_000
+        ));
+    }
+
+    #[test]
+    fn cloned_clients_share_endpoint_probe_coordination() {
+        let client = auto_pool_client(TransportMode::Direct);
+        let clone = client.clone();
+
+        assert!(Arc::ptr_eq(
+            &client.endpoint_pool_probe_inflight,
+            &clone.endpoint_pool_probe_inflight
+        ));
+        assert!(Arc::ptr_eq(
+            &client.endpoint_pool_probe_notify,
+            &clone.endpoint_pool_probe_notify
+        ));
+    }
+
+    #[test]
     fn pinned_custom_and_i2p_endpoints_remain_single_source() {
         let pinned = LightClientConfig::direct(DEFAULT_LIGHTD_URL)
             .with_spki_pin("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
@@ -4307,6 +4346,38 @@ mod tests {
         assert_eq!(
             preferred_active_endpoint(&healthy, &stale_tips, &latencies),
             Some(1)
+        );
+    }
+
+    #[test]
+    fn candidate_order_requires_a_fresh_tip_at_the_requested_height() {
+        let mut state = EndpointPoolState {
+            probed: true,
+            active_index: 0,
+            healthy_indices: vec![0, 1, 2],
+            tips: HashMap::from([(0, 1_000), (1, 1_000), (2, 999)]),
+            ..EndpointPoolState::default()
+        };
+
+        assert!(eligible_candidate_order(&state, 1_001).is_empty());
+
+        state.tips.insert(1, 1_001);
+        assert_eq!(eligible_candidate_order(&state, 1_001), vec![1]);
+    }
+
+    #[test]
+    fn refreshed_pool_tip_prefers_the_fastest_endpoint_at_the_highest_height() {
+        let healthy = vec![0, 1, 2];
+        let tips = HashMap::from([(0, 1_000), (1, 1_010), (2, 1_010)]);
+        let latencies = HashMap::from([
+            (0, Duration::from_millis(2)),
+            (1, Duration::from_millis(20)),
+            (2, Duration::from_millis(5)),
+        ]);
+
+        assert_eq!(
+            highest_tip_endpoint(&healthy, &tips, &latencies),
+            Some((2, 1_010))
         );
     }
 
@@ -4805,6 +4876,43 @@ mod integration_tests {
             "historical stream should use at least two validated endpoints; got {source_endpoints:?}"
         );
         println!("historical stream sources: {source_endpoints:?}");
+        shutdown_transport().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires live network connection"]
+    async fn test_live_stale_pool_tip_refreshes_before_tail_fetch() {
+        let config = LightClientConfig::direct(DEFAULT_LIGHTD_URL).with_pirate_mainnet_auto_pool();
+        let client = LightClient::with_config(config);
+        client
+            .candidate_client(0)
+            .expect("primary endpoint")
+            .connect_single_endpoint()
+            .await
+            .expect("connect primary endpoint and initialize transport");
+        let health = client.probe_endpoints().await;
+        let highest_tip = health
+            .iter()
+            .filter(|endpoint| endpoint.healthy)
+            .filter_map(|endpoint| endpoint.tip_height)
+            .max()
+            .expect("healthy canonical endpoint tip");
+
+        {
+            let mut state = client.endpoint_pool.write().await;
+            let healthy_indices = state.healthy_indices.clone();
+            for index in healthy_indices {
+                state.tips.insert(index, highest_tip.saturating_sub(1));
+            }
+        }
+        assert!(client.candidate_order(highest_tip).await.len() > 0);
+
+        let state = client.endpoint_pool.read().await;
+        assert!(state
+            .healthy_indices
+            .iter()
+            .any(|index| state.tips.get(index).is_some_and(|tip| *tip >= highest_tip)));
+        drop(state);
         shutdown_transport().await;
     }
 
