@@ -514,11 +514,21 @@ class SeedPhraseLanguagePreferenceNotifier extends Notifier<MnemonicLanguage> {
 
   Future<void> setLanguage(MnemonicLanguage language) async {
     state = language;
-    await _storage.write(key: _storageKey, value: language.name);
+    try {
+      await _storage.write(key: _storageKey, value: language.name);
+    } catch (error) {
+      debugPrint('Could not persist seed phrase language preference: $error');
+    }
   }
 
   Future<void> _load() async {
-    final raw = await _storage.read(key: _storageKey);
+    String? raw;
+    try {
+      raw = await _storage.read(key: _storageKey);
+    } catch (error) {
+      debugPrint('Could not load seed phrase language preference: $error');
+      return;
+    }
     if (!ref.mounted) {
       return;
     }
