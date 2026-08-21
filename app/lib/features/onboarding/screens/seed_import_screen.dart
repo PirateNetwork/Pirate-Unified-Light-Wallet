@@ -23,9 +23,40 @@ import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
 
+class SeedImportServices {
+  const SeedImportServices();
+
+  Future<List<String>> loadWordlist(MnemonicLanguage language) {
+    return loadBip39Wordlist(language);
+  }
+
+  Future<MnemonicInspection> inspectMnemonic(String mnemonic) {
+    return FfiBridge.inspectMnemonic(mnemonic);
+  }
+
+  Future<bool> validateMnemonic(
+    String mnemonic, {
+    required MnemonicLanguage mnemonicLanguage,
+  }) {
+    return FfiBridge.validateMnemonic(
+      mnemonic,
+      mnemonicLanguage: mnemonicLanguage,
+    );
+  }
+
+  Future<bool> hasAppPassphrase() {
+    return FfiBridge.hasAppPassphrase();
+  }
+}
+
 /// Seed import screen for wallet restoration
 class SeedImportScreen extends ConsumerStatefulWidget {
-  const SeedImportScreen({super.key});
+  final SeedImportServices services;
+
+  const SeedImportScreen({
+    super.key,
+    this.services = const SeedImportServices(),
+  });
 
   @override
   ConsumerState<SeedImportScreen> createState() => _SeedImportScreenState();
@@ -96,7 +127,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
   }
 
   Future<void> _loadWordlist(MnemonicLanguage language) async {
-    final words = await loadBip39Wordlist(language);
+    final words = await widget.services.loadWordlist(language);
     if (!mounted) return;
     setState(() {
       _activeWordlist = words;
@@ -172,14 +203,15 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
       _validationError = null;
     });
 
-    try {
-      MnemonicLanguage? resolvedLanguage;
+    late final MnemonicLanguage resolvedLanguage;
 
+    try {
       if (_ambiguousLanguages.isNotEmpty &&
           _ambiguousLanguageSelection != null) {
-        resolvedLanguage = _ambiguousLanguageSelection;
+        resolvedLanguage = _ambiguousLanguageSelection!;
       } else {
-        final inspection = await FfiBridge.inspectMnemonic(_mnemonic);
+        final inspection = await widget.services.inspectMnemonic(_mnemonic);
+        if (!mounted) return;
         if (!inspection.isValid) {
           setState(() {
             _validationError =
@@ -193,9 +225,8 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
           setState(() {
             _ambiguousLanguages = inspection.ambiguousLanguages;
             _ambiguousLanguageSelection = inspection.ambiguousLanguages.first;
-            _validationError =
-                'This seed phrase matches multiple languages. Choose the correct language to continue.'
-                    .tr;
+            _validationError = 'This seed phrase matches multiple languages. Choose the correct language to continue.'
+                .tr;
             _isValidating = false;
           });
           return;
@@ -204,10 +235,11 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
         resolvedLanguage = inspection.detectedLanguage ?? _selectedLanguage;
       }
 
-      final isValid = await FfiBridge.validateMnemonic(
+      final isValid = await widget.services.validateMnemonic(
         _mnemonic,
         mnemonicLanguage: resolvedLanguage,
       );
+      if (!mounted) return;
 
       if (!isValid) {
         setState(() {
@@ -217,21 +249,36 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
         });
         return;
       }
+    } catch (error) {
+      debugPrint('Seed phrase validation failed: $error');
+      if (!mounted) return;
+      setState(() {
+        _validationError = 'Could not validate the phrase. Try again.'.tr;
+        _isValidating = false;
+      });
+      return;
+    }
 
+    try {
       await ref
           .read(seedPhraseLanguagePreferenceProvider.notifier)
-          .setLanguage(resolvedLanguage!);
+          .setLanguage(resolvedLanguage);
+    } catch (error) {
+      debugPrint('Could not persist seed phrase language preference: $error');
+    }
+    if (!mounted) return;
 
-      // Store mnemonic in onboarding state
-      ref
-          .read(onboardingControllerProvider.notifier)
-          .setMnemonic(_mnemonic, mnemonicLanguage: resolvedLanguage);
+    ref
+        .read(onboardingControllerProvider.notifier)
+        .setMnemonic(_mnemonic, mnemonicLanguage: resolvedLanguage);
 
-      final hasPassphrase = await FfiBridge.hasAppPassphrase();
+    try {
+      final hasPassphrase = await widget.services.hasAppPassphrase();
+      if (!mounted) return;
+
+      setState(() => _isValidating = false);
       if (!hasPassphrase) {
-        if (mounted) {
-          unawaited(context.push('/onboarding/passphrase'));
-        }
+        unawaited(context.push('/onboarding/passphrase'));
         return;
       }
 
@@ -239,12 +286,12 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
       ref.read(onboardingControllerProvider.notifier).nextStep();
       ref.read(onboardingControllerProvider.notifier).nextStep();
 
-      if (mounted) {
-        unawaited(context.push('/onboarding/birthday'));
-      }
-    } catch (e) {
+      unawaited(context.push('/onboarding/birthday'));
+    } catch (error) {
+      debugPrint('Could not continue seed import setup: $error');
+      if (!mounted) return;
       setState(() {
-        _validationError = 'Could not validate the phrase. Try again.'.tr;
+        _validationError = 'Could not continue wallet setup. Try again.'.tr;
         _isValidating = false;
       });
     }
