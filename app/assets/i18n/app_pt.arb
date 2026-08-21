@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "Falha ao inicializar o núcleo.\n{error}",
   "Could not load wallets.": "Não foi possível carregar carteiras.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "Não foi possível alcançar o endpoint lightwalletd configurado. Verifique as configurações de rede e tente novamente.",
+  "Could not continue wallet setup. Try again.": "Não foi possível continuar a configuração da carteira. Tente novamente.",
   "Could not validate the phrase. Try again.": "Não foi possível validar a frase. Tente novamente.",
   "Could not verify passphrase.": "Não foi possível verificar a senha.",
   "Create Wallet": "Criar carteira",

@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "Çekirdek başlatılamadı.\n{error}",
   "Could not load wallets.": "Cüzdanlar yüklenemedi.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "Yapılandırılmış lightwalletd uç noktasına ulaşılamadı. Ağ ayarlarını kontrol edip tekrar deneyin.",
+  "Could not continue wallet setup. Try again.": "Cüzdan kurulumuna devam edilemedi. Tekrar deneyin.",
   "Could not validate the phrase. Try again.": "İfade doğrulanamadı. Tekrar deneyin.",
   "Could not verify passphrase.": "Parola doğrulanamadı.",
   "Create Wallet": "Cüzdan Oluştur",

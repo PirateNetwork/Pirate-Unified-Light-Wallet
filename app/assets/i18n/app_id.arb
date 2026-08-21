@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "Inti gagal diinisialisasi.\n{error}",
   "Could not load wallets.": "Tidak dapat memuat dompet.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "Tidak dapat menjangkau endpoint lightwalletd yang dikonfigurasi. Periksa pengaturan jaringan dan coba lagi.",
+  "Could not continue wallet setup. Try again.": "Tidak dapat melanjutkan penyiapan dompet. Coba lagi.",
   "Could not validate the phrase. Try again.": "Tidak dapat memvalidasi frasa. Coba lagi.",
   "Could not verify passphrase.": "Tidak dapat memverifikasi frasa sandi.",
   "Create Wallet": "Buat Dompet",

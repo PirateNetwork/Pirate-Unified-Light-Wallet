@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "Core kan niet worden geïnitialiseerd.\n{error}",
   "Could not load wallets.": "Kan portefeuilles niet laden.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "Kan het geconfigureerde lightwalletd-eindpunt niet bereiken. Controleer de netwerkinstellingen en probeer het opnieuw.",
+  "Could not continue wallet setup. Try again.": "Kan het instellen van de wallet niet voortzetten. Probeer het opnieuw.",
   "Could not validate the phrase. Try again.": "Kan de zin niet valideren. Probeer het opnieuw.",
   "Could not verify passphrase.": "Kan de wachtwoordzin niet verifiëren.",
   "Create Wallet": "Portemonnee maken",

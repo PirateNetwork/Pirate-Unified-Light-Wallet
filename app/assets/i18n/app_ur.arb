@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "کور شروع کرنے میں ناکام۔\n{error}",
   "Could not load wallets.": "بٹوے لوڈ نہیں ہو سکے۔",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "کنفیگر شدہ lightwalletd اینڈ پوائنٹ تک نہیں پہنچ سکا۔ نیٹ ورک کی ترتیبات چیک کریں اور دوبارہ کوشش کریں۔",
+  "Could not continue wallet setup. Try again.": "والیٹ سیٹ اپ جاری نہیں رکھا جا سکا۔ دوبارہ کوشش کریں۔",
   "Could not validate the phrase. Try again.": "جملے کی توثیق نہیں ہو سکی۔ دوبارہ کوشش کریں۔",
   "Could not verify passphrase.": "پاس فریز کی تصدیق نہیں ہو سکی۔",
   "Create Wallet": "والیٹ بنائیں",

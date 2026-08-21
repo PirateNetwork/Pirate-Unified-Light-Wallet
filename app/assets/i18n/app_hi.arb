@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "कोर प्रारंभ करने में विफल रहा.\n{error}",
   "Could not load wallets.": "वॉलेट लोड नहीं किया जा सका.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "कॉन्फ़िगर किए गए lightwalletd समापन बिंदु तक नहीं पहुंच सका। नेटवर्क सेटिंग्स जांचें और पुनः प्रयास करें।",
+  "Could not continue wallet setup. Try again.": "वॉलेट सेटअप जारी नहीं रखा जा सका। फिर से कोशिश करें।",
   "Could not validate the phrase. Try again.": "वाक्यांश को मान्य नहीं किया जा सका. पुनः प्रयास करें।",
   "Could not verify passphrase.": "पासफ़्रेज़ सत्यापित नहीं किया जा सका.",
   "Create Wallet": "वॉलेट बनाएं",

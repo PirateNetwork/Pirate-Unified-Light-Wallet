@@ -300,6 +300,7 @@
   "Core failed to initialize.\n{error}": "Core failed to initialize.\n{error}",
   "Could not load wallets.": "Could not load wallets.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "Could not reach the configured lightwalletd endpoint. Check network settings and try again.",
+  "Could not continue wallet setup. Try again.": "Could not continue wallet setup. Try again.",
   "Could not validate the phrase. Try again.": "Could not validate the phrase. Try again.",
   "Could not verify passphrase.": "Could not verify passphrase.",
   "Create Wallet": "Create Wallet",

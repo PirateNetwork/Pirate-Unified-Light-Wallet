@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "코어를 초기화하지 못했습니다.\n{error}",
   "Could not load wallets.": "지갑을 로드할 수 없습니다.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "구성된 lightwalletd 엔드포인트에 연결할 수 없습니다. 네트워크 설정을 확인하고 다시 시도하세요.",
+  "Could not continue wallet setup. Try again.": "지갑 설정을 계속할 수 없습니다. 다시 시도해 주세요.",
   "Could not validate the phrase. Try again.": "구문을 확인할 수 없습니다. 다시 시도해 보세요.",
   "Could not verify passphrase.": "암호를 확인할 수 없습니다.",
   "Create Wallet": "지갑 생성",

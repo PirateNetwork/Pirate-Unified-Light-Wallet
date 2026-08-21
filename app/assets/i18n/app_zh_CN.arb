@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "核心初始化失败。\n{error}",
   "Could not load wallets.": "无法加载钱包。",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "无法到达配置的 lightwalletd 端点。检查网络设置并重试。",
+  "Could not continue wallet setup. Try again.": "无法继续设置钱包。请重试。",
   "Could not validate the phrase. Try again.": "无法验证该短语。再试一次。",
   "Could not verify passphrase.": "无法验证密码。",
   "Create Wallet": "创建钱包",

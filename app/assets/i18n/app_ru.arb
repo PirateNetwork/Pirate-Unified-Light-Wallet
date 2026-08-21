@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "Не удалось инициализировать ядро. \n{error}",
   "Could not load wallets.": "Не удалось загрузить кошельки.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "Не удалось достичь настроенной конечной точки lightwalletd. Проверьте настройки сети и повторите попытку.",
+  "Could not continue wallet setup. Try again.": "Не удалось продолжить настройку кошелька. Повторите попытку.",
   "Could not validate the phrase. Try again.": "Не удалось проверить фразу. Попробуйте еще раз.",
   "Could not verify passphrase.": "Не удалось проверить парольную фразу.",
   "Create Wallet": "Создать кошелек",

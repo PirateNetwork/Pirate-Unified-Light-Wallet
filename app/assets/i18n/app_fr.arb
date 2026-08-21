@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "Le noyau n'a pas pu s'initialiser.\n{error}",
   "Could not load wallets.": "Impossible de charger les portefeuilles.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "Impossible d'atteindre le point de terminaison lightwalletd configuré. Vérifiez les paramètres réseau et réessayez.",
+  "Could not continue wallet setup. Try again.": "Impossible de poursuivre la configuration du portefeuille. Réessayez.",
   "Could not validate the phrase. Try again.": "Impossible de valider la phrase. Essayer à nouveau.",
   "Could not verify passphrase.": "Impossible de vérifier la phrase secrète.",
   "Create Wallet": "Créer un portefeuille",

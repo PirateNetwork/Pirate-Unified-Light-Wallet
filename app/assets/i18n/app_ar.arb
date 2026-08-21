@@ -304,6 +304,7 @@
   "Core failed to initialize.\n{error}": "فشل التهيئة الأساسية.\n{error}",
   "Could not load wallets.": "تعذر تحميل المحافظ.",
   "Could not reach the configured lightwalletd endpoint. Check network settings and try again.": "تعذر الوصول إلى نقطة النهاية lightwalletd التي تم تكوينها. تحقق من إعدادات الشبكة وحاول مرة أخرى.",
+  "Could not continue wallet setup. Try again.": "تعذر متابعة إعداد المحفظة. حاول مرة أخرى.",
   "Could not validate the phrase. Try again.": "لم يتمكن من التحقق من صحة العبارة. حاول ثانية.",
   "Could not verify passphrase.": "تعذر التحقق من عبارة المرور.",
   "Create Wallet": "إنشاء المحفظة",
