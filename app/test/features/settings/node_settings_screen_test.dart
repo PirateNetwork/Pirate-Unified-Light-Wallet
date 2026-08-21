@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pirate_wallet/config/endpoints.dart' as endpoints;
 import 'package:pirate_wallet/core/ffi/ffi_bridge.dart';
 import 'package:pirate_wallet/core/providers/wallet_providers.dart';
 import 'package:pirate_wallet/features/settings/providers/endpoint_health_provider.dart';
@@ -174,21 +175,87 @@ void main() {
 
       expect(find.textContaining('64.23.167.130'), findsNothing);
       expect(find.text('Automatic server selection'), findsOneWidget);
-      expect(find.text('Auto (Mainnet)'), findsOneWidget);
-      expect(find.text('Pirate Chain Mainnet'), findsOneWidget);
-      expect(find.text('Pirate Black Mainnet'), findsOneWidget);
-      expect(find.text('Qortal 1 Mainnet'), findsOneWidget);
-      expect(find.text('Qortal 2 Mainnet'), findsOneWidget);
-      expect(find.text('Qortal 3 Mainnet'), findsOneWidget);
-      expect(find.text('CryptoForge 1 Mainnet'), findsOneWidget);
-      expect(find.text('CryptoForge 2 Mainnet'), findsOneWidget);
-      expect(find.text('Mathnodes Mainnet'), findsOneWidget);
+      expect(find.text('Auto'), findsOneWidget);
+      expect(find.text('CryptoForge 1'), findsOneWidget);
+      expect(find.text('CryptoForge 2'), findsOneWidget);
+      expect(find.text('Mathnodes'), findsOneWidget);
+      expect(find.text('Pirate.Black'), findsOneWidget);
+      expect(find.text('Qortal 1'), findsOneWidget);
+      expect(find.text('Qortal 2'), findsOneWidget);
+      expect(find.text('Qortal 3'), findsOneWidget);
+      expect(find.textContaining('lightd.pirate.black'), findsNothing);
       expect(find.text('Auto (Ironwood testnet)'), findsOneWidget);
       expect(find.text('CryptoForge 1 Ironwood testnet'), findsOneWidget);
       expect(find.text('CryptoForge 2 Ironwood testnet'), findsOneWidget);
       expect(find.textContaining('.onion'), findsNothing);
       expect(find.textContaining('.b32.i2p'), findsNothing);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'applies preset taps immediately with one clear selection state',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final applied = <endpoints.LightdEndpoint>[];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            lightdEndpointConfigProvider.overrideWith(
+              (ref) async => LightdEndpointConfig(
+                url: endpoints.LightdEndpoint.officialMainnet.url,
+              ),
+            ),
+            setLightdEndpointSelectionProvider.overrideWith(
+              (ref) =>
+                  (selection) async => applied.add(selection),
+            ),
+            transportConfigProvider.overrideWith(
+              _TestTransportConfigNotifier.new,
+            ),
+            endpointHealthProvider.overrideWith(
+              _TestEndpointHealthNotifier.new,
+            ),
+          ],
+          child: const MaterialApp(home: NodeSettingsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final auto = find.byKey(
+        const ValueKey('endpoint-preset-auto-mainnet-clearnet'),
+      );
+      final official = find.byKey(
+        const ValueKey('endpoint-preset-pirate-official'),
+      );
+      expect(auto, findsOneWidget);
+      expect(official, findsOneWidget);
+
+      await tester.tap(auto);
+      await tester.pumpAndSettle();
+
+      expect(applied, hasLength(1));
+      expect(applied.single.automaticFailover, isTrue);
+      expect(applied.single.failoverUrls, isNotEmpty);
+      expect(
+        find.descendant(
+          of: auto,
+          matching: find.byIcon(Icons.radio_button_checked),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: official,
+          matching: find.byIcon(Icons.radio_button_unchecked),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Available'), findsNothing);
+      expect(find.text('Unavailable'), findsNothing);
     },
   );
 
@@ -217,9 +284,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('.b32.i2p'), findsWidgets);
-    expect(find.text('Auto (Mainnet)'), findsOneWidget);
+    expect(find.text('Auto'), findsOneWidget);
     expect(find.text('Auto (Ironwood testnet)'), findsOneWidget);
-    expect(find.text('Mathnodes Mainnet'), findsNothing);
+    expect(find.text('Mathnodes'), findsNothing);
     expect(find.textContaining('.onion'), findsNothing);
     expect(tester.takeException(), isNull);
   });

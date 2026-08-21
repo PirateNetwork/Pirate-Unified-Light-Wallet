@@ -1,6 +1,8 @@
 /// Node settings screen - Lightwalletd endpoint configuration
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,10 +41,12 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   bool _hasChanges = false;
   bool _isFetchingSpkiPin = false;
   bool _automaticFailover = false;
+  String? _applyingPresetId;
   String? _spkiPinMessage;
   bool _spkiPinMessageIsError = false;
   String? _originalEndpoint;
   String? _originalTlsPin;
+  bool _originalUseTls = endpoints.kDefaultUseTls;
   bool _originalAutomaticFailover = false;
   ProviderSubscription<AsyncValue<ffi.LightdEndpointConfig>>?
   _endpointSubscription;
@@ -77,6 +81,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       _automaticFailover = config.automaticFailover;
       _originalEndpoint = displayString;
       _originalTlsPin = tlsPin;
+      _originalUseTls = config.useTls;
       _originalAutomaticFailover = config.automaticFailover;
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
@@ -90,10 +95,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         _tlsPinController.clear();
       }
       _automaticFailover = false;
-      _hasChanges =
-          value != _originalEndpoint ||
-          _tlsPinController.text != (_originalTlsPin ?? '') ||
-          _automaticFailover != _originalAutomaticFailover;
+      _hasChanges = _selectionHasChanges();
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
@@ -102,10 +104,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   void _onTlsPinChanged(String value) {
     setState(() {
       _automaticFailover = false;
-      _hasChanges =
-          _endpointController.text != _originalEndpoint ||
-          value != (_originalTlsPin ?? '') ||
-          _automaticFailover != _originalAutomaticFailover;
+      _hasChanges = _selectionHasChanges();
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
@@ -203,6 +202,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
         _originalEndpoint = parsed.displayString;
         _originalTlsPin = normalizedPin;
+        _originalUseTls = _useTls;
         _originalAutomaticFailover = false;
         if (mounted) {
           setState(() {
@@ -288,6 +288,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
       _originalEndpoint = parsed.displayString;
       _originalTlsPin = tlsPin.isEmpty ? '' : tlsPin;
+      _originalUseTls = _useTls;
       _originalAutomaticFailover = _automaticFailover;
 
       if (mounted) {
@@ -322,10 +323,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       _tlsPinController.text = '';
       _useTls = defaultEndpoint.useTls;
       _automaticFailover = true;
-      _hasChanges =
-          defaultEndpoint.displayString != _originalEndpoint ||
-          (_originalTlsPin?.isNotEmpty ?? false) ||
-          !_originalAutomaticFailover;
+      _hasChanges = _selectionHasChanges();
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
@@ -337,13 +335,67 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       _tlsPinController.text = endpoint.tlsPin ?? '';
       _useTls = endpoint.useTls;
       _automaticFailover = endpoint.automaticFailover;
-      _hasChanges =
-          _endpointController.text != _originalEndpoint ||
-          _tlsPinController.text != (_originalTlsPin ?? '') ||
-          _automaticFailover != _originalAutomaticFailover;
+      _hasChanges = _selectionHasChanges();
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
+  }
+
+  bool _selectionHasChanges() =>
+      _endpointController.text != _originalEndpoint ||
+      _tlsPinController.text != (_originalTlsPin ?? '') ||
+      _useTls != _originalUseTls ||
+      _automaticFailover != _originalAutomaticFailover;
+
+  Future<void> _applySuggestedEndpoint(
+    endpoints.LightdEndpoint endpoint,
+  ) async {
+    if (_isLoading || _isFetchingSpkiPin || _originalEndpoint == null) return;
+
+    _applySuggested(endpoint);
+    if (!_hasChanges) return;
+
+    setState(() {
+      _isLoading = true;
+      _applyingPresetId = endpoint.id;
+    });
+
+    try {
+      await ref.read(setLightdEndpointSelectionProvider)(endpoint);
+      if (!mounted) return;
+
+      setState(() {
+        _originalEndpoint = endpoint.displayString;
+        _originalTlsPin = endpoint.tlsPin ?? '';
+        _originalUseTls = endpoint.useTls;
+        _originalAutomaticFailover = endpoint.automaticFailover;
+        _hasChanges = false;
+        _isLoading = false;
+        _applyingPresetId = null;
+      });
+      PSnack.show(
+        context: context,
+        message: 'Node endpoint saved'.tr,
+        variant: PSnackVariant.success,
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _endpointController.text = _originalEndpoint ?? '';
+        _tlsPinController.text = _originalTlsPin ?? '';
+        _useTls = _originalUseTls;
+        _automaticFailover = _originalAutomaticFailover;
+        _hasChanges = false;
+        _isLoading = false;
+        _applyingPresetId = null;
+      });
+      PSnack.show(
+        context: context,
+        message: 'Failed to save endpoint: {error}'.trArgs({'error': error}),
+        variant: PSnackVariant.error,
+      );
+    }
   }
 
   @override
@@ -412,7 +464,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                _buildPresetGrid(suggestedEndpoints, endpointHealth),
+                _buildPresetGrid(suggestedEndpoints),
 
                 const SizedBox(height: AppSpacing.xl),
 
@@ -461,7 +513,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                           setState(() {
                             _useTls = value;
                             _automaticFailover = false;
-                            _hasChanges = true;
+                            _hasChanges = _selectionHasChanges();
                           });
                         },
                         activeTrackColor: AppColors.accentPrimary.withValues(
@@ -810,10 +862,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     );
   }
 
-  Widget _buildPresetGrid(
-    List<endpoints.LightdEndpoint> presets,
-    EndpointHealthState health,
-  ) {
+  Widget _buildPresetGrid(List<endpoints.LightdEndpoint> presets) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = constraints.maxWidth >= 900
@@ -829,21 +878,14 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
           runSpacing: gap,
           children: [
             for (final endpoint in presets)
-              SizedBox(
-                width: tileWidth,
-                child: _buildPresetTile(endpoint, health),
-              ),
+              SizedBox(width: tileWidth, child: _buildPresetTile(endpoint)),
           ],
         );
       },
     );
   }
 
-  Widget _buildPresetTile(
-    endpoints.LightdEndpoint endpoint,
-    EndpointHealthState health,
-  ) {
-    final record = health.recordFor(endpoint.url);
+  Widget _buildPresetTile(endpoints.LightdEndpoint endpoint) {
     final selected =
         _endpointController.text.trim() == endpoint.displayString &&
         _useTls == endpoint.useTls &&
@@ -856,80 +898,91 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
             endpoints.LightdRoute.clearnet =>
               endpoint.useTls ? Icons.lock_outline : Icons.dns_outlined,
           };
-    return PCard(
-      onTap: () => _applySuggested(endpoint),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      backgroundColor: selected
-          ? AppColors.accentPrimary.withValues(alpha: 0.1)
-          : null,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 58),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: selected
-                    ? AppColors.accentPrimary.withValues(alpha: 0.14)
-                    : AppColors.backgroundElevated,
-                borderRadius: BorderRadius.circular(8),
+    final applying = _applyingPresetId == endpoint.id;
+    final canSelect = !_isLoading && !_isFetchingSpkiPin;
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: canSelect,
+      child: PCard(
+        key: ValueKey('endpoint-preset-${endpoint.id}'),
+        onTap: canSelect
+            ? () => unawaited(_applySuggestedEndpoint(endpoint))
+            : null,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        backgroundColor: selected
+            ? AppColors.accentPrimary.withValues(alpha: 0.1)
+            : null,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 58),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppColors.accentPrimary.withValues(alpha: 0.14)
+                      : AppColors.backgroundElevated,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  routeIcon,
+                  size: 18,
+                  color: selected
+                      ? AppColors.accentPrimary
+                      : AppColors.textSecondary,
+                ),
               ),
-              child: Icon(
-                routeIcon,
-                size: 18,
-                color: selected
-                    ? AppColors.accentPrimary
-                    : AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    endpoint.displayLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.labelMedium.copyWith(
-                      color: selected
-                          ? AppColors.accentPrimary
-                          : AppColors.textPrimary,
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      endpoint.displayLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.labelMedium.copyWith(
+                        color: selected
+                            ? AppColors.accentPrimary
+                            : AppColors.textPrimary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    endpoint.displaySubtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: AppColors.textSecondary,
-                      fontFamily: 'monospace',
+                    const SizedBox(height: 3),
+                    Text(
+                      endpoint.displaySubtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontFamily: 'monospace',
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.xs),
-            if (selected)
-              Icon(Icons.check_circle, color: AppColors.accentPrimary, size: 18)
-            else if (record != null)
-              Icon(
-                record.healthy ? Icons.check_circle : Icons.error,
-                color: record.healthy ? AppColors.success : AppColors.error,
-                size: 17,
-              )
-            else
-              Icon(
-                Icons.circle_outlined,
-                color: AppColors.textDisabled,
-                size: 16,
-              ),
-          ],
+              const SizedBox(width: AppSpacing.sm),
+              _buildPresetState(selected: selected, applying: applying),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPresetState({required bool selected, required bool applying}) {
+    if (applying) {
+      return const SizedBox.square(
+        dimension: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    return Icon(
+      selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+      color: selected ? AppColors.accentPrimary : AppColors.textDisabled,
+      size: 19,
     );
   }
 
