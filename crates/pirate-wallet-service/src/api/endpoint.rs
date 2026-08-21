@@ -8,14 +8,13 @@ use std::time::Duration;
 
 const IP_TLS_SERVER_NAME: &str = "lightd1.piratechain.com";
 const CUSTOM_ENDPOINT_LABEL: &str = "Custom";
-const OFFICIAL_ENDPOINT_LABEL: &str = "Pirate Chain Mainnet";
+const OFFICIAL_ENDPOINT_LABEL: &str = "Pirate.Black";
 const DEV_LIGHTD_HOST: &str = "64.23.167.130";
 const DEV_LIGHTD_PORT: u16 = 9067;
 const IRONWOOD_TESTNET_PORT: u16 = 8067;
 const MAX_FAILOVER_ENDPOINTS: usize = 16;
 const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "lightd1.pirate.black",
-    "lightd.pirate.black",
     "lightd1.piratechain.com",
     "pirate.mathnodes.com",
     "arrr.qortal.link",
@@ -500,7 +499,7 @@ mod tests {
     fn default_endpoint_uses_the_official_tls_server() {
         let endpoint = LightdEndpoint::default();
         assert_eq!(endpoint.url(), "https://lightd1.pirate.black:443");
-        assert_eq!(endpoint.label.as_deref(), Some("Pirate Chain Mainnet"));
+        assert_eq!(endpoint.label.as_deref(), Some("Pirate.Black"));
         assert!(!endpoint.automatic_failover);
         assert!(!endpoint.is_configured);
     }
@@ -509,7 +508,6 @@ mod tests {
     fn curated_endpoints_remain_single_source_without_opt_in() {
         for host in [
             DEFAULT_LIGHTD_HOST,
-            "lightd.pirate.black",
             "arrr2.qortal.link",
             "lightwalletd2.cryptoforge.cc",
         ] {

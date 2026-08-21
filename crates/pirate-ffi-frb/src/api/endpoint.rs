@@ -14,7 +14,6 @@ const DEV_LIGHTD_PORT: u16 = 9067;
 const IRONWOOD_TESTNET_PORT: u16 = 8067;
 const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "lightd1.pirate.black",
-    "lightd.pirate.black",
     "lightd1.piratechain.com",
     "pirate.mathnodes.com",
     "arrr.qortal.link",
