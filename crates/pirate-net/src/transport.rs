@@ -15,7 +15,9 @@ use hyper::header::{HeaderName, HeaderValue, HOST, LOCATION};
 use hyper::Request;
 use hyper_util::rt::TokioIo;
 use native_tls::TlsConnector as NativeTlsConnector;
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -136,6 +138,7 @@ impl<T: AsyncRead + AsyncWrite + ?Sized> AsyncReadWrite for T {}
 
 type BoxedStream = Box<dyn AsyncReadWrite + Send + Unpin>;
 type ConnectorStream = TokioIo<BoxedStream>;
+type ConnectorFuture = Pin<Box<dyn Future<Output = Result<ConnectorStream>> + Send + 'static>>;
 
 async fn fetch_peer_certificate_der(
     connector: TlsConnector,
@@ -528,35 +531,25 @@ impl TransportManager {
         }
     }
 
-    /// Create gRPC channel with configured transport
-    pub async fn create_grpc_channel(self: Arc<Self>, endpoint: Endpoint) -> Result<Channel> {
+    fn grpc_connector(
+        &self,
+    ) -> impl tower::Service<Uri, Response = ConnectorStream, Error = Error, Future = ConnectorFuture>
+           + Clone
+           + Send
+           + 'static {
         let config = read_state(&self.config);
         let tor_client = read_state(&self.tor_client);
         let i2p_client = read_state(&self.i2p_client);
         let dns_config = config.dns_config.clone();
         let socks5_config = config.socks5.clone();
         let mode = config.mode;
-        let endpoint_uri = endpoint.uri().to_string();
 
-        debug!("Creating gRPC channel via {:?}", mode);
-        log_debug_event(
-            "transport.rs:TransportManager::create_grpc_channel",
-            "grpc_channel_create",
-            &format!(
-                "mode={:?} endpoint={} dns_provider={} dns_tunnel={}",
-                mode,
-                endpoint_uri,
-                dns_config.provider.name(),
-                dns_config.tunnel_dns
-            ),
-        );
-
-        let connector = service_fn(move |uri: Uri| {
+        service_fn(move |uri: Uri| -> ConnectorFuture {
             let tor_client = tor_client.clone();
             let i2p_client = i2p_client.clone();
             let dns_config = dns_config.clone();
             let socks5_config = socks5_config.clone();
-            async move {
+            Box::pin(async move {
                 match mode {
                     TransportMode::Tor => {
                         let tor = tor_client.ok_or_else(|| {
@@ -578,8 +571,31 @@ impl TransportManager {
                     }
                     TransportMode::Direct => connect_direct(dns_config, mode, uri).await,
                 }
-            }
-        });
+            })
+        })
+    }
+
+    fn log_grpc_channel_creation(&self, endpoint: &Endpoint, lazy: bool) {
+        let config = read_state(&self.config);
+        debug!("Creating gRPC channel via {:?}", config.mode);
+        log_debug_event(
+            "transport.rs:TransportManager::create_grpc_channel",
+            "grpc_channel_create",
+            &format!(
+                "mode={:?} endpoint={} dns_provider={} dns_tunnel={} lazy={}",
+                config.mode,
+                endpoint.uri(),
+                config.dns_config.provider.name(),
+                config.dns_config.tunnel_dns,
+                lazy
+            ),
+        );
+    }
+
+    /// Create a gRPC channel and wait for its transport connection.
+    pub async fn create_grpc_channel(self: Arc<Self>, endpoint: Endpoint) -> Result<Channel> {
+        self.log_grpc_channel_creation(&endpoint, false);
+        let connector = self.grpc_connector();
 
         endpoint
             .connect_with_connector(connector)
@@ -590,6 +606,17 @@ impl TransportManager {
                     format_error_chain(&e)
                 ))
             })
+    }
+
+    /// Create a gRPC channel whose first RPC establishes the transport.
+    ///
+    /// This is used by concurrent health probes, which immediately issue an
+    /// RPC and therefore observe the same connection and TLS failures.
+    pub fn create_grpc_channel_lazy(self: Arc<Self>, endpoint: Endpoint) -> Channel {
+        self.log_grpc_channel_creation(&endpoint, true);
+        let connector = self.grpc_connector();
+
+        endpoint.connect_with_connector_lazy(connector)
     }
 
     /// Open a raw stream using the configured transport mode.
