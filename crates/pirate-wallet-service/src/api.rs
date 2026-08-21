@@ -2005,6 +2005,8 @@ pub fn set_lightd_endpoint_pool(
         endpoint::detect_network_from_endpoint(&endpoint.host, endpoint.port);
 
     let endpoint_url = endpoint.url();
+    let automatic_failover = endpoint.automatic_failover;
+    let failover_count = endpoint.failover_endpoints.len();
 
     tracing::info!(
         "Set lightd endpoint for wallet {}: {} (detected network: {:?})",
@@ -2042,8 +2044,14 @@ pub fn set_lightd_endpoint_pool(
         pirate_core::debug_log::with_locked_file(|file| {
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_set_lightd_endpoint","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"set_lightd_endpoint","data":{{"wallet_id":"{}","endpoint":"{}","old_network":"{:?}","new_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, wallet_id, endpoint_url, old_network_type, new_network_type
+                r#"{{"id":"log_set_lightd_endpoint","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"set_lightd_endpoint","data":{{"wallet_id":"{}","endpoint":"{}","automatic_failover":{},"failover_count":{},"old_network":"{:?}","new_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                ts,
+                wallet_id,
+                endpoint_url,
+                automatic_failover,
+                failover_count,
+                old_network_type,
+                new_network_type
             );
         });
     }

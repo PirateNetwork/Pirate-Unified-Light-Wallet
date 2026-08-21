@@ -762,6 +762,8 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
     let tls_enabled = endpoint_config.use_tls;
     let host = endpoint_config.host.clone();
     let tls_server_name = endpoint::tls_server_name(&endpoint_config);
+    let automatic_failover = endpoint_config.automatic_failover;
+    let failover_count = client_config.failover_endpoints.len();
 
     tracing::info!(
         "start_sync: Using endpoint {} (TLS: {}, transport: {:?})",
@@ -782,8 +784,16 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             .collect::<String>();
         let _ = writeln!(
             file,
-            r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:1964","message":"start_sync config","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","host":"{}","tls_server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
-            id, ts, endpoint_url, tls_enabled, client_config.transport, host, tls_server_name
+            r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:1964","message":"start_sync config","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","host":"{}","tls_server_name":"{:?}","automatic_failover":{},"failover_count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+            id,
+            ts,
+            endpoint_url,
+            tls_enabled,
+            client_config.transport,
+            host,
+            tls_server_name,
+            automatic_failover,
+            failover_count
         );
     });
 
@@ -2053,13 +2063,29 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         std::time::Duration::from_secs(30),
         std::time::Duration::from_secs(180),
     );
+    let automatic_failover = endpoint_config.automatic_failover;
+    let failover_count = client_config.failover_endpoints.len();
 
     tracing::info!(
-        "rescan: Using endpoint {} (TLS: {}, transport: {:?})",
+        "rescan: Using endpoint {} (TLS: {}, transport: {:?}, automatic failover: {}, alternates: {})",
         endpoint_url,
         tls_enabled,
-        client_config.transport
+        client_config.transport,
+        automatic_failover,
+        failover_count
     );
+
+    pirate_core::debug_log::with_locked_file(|file| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_rescan_endpoint_config","timestamp":{},"location":"api.rs:rescan","message":"rescan endpoint config","data":{{"tls_enabled":{},"transport":"{:?}","automatic_failover":{},"failover_count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+            ts, tls_enabled, client_config.transport, automatic_failover, failover_count
+        );
+    });
 
     let network_type = wallet_network_type(&wallet_id)?;
     let address_network_type = address_prefix_network_type(&wallet_id)?;
