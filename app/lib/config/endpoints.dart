@@ -17,6 +17,7 @@ const String kQortal2LightdHost = 'arrr2.qortal.link';
 const String kQortal3LightdHost = 'arrr3.qortal.link';
 const String kCryptoForge1LightdHost = 'lightwalletd1.cryptoforge.cc';
 const String kCryptoForge2LightdHost = 'lightwalletd2.cryptoforge.cc';
+const String kAutoMainnetLightdHost = kCryptoForge2LightdHost;
 
 const int kMainnetHiddenLightdPort = 9067;
 const String kMainnetTor1LightdHost =
@@ -84,7 +85,7 @@ class LightdEndpoint {
 
   static final LightdEndpoint autoMainnetClearnet = LightdEndpoint(
     id: 'auto-mainnet-clearnet',
-    host: kOfficialLightdHost,
+    host: kAutoMainnetLightdHost,
     port: kOfficialLightdPort,
     useTls: true,
     network: LightdNetwork.mainnet,
@@ -368,6 +369,34 @@ class LightdEndpoint {
     };
   }
 
+  /// Resolves a persisted automatic selection to the current route preset.
+  ///
+  /// Auto's preferred primary can change between releases. Matching the old
+  /// URL against its manual preset preserves the network and route long enough
+  /// to migrate without treating a manual server choice as automatic.
+  static LightdEndpoint? currentAutomaticPreset(LightdEndpoint endpoint) {
+    if (!endpoint.automaticFailover) return null;
+    for (final preset in allPresets) {
+      if (preset.automaticFailover && preset == endpoint) return preset;
+    }
+    for (final preset in allPresets) {
+      if (preset.automaticFailover ||
+          preset.host.toLowerCase() != endpoint.host.toLowerCase() ||
+          preset.port != endpoint.port ||
+          preset.useTls != endpoint.useTls ||
+          preset.network == null) {
+        continue;
+      }
+      final mode = switch (preset.route) {
+        LightdRoute.clearnet => 'direct',
+        LightdRoute.tor => 'tor',
+        LightdRoute.i2p => 'i2p',
+      };
+      return automaticEndpointFor(preset.network!, mode);
+    }
+    return null;
+  }
+
   /// Same-network, same-route members supplied to the validated Rust pool.
   static List<LightdEndpoint> failoverCandidates(LightdEndpoint current) {
     if (!current.automaticFailover || current.network == null) {
@@ -415,8 +444,14 @@ class LightdEndpoint {
   }) {
     final normalizedMode = mode.toLowerCase();
     final retiredNetwork = _retiredPresetNetwork(current);
+    final automaticPreset = current == null
+        ? null
+        : currentAutomaticPreset(current);
     final currentNetwork =
-        retiredNetwork ?? current?.network ?? LightdNetwork.mainnet;
+        retiredNetwork ??
+        automaticPreset?.network ??
+        current?.network ??
+        LightdNetwork.mainnet;
     if (retiredNetwork != null) {
       return automaticEndpointFor(currentNetwork, normalizedMode);
     }

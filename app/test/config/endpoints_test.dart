@@ -4,12 +4,13 @@ import 'package:pirate_wallet/features/settings/providers/transport_providers.da
 
 void main() {
   group('lightwalletd presets', () {
-    test('uses the automatic official mainnet pool by default', () {
+    test('uses the subtree-capable automatic mainnet pool by default', () {
       expect(
         LightdEndpoint.defaultEndpoint,
         LightdEndpoint.autoMainnetClearnet,
       );
       expect(LightdEndpoint.defaultEndpoint.automaticFailover, isTrue);
+      expect(LightdEndpoint.defaultEndpoint.host, kCryptoForge2LightdHost);
       expect(LightdEndpoint.mainnet, LightdEndpoint.officialMainnet);
       expect(kDefaultLightdUrl, 'https://lightd1.pirate.black:443');
       expect(kDefaultUseTls, isTrue);
@@ -186,6 +187,22 @@ void main() {
         ),
         isNull,
       );
+
+      final legacyAuto = LightdEndpoint.tryParse(
+        'https://lightd1.pirate.black:443',
+        automaticFailover: true,
+      );
+      expect(
+        LightdEndpoint.currentAutomaticPreset(legacyAuto!),
+        LightdEndpoint.autoMainnetClearnet,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'direct',
+          current: legacyAuto,
+        ),
+        LightdEndpoint.autoMainnetClearnet,
+      );
     });
 
     test('manual choices persist while compatible with the transport', () {
@@ -265,16 +282,16 @@ void main() {
   });
 
   group('endpoint parsing', () {
-    test('distinguishes Auto from a manual server at the same URL', () {
+    test('distinguishes Auto from a manual server at its primary URL', () {
       final manual = LightdEndpoint.tryParse(
-        'https://lightd1.pirate.black:443/',
+        'https://lightwalletd2.cryptoforge.cc:443/',
       );
       final automatic = LightdEndpoint.tryParse(
-        'https://lightd1.pirate.black:443/',
+        'https://lightwalletd2.cryptoforge.cc:443/',
         automaticFailover: true,
       );
 
-      expect(manual, LightdEndpoint.officialMainnet);
+      expect(manual, LightdEndpoint.cryptoForge2Mainnet);
       expect(manual!.automaticFailover, isFalse);
       expect(automatic, LightdEndpoint.autoMainnetClearnet);
       expect(automatic!.automaticFailover, isTrue);

@@ -204,16 +204,17 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
       if (!ref.mounted || generation != _checkGeneration) return;
       _storeRecord(currentRecord);
 
-      final preset = LightdEndpoint.findPreset(
-        current.url,
-        automaticFailover: config.automaticFailover,
-      );
+      final preset = config.automaticFailover
+          ? LightdEndpoint.currentAutomaticPreset(current)
+          : LightdEndpoint.findPreset(current.url);
       final canFailOver =
           config.automaticFailover &&
           preset != null &&
           (config.tlsPin == null || config.tlsPin!.trim().isEmpty);
       final candidates = canFailOver
           ? LightdEndpoint.failoverCandidates(preset)
+                .where((endpoint) => endpoint.url != current.url)
+                .toList()
           : const <LightdEndpoint>[];
 
       final nextFailureCount = currentRecord.healthy
