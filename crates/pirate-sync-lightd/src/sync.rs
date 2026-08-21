@@ -942,7 +942,10 @@ struct FetchedBlockBatch {
 struct PrefetchFlowControl {
     target_blocks: AtomicU64,
     target_bytes: AtomicU64,
+    /// Adaptive work target for network-fed batches.
     target_work_items: AtomicU64,
+    /// Larger bounded target for blocks already durable in the local cache.
+    cached_target_work_items: u64,
     sapling_work_factor: u64,
     ironwood_work_factor: u64,
     durable_segment_blocks: Arc<AtomicU64>,
@@ -3861,12 +3864,14 @@ impl SyncEngine {
         );
         let mut adaptive_shielded_work_batcher =
             AdaptiveShieldedWorkBatcher::new(self.decrypt_pool.current_num_threads());
+        let cached_target_work_items = adaptive_shielded_work_batcher.cached_target_items();
         let prefetch_flow = Arc::new(PrefetchFlowControl {
             target_blocks: AtomicU64::new(adaptive_scan_batcher.target_blocks()),
             target_bytes: AtomicU64::new(
                 current_target_bytes.min(prefetched_batch_encoded_byte_cap(&self.config)),
             ),
             target_work_items: AtomicU64::new(adaptive_shielded_work_batcher.target_items()),
+            cached_target_work_items,
             sapling_work_factor: self.trial_decrypt_keys.sapling_ivks.len().max(1) as u64,
             ironwood_work_factor: self.trial_decrypt_keys.orchard_ivks.len().max(1) as u64,
             durable_segment_blocks: Arc::new(AtomicU64::new(DEFAULT_DURABLE_SEGMENT_BLOCKS)),
@@ -5223,16 +5228,25 @@ impl SyncEngine {
                 prefetch_flow
                     .target_blocks
                     .store(network_max_batch_blocks, Ordering::Release);
-                let previous_work_target = adaptive_shielded_work_batcher.target_items();
-                let next_work_target = adaptive_shielded_work_batcher.observe(
-                    requested_work_items,
-                    shielded_work_items,
-                    local_processing_time,
-                    batch_end >= end,
-                );
-                prefetch_flow
-                    .target_work_items
-                    .store(next_work_target, Ordering::Release);
+                let (previous_work_target, next_work_target) = match fetch_source {
+                    BlockFetchSource::Cache => (
+                        prefetch_flow.cached_target_work_items,
+                        prefetch_flow.cached_target_work_items,
+                    ),
+                    BlockFetchSource::Network => {
+                        let previous = adaptive_shielded_work_batcher.target_items();
+                        let next = adaptive_shielded_work_batcher.observe(
+                            requested_work_items,
+                            shielded_work_items,
+                            local_processing_time,
+                            batch_end >= end,
+                        );
+                        prefetch_flow
+                            .target_work_items
+                            .store(next, Ordering::Release);
+                        (previous, next)
+                    }
+                };
                 if previous_scan_target != network_max_batch_blocks {
                     tracing::debug!(
                         previous = previous_scan_target,
@@ -6323,7 +6337,7 @@ impl SyncEngine {
                     .target_bytes
                     .load(Ordering::Acquire)
                     .clamp(1, max_chunk_bytes);
-                let target_work_items = flow.target_work_items.load(Ordering::Acquire).max(1);
+                let target_work_items = flow.cached_target_work_items.max(1);
                 let local_end = end.min(current.saturating_add(target_blocks.saturating_sub(1)));
                 match cache.load_bounded_work_range_for_upgrade(
                     current,

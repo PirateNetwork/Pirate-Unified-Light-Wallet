@@ -317,6 +317,15 @@ impl AdaptiveShieldedWorkBatcher {
         self.current_items
     }
 
+    /// Work ceiling for data that is already durable in the local cache.
+    ///
+    /// Cached batches remain bounded by blocks and encoded bytes, so they can
+    /// use the per-lane maximum to amortize trial-decryption and frontier
+    /// setup. Dense ranges still split before exceeding this ceiling.
+    pub(crate) fn cached_target_items(&self) -> u64 {
+        self.max_items
+    }
+
     pub(crate) fn observe(
         &mut self,
         requested_items: u64,
@@ -1368,6 +1377,14 @@ mod tests {
             controller.observe(target, target, Duration::from_millis(1), false);
         }
         assert_eq!(controller.target_items(), 16_384);
+    }
+
+    #[test]
+    fn cached_shielded_work_target_uses_the_per_lane_safety_ceiling() {
+        let controller = AdaptiveShieldedWorkBatcher::new(4);
+
+        assert_eq!(controller.target_items(), 4_096);
+        assert_eq!(controller.cached_target_items(), 32_768);
     }
 
     #[test]
