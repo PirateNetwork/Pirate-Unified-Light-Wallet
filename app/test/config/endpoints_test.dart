@@ -23,14 +23,13 @@ void main() {
 
       expect(presets, <LightdEndpoint>[
         LightdEndpoint.autoMainnetClearnet,
-        LightdEndpoint.officialMainnet,
-        LightdEndpoint.pirateBlackMainnet,
         LightdEndpoint.cryptoForge1Mainnet,
         LightdEndpoint.cryptoForge2Mainnet,
+        LightdEndpoint.mathNodesMainnet,
+        LightdEndpoint.officialMainnet,
         LightdEndpoint.qortalMainnet,
         LightdEndpoint.qortal2Mainnet,
         LightdEndpoint.qortal3Mainnet,
-        LightdEndpoint.mathNodesMainnet,
       ]);
       expect(
         presets.every((endpoint) => endpoint.route == LightdRoute.clearnet),
@@ -38,6 +37,10 @@ void main() {
       );
       expect(
         presets.any((endpoint) => endpoint.host == '64.23.167.130'),
+        isFalse,
+      );
+      expect(
+        presets.any((endpoint) => endpoint.host == 'lightd.pirate.black'),
         isFalse,
       );
     });

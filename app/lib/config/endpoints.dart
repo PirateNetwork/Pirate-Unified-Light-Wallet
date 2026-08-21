@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../core/i18n/arb_text_localizer.dart';
 
 const String kOfficialLightdHost = 'lightd1.pirate.black';
-const String kPirateBlackLightdHost = 'lightd.pirate.black';
 const int kOfficialLightdPort = 443;
 const String kDefaultLightdHost = kOfficialLightdHost;
 const int kDefaultLightdPort = kOfficialLightdPort;
@@ -104,14 +103,6 @@ class LightdEndpoint {
     id: 'mathnodes',
     host: kMathNodesLightdHost,
     port: kMathNodesLightdPort,
-    useTls: true,
-    network: LightdNetwork.mainnet,
-  );
-
-  static final LightdEndpoint pirateBlackMainnet = LightdEndpoint(
-    id: 'pirate-black',
-    host: kPirateBlackLightdHost,
-    port: 443,
     useTls: true,
     network: LightdNetwork.mainnet,
   );
@@ -287,14 +278,13 @@ class LightdEndpoint {
   static final List<LightdEndpoint> mainnetClearnetPresets =
       List<LightdEndpoint>.unmodifiable([
         autoMainnetClearnet,
-        officialMainnet,
-        pirateBlackMainnet,
         cryptoForge1Mainnet,
         cryptoForge2Mainnet,
+        mathNodesMainnet,
+        officialMainnet,
         qortalMainnet,
         qortal2Mainnet,
         qortal3Mainnet,
-        mathNodesMainnet,
       ]);
 
   static final List<LightdEndpoint> mainnetTorPresets =
@@ -484,22 +474,21 @@ class LightdEndpoint {
   String get displayLabel => switch (id) {
     'auto-mainnet-clearnet' ||
     'auto-mainnet-tor' ||
-    'auto-mainnet-i2p' => 'Auto (Mainnet)'.tr,
+    'auto-mainnet-i2p' => 'Auto'.tr,
     'auto-ironwood-clearnet' ||
     'auto-ironwood-tor' ||
     'auto-ironwood-i2p' => 'Auto (Ironwood testnet)'.tr,
-    'pirate-official' => 'Pirate Chain Mainnet'.tr,
-    'pirate-black' => 'Pirate Black Mainnet'.tr,
-    'mathnodes' => 'Mathnodes Mainnet'.tr,
-    'qortal' => 'Qortal 1 Mainnet'.tr,
-    'qortal-2' => 'Qortal 2 Mainnet'.tr,
-    'qortal-3' => 'Qortal 3 Mainnet'.tr,
-    'cryptoforge-1' => 'CryptoForge 1 Mainnet'.tr,
-    'cryptoforge-2' => 'CryptoForge 2 Mainnet'.tr,
-    'mainnet-tor-1' => 'Pirate Tor 1 Mainnet'.tr,
-    'mainnet-tor-2' => 'Pirate Tor 2 Mainnet'.tr,
-    'mainnet-i2p-1' => 'Pirate I2P 1 Mainnet'.tr,
-    'mainnet-i2p-2' => 'Pirate I2P 2 Mainnet'.tr,
+    'pirate-official' => 'Pirate.Black'.tr,
+    'mathnodes' => 'Mathnodes'.tr,
+    'qortal' => 'Qortal 1'.tr,
+    'qortal-2' => 'Qortal 2'.tr,
+    'qortal-3' => 'Qortal 3'.tr,
+    'cryptoforge-1' => 'CryptoForge 1'.tr,
+    'cryptoforge-2' => 'CryptoForge 2'.tr,
+    'mainnet-tor-1' => 'Pirate Tor 1'.tr,
+    'mainnet-tor-2' => 'Pirate Tor 2'.tr,
+    'mainnet-i2p-1' => 'Pirate I2P 1'.tr,
+    'mainnet-i2p-2' => 'Pirate I2P 2'.tr,
     'ironwood-testnet-1' => 'CryptoForge 1 Ironwood testnet'.tr,
     'ironwood-testnet-2' => 'CryptoForge 2 Ironwood testnet'.tr,
     'ironwood-testnet-tor-1' => 'Pirate Tor 1 Ironwood testnet'.tr,

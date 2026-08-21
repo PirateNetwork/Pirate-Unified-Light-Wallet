@@ -109,7 +109,7 @@ void main() {
         ),
         probe: ({required url, tlsPin}) async {
           probed.add(url);
-          if (url == 'https://lightd.pirate.black:443') {
+          if (url == 'https://lightwalletd1.cryptoforge.cc:443') {
             return _probeResult(success: true, height: 4090010);
           }
           return _probeResult(success: false);
@@ -138,11 +138,11 @@ void main() {
       );
       expect(
         container.read(endpointHealthProvider).switchedTo,
-        'https://lightd.pirate.black:443',
+        'https://lightwalletd1.cryptoforge.cc:443',
       );
       expect(
         container.read(endpointHealthProvider).activeUrl,
-        'https://lightd.pirate.black:443',
+        'https://lightwalletd1.cryptoforge.cc:443',
       );
     },
   );
