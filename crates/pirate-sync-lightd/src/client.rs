@@ -55,13 +55,12 @@ pub const DEFAULT_LIGHTD_URL: &str = "https://lightd1.pirate.black:443";
 /// match the canonical chain metadata and block hash before it receives work.
 pub const MAINNET_AUTO_LIGHTD_URLS: &[&str] = &[
     DEFAULT_LIGHTD_URL,
-    "https://lightd.pirate.black:443",
     "https://lightwalletd1.cryptoforge.cc:443",
     "https://lightwalletd2.cryptoforge.cc:443",
+    "https://pirate.mathnodes.com:443",
     "https://arrr.qortal.link:443",
     "https://arrr2.qortal.link:443",
     "https://arrr3.qortal.link:443",
-    "https://pirate.mathnodes.com:443",
 ];
 
 const HISTORICAL_STRIPE_BLOCKS: u64 = 256;
@@ -71,6 +70,20 @@ const HISTORICAL_STRIPE_MAX_TIP_LAG: u64 = 24;
 const HISTORICAL_STRIPE_MAX_SOURCES: usize = 3;
 const HISTORICAL_STRIPE_HANDOFF_BYTES: u64 = 4 * 1024 * 1024;
 const HISTORICAL_STRIPE_SOURCE_FAILURES: u32 = 2;
+
+fn write_endpoint_pool_debug_event(id: &str, message: &str, data: &str) {
+    pirate_core::debug_log::with_locked_file(|file| {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"{}","timestamp":{},"location":"client.rs:endpoint_pool","message":"{}","data":{},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+            id, timestamp, message, data
+        );
+    });
+}
 
 /// Retry configuration for network operations
 #[derive(Debug, Clone)]
@@ -1944,6 +1957,11 @@ impl LightClient {
                     tokio::task::spawn_blocking(move || {
                         let health = runtime.block_on(pool_client.probe_endpoints_owned());
                         let healthy = health.iter().filter(|endpoint| endpoint.healthy).count();
+                        write_endpoint_pool_debug_event(
+                            "log_endpoint_pool_validated",
+                            "endpoint pool validation completed",
+                            &format!(r#"{{"healthy":{},"total":{}}}"#, healthy, health.len()),
+                        );
                         if healthy > 0 {
                             info!(
                                 healthy,
@@ -2476,6 +2494,16 @@ impl LightClient {
             .historical_stripe_plan(assembler.next_height(), end_exclusive)
             .await;
         if let Some(plan) = stripe_plan {
+            write_endpoint_pool_debug_event(
+                "log_historical_striping_started",
+                "historical endpoint striping started",
+                &format!(
+                    r#"{{"sources":{},"start":{},"end_exclusive":{}}}"#,
+                    plan.candidate_indices.len(),
+                    assembler.next_height(),
+                    plan.end_exclusive
+                ),
+            );
             info!(
                 sources = plan.candidate_indices.len(),
                 start,
@@ -3823,11 +3851,12 @@ mod tests {
 
     #[test]
     fn canonical_mainnet_pool_contains_only_curated_tls_servers() {
-        assert_eq!(MAINNET_AUTO_LIGHTD_URLS.len(), 8);
+        assert_eq!(MAINNET_AUTO_LIGHTD_URLS.len(), 7);
         for endpoint in MAINNET_AUTO_LIGHTD_URLS {
             assert!(endpoint.starts_with("https://"), "{endpoint}");
             assert!(is_pirate_mainnet_auto_endpoint(endpoint), "{endpoint}");
         }
+        assert!(!MAINNET_AUTO_LIGHTD_URLS.contains(&"https://lightd.pirate.black:443"));
         for endpoint in [
             "http://64.23.167.130:9067",
             "http://example.com:9067",
@@ -4418,6 +4447,62 @@ mod integration_tests {
         assert!(height > 1_000_000, "Block height {} seems too low", height);
 
         println!("Latest block height: {}", height);
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires live network connection"]
+    async fn test_live_mainnet_endpoint_pool() {
+        let config = LightClientConfig::direct(DEFAULT_LIGHTD_URL).with_pirate_mainnet_auto_pool();
+        let client = LightClient::with_config(config);
+        client
+            .candidate_client(0)
+            .expect("primary endpoint")
+            .connect_single_endpoint()
+            .await
+            .expect("connect primary endpoint and initialize transport");
+        let health = client.probe_endpoints().await;
+        for endpoint in &health {
+            println!(
+                "{}: healthy={}, tip={:?}, reason={:?}",
+                endpoint.endpoint, endpoint.healthy, endpoint.tip_height, endpoint.reason
+            );
+        }
+        let healthy_count = health.iter().filter(|endpoint| endpoint.healthy).count();
+        assert!(
+            healthy_count >= 2,
+            "automatic historical sync requires at least two canonical endpoints"
+        );
+
+        let tip = health
+            .iter()
+            .filter(|endpoint| endpoint.healthy)
+            .filter_map(|endpoint| endpoint.tip_height)
+            .max()
+            .expect("healthy endpoint tip");
+        let start = u32::try_from(tip.saturating_sub(2_048)).expect("mainnet height fits u32");
+        let end = u32::try_from(tip.saturating_sub(128)).expect("mainnet height fits u32");
+        let mut chunks = client.compact_block_segment_stream(
+            start..end,
+            HISTORICAL_STRIPE_HANDOFF_BYTES,
+            HISTORICAL_STRIPE_BLOCKS,
+            HISTORICAL_STRIPE_MAX_SOURCES,
+            None,
+        );
+        let mut next_height = u64::from(start);
+        let mut source_endpoints = std::collections::BTreeSet::new();
+        while let Some(chunk) = chunks.recv().await {
+            let chunk = chunk.expect("historical pool stream");
+            assert_eq!(chunk.start_height(), Some(next_height));
+            next_height = chunk.end_height().expect("non-empty chunk") + 1;
+            source_endpoints.insert(chunk.endpoint);
+        }
+        assert_eq!(next_height, u64::from(end));
+        assert!(
+            source_endpoints.len() >= 2,
+            "historical stream should use at least two validated endpoints; got {source_endpoints:?}"
+        );
+        println!("historical stream sources: {source_endpoints:?}");
+        shutdown_transport().await;
     }
 
     /// Test streaming compact blocks from live server
