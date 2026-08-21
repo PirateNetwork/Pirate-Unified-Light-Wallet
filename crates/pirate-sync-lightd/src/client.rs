@@ -24,11 +24,11 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::env;
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, Mutex, OwnedSemaphorePermit, RwLock, Semaphore};
+use tokio::sync::{mpsc, Mutex, Notify, OwnedSemaphorePermit, RwLock, Semaphore};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tracing::{debug, error, info, warn};
 
@@ -70,6 +70,7 @@ const HISTORICAL_STRIPE_MAX_TIP_LAG: u64 = 24;
 const HISTORICAL_STRIPE_MAX_SOURCES: usize = 3;
 const HISTORICAL_STRIPE_HANDOFF_BYTES: u64 = 4 * 1024 * 1024;
 const HISTORICAL_STRIPE_SOURCE_FAILURES: u32 = 2;
+const ENDPOINT_POOL_TIP_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 
 fn write_endpoint_pool_debug_event(id: &str, message: &str, data: &str) {
     pirate_core::debug_log::with_locked_file(|file| {
@@ -1288,6 +1289,7 @@ struct EndpointPoolState {
     tips: HashMap<usize, u64>,
     probe_latencies: HashMap<usize, Duration>,
     channels: HashMap<usize, Channel>,
+    last_tip_refresh: Option<Instant>,
 }
 
 struct EndpointProbe {
@@ -1295,6 +1297,18 @@ struct EndpointProbe {
     tip: u64,
     channel: Channel,
     elapsed: Duration,
+}
+
+struct EndpointPoolProbeGuard {
+    inflight: Arc<AtomicBool>,
+    notify: Arc<Notify>,
+}
+
+impl Drop for EndpointPoolProbeGuard {
+    fn drop(&mut self) {
+        self.inflight.store(false, Ordering::Release);
+        self.notify.notify_waiters();
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1368,6 +1382,11 @@ fn should_leave_historical_striping(
             || worker_failures >= HISTORICAL_STRIPE_SOURCE_FAILURES)
 }
 
+fn should_probe_historical_pool(transport: TransportMode, start: u64, end_exclusive: u64) -> bool {
+    transport != TransportMode::I2p
+        && end_exclusive.saturating_sub(start) >= HISTORICAL_STRIPE_MIN_BLOCKS
+}
+
 fn preferred_active_endpoint(
     healthy_indices: &[usize],
     tips: &HashMap<usize, u64>,
@@ -1400,6 +1419,49 @@ fn preferred_active_endpoint(
     })
 }
 
+fn highest_tip_endpoint(
+    healthy_indices: &[usize],
+    tips: &HashMap<usize, u64>,
+    probe_latencies: &HashMap<usize, Duration>,
+) -> Option<(usize, u64)> {
+    healthy_indices
+        .iter()
+        .filter_map(|index| tips.get(index).copied().map(|tip| (*index, tip)))
+        .max_by(|(left_index, left_tip), (right_index, right_tip)| {
+            left_tip.cmp(right_tip).then_with(|| {
+                probe_latencies
+                    .get(right_index)
+                    .copied()
+                    .unwrap_or(Duration::MAX)
+                    .cmp(
+                        &probe_latencies
+                            .get(left_index)
+                            .copied()
+                            .unwrap_or(Duration::MAX),
+                    )
+            })
+        })
+}
+
+fn eligible_candidate_order(state: &EndpointPoolState, minimum_tip: u64) -> Vec<usize> {
+    let has_validated_pool = state.probed && !state.healthy_indices.is_empty();
+    let mut candidates = if has_validated_pool {
+        state.healthy_indices.clone()
+    } else {
+        vec![0]
+    };
+    if let Some(active_position) = candidates
+        .iter()
+        .position(|index| *index == state.active_index)
+    {
+        candidates.rotate_left(active_position);
+    }
+    if has_validated_pool {
+        candidates.retain(|index| state.tips.get(index).is_some_and(|tip| *tip >= minimum_tip));
+    }
+    candidates
+}
+
 /// Lightwalletd gRPC client.
 ///
 /// Provides tip queries, bounded compact-block streams, endpoint failover, and
@@ -1408,6 +1470,8 @@ pub struct LightClient {
     config: LightClientConfig,
     channel: Arc<Mutex<Option<Channel>>>,
     endpoint_pool: Arc<RwLock<EndpointPoolState>>,
+    endpoint_pool_probe_inflight: Arc<AtomicBool>,
+    endpoint_pool_probe_notify: Arc<Notify>,
     subtree_root_capabilities: Arc<StdRwLock<HashMap<(String, i32), SubtreeRootCapability>>>,
 }
 
@@ -1462,6 +1526,8 @@ impl LightClient {
             },
             channel: Arc::new(Mutex::new(None)),
             endpoint_pool: Arc::new(RwLock::new(EndpointPoolState::default())),
+            endpoint_pool_probe_inflight: Arc::new(AtomicBool::new(false)),
+            endpoint_pool_probe_notify: Arc::new(Notify::new()),
             subtree_root_capabilities: Arc::new(StdRwLock::new(HashMap::new())),
         }
     }
@@ -1472,6 +1538,8 @@ impl LightClient {
             config,
             channel: Arc::new(Mutex::new(None)),
             endpoint_pool: Arc::new(RwLock::new(EndpointPoolState::default())),
+            endpoint_pool_probe_inflight: Arc::new(AtomicBool::new(false)),
+            endpoint_pool_probe_notify: Arc::new(Notify::new()),
             subtree_root_capabilities: Arc::new(StdRwLock::new(HashMap::new())),
         }
     }
@@ -1486,6 +1554,8 @@ impl LightClient {
             },
             channel: Arc::new(Mutex::new(None)),
             endpoint_pool: Arc::new(RwLock::new(EndpointPoolState::default())),
+            endpoint_pool_probe_inflight: Arc::new(AtomicBool::new(false)),
+            endpoint_pool_probe_notify: Arc::new(Notify::new()),
             subtree_root_capabilities: Arc::new(StdRwLock::new(HashMap::new())),
         }
     }
@@ -1530,6 +1600,8 @@ impl LightClient {
             config,
             channel: Arc::new(Mutex::new(None)),
             endpoint_pool: Arc::clone(&self.endpoint_pool),
+            endpoint_pool_probe_inflight: Arc::clone(&self.endpoint_pool_probe_inflight),
+            endpoint_pool_probe_notify: Arc::clone(&self.endpoint_pool_probe_notify),
             subtree_root_capabilities: Arc::clone(&self.subtree_root_capabilities),
         })
     }
@@ -1556,6 +1628,8 @@ impl LightClient {
             config,
             channel: Arc::new(Mutex::new(Some(channel))),
             endpoint_pool: Arc::clone(&self.endpoint_pool),
+            endpoint_pool_probe_inflight: Arc::clone(&self.endpoint_pool_probe_inflight),
+            endpoint_pool_probe_notify: Arc::clone(&self.endpoint_pool_probe_notify),
             subtree_root_capabilities: Arc::clone(&self.subtree_root_capabilities),
         })
     }
@@ -1565,7 +1639,7 @@ impl LightClient {
     }
 
     async fn probe_candidate(config: LightClientConfig) -> Result<(LightdInfo, u64, Channel)> {
-        let channel = Self::try_connect(config, false).await?;
+        let channel = Self::try_connect_for_probe(config).await?;
         let mut client = CompactTxStreamerClient::new(channel.clone());
         let info = client
             .get_lightd_info(tonic::Request::new(Empty {}))
@@ -1598,14 +1672,98 @@ impl LightClient {
         self.clone().probe_endpoints_owned().await
     }
 
-    async fn probe_endpoints_owned(self) -> Vec<EndpointHealth> {
-        let endpoint_count = self.endpoint_count();
-        let probe_timeout = match self.config.transport {
+    fn endpoint_probe_timeout(&self) -> Duration {
+        match self.config.transport {
             TransportMode::Direct => Duration::from_secs(12),
             TransportMode::Tor | TransportMode::I2p | TransportMode::Socks5 => {
                 Duration::from_secs(35)
             }
+        }
+    }
+
+    fn report_endpoint_pool_health(health: &[EndpointHealth]) {
+        let healthy = health.iter().filter(|endpoint| endpoint.healthy).count();
+        write_endpoint_pool_debug_event(
+            "log_endpoint_pool_validated",
+            "endpoint pool validation completed",
+            &format!(r#"{{"healthy":{},"total":{}}}"#, healthy, health.len()),
+        );
+        if healthy > 0 {
+            info!(
+                healthy,
+                total = health.len(),
+                "Validated canonical lightwalletd endpoint pool"
+            );
+        } else {
+            warn!(
+                total = health.len(),
+                "No canonical lightwalletd alternate passed validation"
+            );
+        }
+    }
+
+    async fn start_endpoint_pool_probe(&self) -> bool {
+        if !self.has_failover_endpoints() || self.endpoint_pool_is_probed().await {
+            return false;
+        }
+        if self
+            .endpoint_pool_probe_inflight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return false;
+        }
+
+        // The pool may have completed between the first check and acquiring
+        // ownership of the single-flight probe.
+        if self.endpoint_pool_is_probed().await {
+            self.endpoint_pool_probe_inflight
+                .store(false, Ordering::Release);
+            self.endpoint_pool_probe_notify.notify_waiters();
+            return false;
+        }
+
+        let pool_client = self.clone();
+        let guard = EndpointPoolProbeGuard {
+            inflight: Arc::clone(&self.endpoint_pool_probe_inflight),
+            notify: Arc::clone(&self.endpoint_pool_probe_notify),
         };
+        tokio::spawn(async move {
+            let _guard = guard;
+            let health = pool_client.probe_endpoints_owned().await;
+            Self::report_endpoint_pool_health(&health);
+        });
+        true
+    }
+
+    async fn wait_for_endpoint_pool_probe(&self) {
+        let completion_timeout = self
+            .endpoint_probe_timeout()
+            .saturating_mul(2)
+            .saturating_add(Duration::from_secs(1));
+        let deadline = Instant::now() + completion_timeout;
+
+        loop {
+            let notified = self.endpoint_pool_probe_notify.notified();
+            if self.endpoint_pool_is_probed().await
+                || !self.endpoint_pool_probe_inflight.load(Ordering::Acquire)
+            {
+                return;
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() || tokio::time::timeout(remaining, notified).await.is_err() {
+                warn!(
+                    timeout = ?completion_timeout,
+                    "Timed out waiting for lightwalletd endpoint pool validation"
+                );
+                return;
+            }
+        }
+    }
+
+    async fn probe_endpoints_owned(self) -> Vec<EndpointHealth> {
+        let endpoint_count = self.endpoint_count();
+        let probe_timeout = self.endpoint_probe_timeout();
         let mut probes: Vec<Option<EndpointProbe>> = std::iter::repeat_with(|| None)
             .take(endpoint_count)
             .collect();
@@ -1666,6 +1824,7 @@ impl LightClient {
             state.tips.clear();
             state.probe_latencies.clear();
             state.channels.clear();
+            state.last_tip_refresh = None;
             return health;
         };
         let (reference_info, reference_tip) = {
@@ -1815,6 +1974,7 @@ impl LightClient {
         state.failures.clear();
         state.tips = tips;
         state.probe_latencies = probe_latencies;
+        state.last_tip_refresh = Some(Instant::now());
         state.channels = probes
             .into_iter()
             .enumerate()
@@ -1829,21 +1989,135 @@ impl LightClient {
         health
     }
 
-    async fn candidate_order(&self, minimum_tip: u64) -> Vec<usize> {
-        let state = self.endpoint_pool.read().await;
-        let mut candidates = if state.probed && !state.healthy_indices.is_empty() {
-            state.healthy_indices.clone()
-        } else {
-            vec![0]
-        };
-        if let Some(active_position) = candidates
-            .iter()
-            .position(|index| *index == state.active_index)
-        {
-            candidates.rotate_left(active_position);
+    fn endpoint_tip_refresh_timeout(&self) -> Duration {
+        match self.config.transport {
+            TransportMode::Direct => Duration::from_secs(3),
+            TransportMode::Tor | TransportMode::Socks5 => Duration::from_secs(8),
+            TransportMode::I2p => Duration::from_secs(12),
         }
-        candidates.retain(|index| state.tips.get(index).is_none_or(|tip| *tip >= minimum_tip));
-        candidates
+    }
+
+    async fn canonical_pool_tip(&self, force_refresh: bool) -> Option<u64> {
+        if !self.has_failover_endpoints() {
+            return None;
+        }
+
+        let now = Instant::now();
+        let refresh_candidates = {
+            let mut state = self.endpoint_pool.write().await;
+            if !state.probed || state.healthy_indices.is_empty() {
+                return None;
+            }
+            let refresh_due = force_refresh
+                || state.last_tip_refresh.is_none_or(|last_refresh| {
+                    now.saturating_duration_since(last_refresh)
+                        >= ENDPOINT_POOL_TIP_REFRESH_INTERVAL
+                });
+            if refresh_due {
+                state.last_tip_refresh = Some(now);
+                state
+                    .healthy_indices
+                    .iter()
+                    .filter_map(|index| {
+                        state
+                            .channels
+                            .get(index)
+                            .cloned()
+                            .map(|channel| (*index, channel))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            }
+        };
+
+        let refresh_attempted = !refresh_candidates.is_empty();
+        let refresh_total = refresh_candidates.len();
+        let mut observations = Vec::with_capacity(refresh_total);
+        if refresh_attempted {
+            let timeout = self.endpoint_tip_refresh_timeout();
+            let mut pending = FuturesUnordered::new();
+            for (index, channel) in refresh_candidates {
+                pending.push(async move {
+                    let mut client = CompactTxStreamerClient::new(channel);
+                    let result = tokio::time::timeout(
+                        timeout,
+                        client.get_latest_block(tonic::Request::new(ChainSpec {
+                            network: String::new(),
+                        })),
+                    )
+                    .await;
+                    (index, result)
+                });
+            }
+            while let Some((index, result)) = pending.next().await {
+                if let Ok(Ok(response)) = result {
+                    observations.push((index, response.into_inner().height));
+                }
+            }
+
+            if observations.is_empty() {
+                write_endpoint_pool_debug_event(
+                    "log_endpoint_pool_tip_refresh_failed",
+                    "endpoint pool tip refresh returned no usable responses",
+                    &format!(r#"{{"total":{}}}"#, refresh_total),
+                );
+                return None;
+            }
+
+            let mut state = self.endpoint_pool.write().await;
+            let healthy_indices = state.healthy_indices.clone();
+            for index in healthy_indices {
+                state.tips.remove(&index);
+            }
+            for (index, tip) in &observations {
+                if state.healthy_indices.contains(index) {
+                    state.tips.insert(*index, *tip);
+                }
+            }
+        }
+
+        let selected = {
+            let state = self.endpoint_pool.read().await;
+            highest_tip_endpoint(&state.healthy_indices, &state.tips, &state.probe_latencies)
+                .map(|(index, tip)| (tip, state.channels.get(&index).cloned()))
+        };
+        let (tip, channel) = selected?;
+        if let Some(channel) = channel {
+            *Arc::clone(&self.channel).lock_owned().await = Some(channel);
+        }
+
+        if refresh_attempted {
+            write_endpoint_pool_debug_event(
+                "log_endpoint_pool_tips_refreshed",
+                "endpoint pool tips refreshed",
+                &format!(
+                    r#"{{"responded":{},"total":{},"highest":{}}}"#,
+                    observations.len(),
+                    refresh_total,
+                    tip
+                ),
+            );
+        }
+        Some(tip)
+    }
+
+    async fn candidate_order(&self, minimum_tip: u64) -> Vec<usize> {
+        let candidates = {
+            let state = self.endpoint_pool.read().await;
+            eligible_candidate_order(&state, minimum_tip)
+        };
+        if !candidates.is_empty() || !self.has_failover_endpoints() {
+            return candidates;
+        }
+
+        // Endpoint validation proves chain identity, but its tip heights are
+        // only snapshots. Refresh those already-validated channels when a new
+        // target advances beyond the snapshot so the tail cannot deadlock one
+        // block behind the chain.
+        let _ = self.canonical_pool_tip(true).await;
+        let state = self.endpoint_pool.read().await;
+        eligible_candidate_order(&state, minimum_tip)
     }
 
     async fn historical_stripe_plan(
@@ -1951,33 +2225,8 @@ impl LightClient {
                         )
                     })?;
                 *Arc::clone(&self.channel).lock_owned().await = Some(channel);
-                if !self.endpoint_pool_is_probed().await {
-                    let pool_client = self.clone();
-                    let runtime = tokio::runtime::Handle::current();
-                    tokio::task::spawn_blocking(move || {
-                        let health = runtime.block_on(pool_client.probe_endpoints_owned());
-                        let healthy = health.iter().filter(|endpoint| endpoint.healthy).count();
-                        write_endpoint_pool_debug_event(
-                            "log_endpoint_pool_validated",
-                            "endpoint pool validation completed",
-                            &format!(r#"{{"healthy":{},"total":{}}}"#, healthy, health.len()),
-                        );
-                        if healthy > 0 {
-                            info!(
-                                healthy,
-                                total = health.len(),
-                                "Validated canonical lightwalletd endpoint pool"
-                            );
-                        } else {
-                            warn!(
-                                total = health.len(),
-                                "No canonical lightwalletd alternate passed validation"
-                            );
-                        }
-                    });
-                }
                 info!(
-                    "Connected to selected lightwalletd endpoint {}; validating alternates in the background",
+                    "Connected to selected lightwalletd endpoint {}; alternate validation is deferred until network streaming",
                     self.config.endpoint
                 );
                 return Ok(());
@@ -2052,27 +2301,8 @@ impl LightClient {
         info!("Disconnected from lightwalletd");
     }
 
-    async fn try_connect(config: LightClientConfig, initialize_transport: bool) -> Result<Channel> {
+    fn configured_grpc_endpoint(config: &LightClientConfig) -> Result<Endpoint> {
         let endpoint_url = config.endpoint.clone();
-        debug!("Connecting to {} via {:?}", endpoint_url, config.transport);
-
-        // #region agent log
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let id = format!("{:08x}", ts);
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:448","message":"try_connect entry","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#,
-                id, ts, endpoint_url, config.tls.enabled, config.transport, config.tls.server_name
-            );
-        });
-        // #endregion
-
-        // Build endpoint with timeouts
-        // Tonic requires URL in format: https://host:port or http://host:port
         let mut endpoint = match Endpoint::from_shared(endpoint_url.to_string()) {
             Ok(ep) => ep,
             Err(e) => {
@@ -2155,6 +2385,52 @@ impl LightClient {
                 Error::Connection(format!("TLS configuration failed: {}", e))
             })?;
         }
+
+        Ok(endpoint)
+    }
+
+    async fn try_connect_for_probe(config: LightClientConfig) -> Result<Channel> {
+        if config.tls.spki_pin.is_some() {
+            return Err(Error::Connection(
+                "pinned endpoints cannot participate in automatic endpoint pools".to_string(),
+            ));
+        }
+        let endpoint = Self::configured_grpc_endpoint(&config)?;
+        let transport_config = build_transport_config(&config)?;
+        let manager = GLOBAL_TRANSPORT
+            .clone()
+            .get_matching(transport_config.clone())
+            .await
+            .ok_or(Error::Cancelled)?;
+        if desired_transport_config()
+            .as_ref()
+            .is_some_and(|desired| desired != &transport_config)
+        {
+            return Err(Error::Cancelled);
+        }
+        Ok(manager.create_grpc_channel_lazy(endpoint))
+    }
+
+    async fn try_connect(config: LightClientConfig, initialize_transport: bool) -> Result<Channel> {
+        let endpoint_url = config.endpoint.clone();
+        debug!("Connecting to {} via {:?}", endpoint_url, config.transport);
+
+        // #region agent log
+        pirate_core::debug_log::with_locked_file(|file| {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:448","message":"try_connect entry","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#,
+                id, ts, endpoint_url, config.tls.enabled, config.transport, config.tls.server_name
+            );
+        });
+        // #endregion
+
+        let endpoint = Self::configured_grpc_endpoint(&config)?;
 
         if config.transport == TransportMode::Direct {
             warn!("Using DIRECT connection - IP address exposed to server!");
@@ -2297,6 +2573,13 @@ impl LightClient {
         .await
     }
 
+    async fn get_latest_block_from_available_source(&self) -> Result<u64> {
+        if let Some(tip) = self.canonical_pool_tip(false).await {
+            return Ok(tip);
+        }
+        self.get_latest_block_internal().await
+    }
+
     /// Get the latest block height from the server
     ///
     /// Returns the current blockchain tip height.
@@ -2316,7 +2599,7 @@ impl LightClient {
         });
         // #endregion
 
-        let mut result = self.get_latest_block_internal().await;
+        let mut result = self.get_latest_block_from_available_source().await;
 
         if let Err(err) = &result {
             if is_transport_not_ready_error(err) {
@@ -2328,7 +2611,7 @@ impl LightClient {
                 if let Err(conn_err) = self.connect().await {
                     warn!("Reconnect before latest-block retry failed: {:?}", conn_err);
                 } else {
-                    result = self.get_latest_block_internal().await;
+                    result = self.get_latest_block_from_available_source().await;
                 }
             }
         }
@@ -2472,7 +2755,13 @@ impl LightClient {
             segment_block_target.load(Ordering::Acquire),
         )?;
 
-        while self.has_failover_endpoints()
+        let should_probe_pool = self.has_failover_endpoints()
+            && should_probe_historical_pool(self.config.transport, start, end_exclusive);
+        if should_probe_pool && !self.endpoint_pool_is_probed().await {
+            self.start_endpoint_pool_probe().await;
+        }
+
+        while should_probe_pool
             && !self.endpoint_pool_is_probed().await
             && assembler.next_height() < end_exclusive
         {
@@ -2561,6 +2850,7 @@ impl LightClient {
         let mut last_error = None;
 
         while assembler.next_height() < end_exclusive && round < max_rounds {
+            let round_start = assembler.next_height();
             let candidates = self.candidate_order(end_exclusive.saturating_sub(1)).await;
             if candidates.is_empty() {
                 return Err(Error::Connection(format!(
@@ -2605,6 +2895,17 @@ impl LightClient {
                         self.record_candidate_failure(index).await;
                         last_error = Some(error);
                     }
+                }
+            }
+
+            if assembler.next_height() == round_start
+                && self.has_failover_endpoints()
+                && !self.endpoint_pool_is_probed().await
+            {
+                self.start_endpoint_pool_probe().await;
+                self.wait_for_endpoint_pool_probe().await;
+                if self.endpoint_pool_is_probed().await {
+                    continue;
                 }
             }
 
@@ -3544,6 +3845,8 @@ impl Clone for LightClient {
             config: self.config.clone(),
             channel: Arc::clone(&self.channel),
             endpoint_pool: Arc::clone(&self.endpoint_pool),
+            endpoint_pool_probe_inflight: Arc::clone(&self.endpoint_pool_probe_inflight),
+            endpoint_pool_probe_notify: Arc::clone(&self.endpoint_pool_probe_notify),
             subtree_root_capabilities: Arc::clone(&self.subtree_root_capabilities),
         }
     }
