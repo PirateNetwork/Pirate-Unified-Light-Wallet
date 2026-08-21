@@ -5136,6 +5136,22 @@ mod integration_tests {
 
     #[tokio::test]
     #[ignore = "Requires live network connection"]
+    async fn test_live_cryptoforge2_subtree_roots() {
+        let client = LightClient::with_config(LightClientConfig::direct(
+            "https://lightwalletd2.cryptoforge.cc:443",
+        ));
+        client.connect().await.expect("connect CryptoForge2");
+
+        let roots = client
+            .get_subtree_roots(0, ShieldedProtocol::Sapling, 1)
+            .await
+            .expect("CryptoForge2 should provide Sapling subtree roots");
+        assert_eq!(roots.len(), 1);
+        shutdown_transport().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires live network connection"]
     async fn test_live_stale_pool_tip_refreshes_before_tail_fetch() {
         let config = LightClientConfig::direct(DEFAULT_LIGHTD_URL).with_pirate_mainnet_auto_pool();
         let client = LightClient::with_config(config);

@@ -75,6 +75,8 @@ Parallel work produces immutable results. One owner performs every ordered datab
 
 **Technical detail:** Auto is a Pirate Unified Wallet policy layered over an explicit core API. Existing SDK, CLI, React Native, and Qortal calls remain single-server unless the caller deliberately supplies a pool. A pool is rejected if its members cross Pirate networks, mix clearnet, onion, or I2P routes, change the connection security mode, or combine automatic failover with a pinned primary.
 
+The clearnet preset starts with a subtree-root-capable CryptoForge endpoint, then retains Pirate.Black, Mathnodes, Qortal, and the second CryptoForge endpoint as canonical failover and historical-stream candidates. Health, chain identity, and tip checks still override that preference whenever the primary is unavailable or stale.
+
 Candidates are probed through the selected Direct, Tor, SOCKS5, or I2P transport. They must agree on chain metadata and the hash at a common historical anchor before receiving work. When the selected server is available, its anchor is authoritative; otherwise a strict majority of responding candidates is required when more than one answer exists.
 
 Direct historical sync can use up to three validated streams, while Tor and SOCKS5 use at most two. I2P remains single-stream with validated failover to avoid multiplying tunnel pressure. The final 100 blocks are read from one source so ordinary tip movement cannot produce a striped view across competing tips.
@@ -197,6 +199,8 @@ Each source receives a disjoint 256-block range. Results are buffered behind one
 
 **Technical detail:** Cached and live-network observations are separated. The local controller tracks blocks per second, active worker saturation, queue pressure, encoded bytes, and memory high-water marks. It grows while throughput improves, holds near the measured plateau, and backs off on pressure or regression. Hard byte and memory ceilings remain authoritative.
 
+Network-fed ranges also use an adaptive shielded-work target so a dense range cannot turn into one long unresponsive step. Blocks already durable in the local cache use a larger per-worker work ceiling to amortize trial-decryption and frontier setup. Cached work remains bounded by that ceiling, exact encoded bytes, and the device profile's block limit, so unusually dense cached ranges still split without fragmenting ordinary rescans.
+
 ### Parallel Rescan Setup
 
 **In plain terms:** Independent setup requests happen together, so the wallet can begin useful work sooner.
@@ -252,17 +256,17 @@ The differential cases include a clean baseline, interruption and resume, rollba
 
 ### Test Inventory
 
-At the time this document was written, the two core sync and persistence layers contained **441 Rust test functions**:
+At the time this document was written, the two core sync and persistence layers contained **495 Rust test functions**:
 
 | Area | Test functions |
 | --- | ---: |
-| Sync source unit and async tests | 187 |
-| Sync integration and benchmark tests | 53 |
-| SQLite storage source tests | 113 |
-| Storage integration and migration tests | 88 |
-| **Total** | **441** |
+| Sync source unit and async tests | 228 |
+| Sync integration and benchmark tests | 54 |
+| SQLite storage source tests | 122 |
+| Storage integration and migration tests | 91 |
+| **Total** | **495** |
 
-Of those, **408 run by default** and **33 are explicit manual benchmarks or live-network scenarios**. Six active scenarios directly exercise or validate the semantic differential oracle, and one manual performance benchmark is guarded by the same oracle. The suite also includes seven opt-in live interruption/recovery scenarios and eight dedicated architecture guards for witness repair.
+Of those, **457 are not marked ignored** and **38 are explicit manual benchmarks or live-network scenarios**. Six active scenarios directly exercise or validate the semantic differential oracle, and one manual performance benchmark is guarded by the same oracle. The suite also includes seven opt-in live interruption/recovery scenarios and eight dedicated architecture guards for witness repair.
 
 The raw count is not the guarantee by itself. The important part is the shape of the suite: optimized and reference paths consume identical immutable inputs; failure is injected between stages; and the comparison includes trees, witnesses, repairs, and cursors rather than stopping at the displayed balance.
 
