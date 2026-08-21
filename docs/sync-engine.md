@@ -147,9 +147,9 @@ Each source receives a disjoint 256-block range. Results are buffered behind one
 
 ### Capability-Cached Root Retrieval
 
-**In plain terms:** A server that does not provide subtree roots no longer makes every rescan wait through the same timeout.
+**In plain terms:** Auto can use one healthy server for normal sync and ask a different verified server for the subtree-root shortcut. A server that does not provide roots no longer makes every rescan wait through the same timeout.
 
-**Technical detail:** Root support is cached per endpoint, retrieval is bounded, and optional roots can arrive in the background while mandatory setup continues. A usable root can skip rebuilding up to 65,536 historical commitments, but an unavailable optimization cannot block correctness or normal leaf replay.
+**Technical detail:** Root support is cached per endpoint and shielded pool. During a historical Auto sync, canonical endpoint validation starts alongside local setup. Root requests prefer previously capable pool members and retry only through channels whose chain metadata and common block anchor were validated. Discovery and RPC timeouts are bounded independently, so pool validation can finish without extending the request budget or blocking the scan. Each candidate retains the selected transport and its own TLS identity. A usable root can skip rebuilding up to 65,536 historical commitments, but an unavailable optimization cannot block correctness or normal leaf replay.
 
 ### Atomic Dual-Pool Checkpoints
 
