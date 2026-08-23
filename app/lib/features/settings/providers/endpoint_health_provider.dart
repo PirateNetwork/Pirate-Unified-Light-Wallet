@@ -98,6 +98,8 @@ final endpointHealthProvider =
 class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
   static const Duration _checkInterval = Duration(minutes: 10);
   static const Duration _confirmationDelay = Duration(seconds: 5);
+  static const Duration _offlineRetryDelay = Duration(seconds: 30);
+  static const Duration _i2pOfflineRetryDelay = Duration(seconds: 15);
   static const Duration _startupDelay = Duration(seconds: 2);
   static const int _maximumHealthyTipLag = 24;
 
@@ -259,6 +261,10 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
           return;
         }
         state = state.copyWith(phase: EndpointHealthPhase.offline);
+        _scheduleCheck(
+          mode == 'i2p' ? _i2pOfflineRetryDelay : _offlineRetryDelay,
+          probePool: true,
+        );
         return;
       }
 
