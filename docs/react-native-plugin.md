@@ -170,12 +170,32 @@ linkers load only reachable archive members and avoids the large package
 regression caused by coalescing the Rust dependency graph into one unit.
 
 The build removes DWARF data and local symbols from each thin archive, verifies
-the exact device and simulator architectures, and measures the gzip-compressed
-device and universal simulator payloads against a package budget before
-creating the XCFramework. Package verifiers reject unrecognized framework
-files, so debug bundles and other build by-products cannot silently enter an
-npm release. Temporary Swift package staging is deleted after its archive is
-created instead of being uploaded as a duplicate SDK payload.
+the exact device and simulator architectures, and measures each publishable
+device or simulator archive against the compressed npm package budget. It also
+creates the universal simulator XCFramework required by SwiftPM, but that
+combined archive is not an npm publish unit. Package verifiers reject
+unrecognized files, so debug bundles and other build by-products cannot
+silently enter an npm release. Temporary Swift package staging is deleted
+after its archive is created instead of being uploaded as a duplicate SDK
+payload.
+
+### Bootstrapping a new npm companion
+
+npm trusted publishing can update an existing package, but the package must
+already exist before its GitHub Actions trust relationship can be configured.
+When a new native companion name is introduced:
+
+1. let the tagged CI run build and verify the complete npm artifact
+2. download that run's exact `.tgz` and checksum
+3. publish the new public package once with a maintainer account and 2FA
+4. configure its npm trusted publisher for `ci.yml`, the
+   `PirateNetwork/Pirate-Unified-Light-Wallet` repository, and the
+   `npm-publish` environment with `npm publish` permission
+5. rerun the tagged npm publication job
+
+The release job compares registry integrity with its local tarball. It skips an
+identical bootstrap publication and continues with the remaining packages; it
+fails instead of accepting different contents under the same version.
 
 ## Installing in a React Native app
 
