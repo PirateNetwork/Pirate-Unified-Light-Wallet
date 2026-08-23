@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -48,6 +49,23 @@ class PrefetchKomodoAssetsTest(unittest.TestCase):
         (package_root / "assets" / "config" / ".gitkeep").touch()
         (package_root / "assets" / "coin_icons" / "png").mkdir(parents=True)
         (package_root / "assets" / "coin_icons" / "png" / ".gitkeep").touch()
+        subprocess.run(["git", "init", "--quiet"], cwd=package_root, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "fixture@example.invalid"],
+            cwd=package_root,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Hermetic Fixture"],
+            cwd=package_root,
+            check=True,
+        )
+        subprocess.run(["git", "add", "."], cwd=package_root, check=True)
+        subprocess.run(
+            ["git", "commit", "--quiet", "-m", "Pristine SDK fixture"],
+            cwd=package_root,
+            check=True,
+        )
 
         package_config = root / "app" / ".dart_tool" / "package_config.json"
         package_config.parent.mkdir(parents=True)
@@ -149,6 +167,24 @@ class PrefetchKomodoAssetsTest(unittest.TestCase):
             MODULE.prepare(package_config, lock, archive_override=archive)
 
         self.assertFalse((package_root / "assets/config/coins.json").exists())
+
+    def test_restores_a_transformer_mutated_commit_to_the_pristine_pin(self) -> None:
+        temporary, package_config, package_root, archive, lock = self._fixture()
+        self.addCleanup(temporary.cleanup)
+        config_path = package_root / "app_build" / "build_config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["coins"]["bundled_coins_repo_commit"] = "d" * 40
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        self.assertEqual(
+            MODULE.prepare(package_config, lock, archive_override=archive)[1:],
+            (3, 2, False),
+        )
+        restored = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            restored["coins"]["bundled_coins_repo_commit"],
+            "c" * 40,
+        )
 
     def test_rejects_an_archive_with_the_wrong_checksum(self) -> None:
         temporary, package_config, package_root, archive, lock = self._fixture()

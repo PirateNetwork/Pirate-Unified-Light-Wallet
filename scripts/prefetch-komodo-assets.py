@@ -19,6 +19,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -199,9 +200,11 @@ def _download(url: str, destination: Path) -> None:
         time.sleep(delay)
 
 
-def _config_maps(package_root: Path) -> tuple[dict[str, str], dict[str, str], str]:
-    config_path = package_root / "app_build" / "build_config.json"
-    coins = _load_json(config_path).get("coins")
+def _config_maps_from_value(
+    config: dict[str, Any],
+    config_path: Path,
+) -> tuple[dict[str, str], dict[str, str], str]:
+    coins = config.get("coins")
     if not isinstance(coins, dict):
         raise AssetPreparationError(f"Missing coins configuration in {config_path}")
     commit = coins.get("bundled_coins_repo_commit")
@@ -224,6 +227,57 @@ def _config_maps(package_root: Path) -> tuple[dict[str, str], dict[str, str], st
     ):
         raise AssetPreparationError(f"Invalid mapped_folders in {config_path}")
     return dict(mapped_files), dict(mapped_folders), commit
+
+
+def _config_maps(package_root: Path) -> tuple[dict[str, str], dict[str, str], str]:
+    config_path = package_root / "app_build" / "build_config.json"
+    return _config_maps_from_value(_load_json(config_path), config_path)
+
+
+def _tracked_config_maps(
+    package_root: Path,
+) -> tuple[dict[str, str], dict[str, str], str]:
+    command_prefix = ["git", "-C", str(package_root)]
+    try:
+        root_result = subprocess.run(
+            [*command_prefix, "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        repository_root = Path(root_result.stdout.strip()).resolve()
+        config_path = package_root / "app_build" / "build_config.json"
+        relative_config = config_path.resolve().relative_to(repository_root).as_posix()
+        config_result = subprocess.run(
+            [*command_prefix, "show", f"HEAD:{relative_config}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError, ValueError) as exc:
+        raise AssetPreparationError(
+            "Unable to read the pristine SDK build config from Git",
+        ) from exc
+    try:
+        tracked = json.loads(config_result.stdout)
+    except json.JSONDecodeError as exc:
+        raise AssetPreparationError("Pristine SDK build config is invalid JSON") from exc
+    if not isinstance(tracked, dict):
+        raise AssetPreparationError("Pristine SDK build config is not a JSON object")
+    return _config_maps_from_value(tracked, config_path)
+
+
+def _restore_configured_commit(package_root: Path, expected_commit: str) -> bool:
+    config_path = package_root / "app_build" / "build_config.json"
+    config = _load_json(config_path)
+    coins = config.get("coins")
+    if not isinstance(coins, dict):
+        raise AssetPreparationError(f"Missing coins configuration in {config_path}")
+    if coins.get("bundled_coins_repo_commit") == expected_commit:
+        return False
+    coins["bundled_coins_repo_commit"] = expected_commit
+    _write_json_atomically(config_path, config)
+    return True
 
 
 def _allowed_manifest_path(
@@ -430,15 +484,25 @@ def prepare(
     archive_override: Path | None = None,
 ) -> tuple[Path, int, int, bool]:
     package_root = resolve_package_root(package_config_path)
-    mapped_files, mapped_folders, configured_commit = _config_maps(package_root)
+    mapped_files, mapped_folders, _configured_commit = _config_maps(package_root)
+    tracked_files, tracked_folders, tracked_commit = _tracked_config_maps(package_root)
     lock = _load_lock(lock_path)
-    if configured_commit != lock["commit"]:
+    if tracked_commit != lock["commit"]:
         raise AssetPreparationError(
-            "SDK bundled_coins_repo_commit does not match the checked-in asset lock",
+            "Pristine SDK bundled_coins_repo_commit does not match the asset lock",
+        )
+    if mapped_files != tracked_files or mapped_folders != tracked_folders:
+        raise AssetPreparationError(
+            "Resolved SDK coin asset mappings differ from its pristine Git config",
         )
 
     cached = _validate_stamp(package_root, lock, mapped_files, mapped_folders)
     if cached is not None:
+        if _restore_configured_commit(package_root, lock["commit"]):
+            print(
+                "[prefetch-komodo-assets] Restored locally mutated coin commit "
+                "to the pristine SDK pin.",
+            )
         return package_root, cached[0], cached[1], True
 
     with tempfile.TemporaryDirectory(prefix="pulw-komodo-assets-") as temporary:
@@ -469,6 +533,11 @@ def prepare(
     validated = _validate_stamp(package_root, lock, mapped_files, mapped_folders)
     if validated != (mapped_count, folder_count):
         raise AssetPreparationError("Materialized coin asset manifest did not validate")
+    if _restore_configured_commit(package_root, lock["commit"]):
+        print(
+            "[prefetch-komodo-assets] Restored locally mutated coin commit "
+            "to the pristine SDK pin.",
+        )
     return package_root, mapped_count, folder_count, False
 
 
