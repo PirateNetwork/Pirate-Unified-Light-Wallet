@@ -913,62 +913,77 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         backgroundColor: selected
             ? AppColors.accentPrimary.withValues(alpha: 0.1)
             : null,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 58),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: selected
-                      ? AppColors.accentPrimary.withValues(alpha: 0.14)
-                      : AppColors.backgroundElevated,
-                  borderRadius: BorderRadius.circular(8),
+        child: _buildAutomaticPresetTooltip(
+          endpoint,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 58),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppColors.accentPrimary.withValues(alpha: 0.14)
+                        : AppColors.backgroundElevated,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    routeIcon,
+                    size: 18,
+                    color: selected
+                        ? AppColors.accentPrimary
+                        : AppColors.textSecondary,
+                  ),
                 ),
-                child: Icon(
-                  routeIcon,
-                  size: 18,
-                  color: selected
-                      ? AppColors.accentPrimary
-                      : AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      endpoint.displayLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.labelMedium.copyWith(
-                        color: selected
-                            ? AppColors.accentPrimary
-                            : AppColors.textPrimary,
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        endpoint.displayLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.labelMedium.copyWith(
+                          color: selected
+                              ? AppColors.accentPrimary
+                              : AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      endpoint.displaySubtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                        fontFamily: 'monospace',
+                      const SizedBox(height: 3),
+                      Text(
+                        endpoint.displaySubtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                          fontFamily: 'monospace',
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _buildPresetState(selected: selected, applying: applying),
-            ],
+                const SizedBox(width: AppSpacing.sm),
+                _buildPresetState(selected: selected, applying: applying),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAutomaticPresetTooltip(
+    endpoints.LightdEndpoint endpoint,
+    Widget child,
+  ) {
+    if (!endpoint.automaticFailover) return child;
+    return Tooltip(
+      message: 'Auto can sync faster by downloading different parts of the blockchain from several trusted servers at the same time.'
+          .tr,
+      child: child,
     );
   }
 

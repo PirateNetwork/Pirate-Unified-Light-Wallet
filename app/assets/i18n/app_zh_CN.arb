@@ -1525,6 +1525,7 @@
   "Pirate Tor 2": "Pirate Tor 2",
   "Auto (Ironwood testnet)": "自动（Ironwood 测试网）",
   "Automatic server selection": "自动选择服务器",
+  "Auto can sync faster by downloading different parts of the blockchain from several trusted servers at the same time.": "自动模式会同时从多个可信服务器下载区块链的不同部分，从而加快同步速度。",
   "Chooses healthy servers automatically": "自动选择可用的服务器",
   "Server selection": "服务器选择",
   "Uses multiple verified servers and keeps results in chain order": "使用多个已验证的服务器，并按区块链顺序处理结果"

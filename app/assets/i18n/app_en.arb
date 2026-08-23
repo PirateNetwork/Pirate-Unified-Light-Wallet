@@ -113,6 +113,7 @@
   "Auto (all keys)": "Auto (all keys)",
   "Auto consolidation": "Auto consolidation",
   "Automatic server selection": "Automatic server selection",
+  "Auto can sync faster by downloading different parts of the blockchain from several trusted servers at the same time.": "Auto can sync faster by downloading different parts of the blockchain from several trusted servers at the same time.",
   "Automatic update failed: {error}. Use Changelog to download manually.": "Automatic update failed: {error}. Use Changelog to download manually.",
   "Avail": "Avail",
   "Available": "Available",

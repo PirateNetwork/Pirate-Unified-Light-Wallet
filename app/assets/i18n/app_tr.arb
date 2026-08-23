@@ -1525,6 +1525,7 @@
   "Pirate Tor 2": "Pirate Tor 2",
   "Auto (Ironwood testnet)": "Otomatik (Ironwood test ağı)",
   "Automatic server selection": "Otomatik sunucu seçimi",
+  "Auto can sync faster by downloading different parts of the blockchain from several trusted servers at the same time.": "Otomatik mod, blok zincirinin farklı bölümlerini aynı anda birden fazla güvenilir sunucudan indirerek eşitlemeyi hızlandırabilir.",
   "Chooses healthy servers automatically": "Kullanılabilir sunucuları otomatik olarak seçer",
   "Server selection": "Sunucu seçimi",
   "Uses multiple verified servers and keeps results in chain order": "Birden fazla doğrulanmış sunucu kullanır ve sonuçları zincir sırasına göre tutar"
