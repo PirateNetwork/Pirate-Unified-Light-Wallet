@@ -864,6 +864,8 @@ final tunnelModeProvider = NotifierProvider<TunnelModeNotifier, TunnelMode>(
 );
 
 class TunnelModeNotifier extends Notifier<TunnelMode> {
+  int _selectionGeneration = 0;
+
   @override
   TunnelMode build() {
     unawaited(_loadTunnelMode());
@@ -871,18 +873,23 @@ class TunnelModeNotifier extends Notifier<TunnelMode> {
   }
 
   Future<void> _loadTunnelMode() async {
+    final generation = _selectionGeneration;
     try {
       await ref.read(rustInitProvider.future);
       if (!ref.mounted) return;
-      state = await FfiBridge.getTunnel();
+      final loaded = await FfiBridge.getTunnel();
+      if (!ref.mounted || generation != _selectionGeneration) return;
+      state = loaded;
     } catch (_) {
-      if (!ref.mounted) return;
+      if (!ref.mounted || generation != _selectionGeneration) return;
       state = const TunnelMode.tor();
     }
   }
 
   Future<void> setTunnelMode(TunnelMode mode, {String? socksUrl}) async {
-    await FfiBridge.setTunnel(mode, socksUrl: socksUrl);
+    final generation = ++_selectionGeneration;
+    await FfiBridge.setTunnel(mode, socksUrl: socksUrl, ensureReady: false);
+    if (!ref.mounted || generation != _selectionGeneration) return;
     state = mode;
   }
 

@@ -343,6 +343,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   );
   Future<void> _applyQueue = Future.value();
   int _applyRequestId = 0;
+  int _stateRevision = 0;
 
   @override
   TransportConfig build() {
@@ -357,6 +358,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> setMode(String mode) async {
+    final revision = ++_stateRevision;
     final normalizedMode = mode.toLowerCase();
     if (normalizedMode == 'socks5') {
       state = state.copyWith(
@@ -370,16 +372,20 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
       state = state.copyWith(mode: normalizedMode);
     }
     await _applyTunnel(state);
+    if (revision != _stateRevision) return;
     await _reconcileTunnelMode();
+    if (revision != _stateRevision) return;
     await _persist();
   }
 
   Future<void> setDnsProvider(String provider) async {
+    _stateRevision += 1;
     state = state.copyWith(dnsProvider: provider);
     await _persist();
   }
 
   Future<void> setSocks5Config(Map<String, String?> config) async {
+    _stateRevision += 1;
     state = state.copyWith(
       socks5Config: _normalizeSocks5Config(config, fillDefaults: false),
     );
@@ -390,6 +396,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> setI2pEndpoint(String endpoint) async {
+    _stateRevision += 1;
     final trimmed = endpoint.trim();
     state = state.copyWith(
       i2pEndpoint: trimmed.isEmpty ? endpoints.kDefaultI2pLightdUrl : trimmed,
@@ -401,6 +408,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> setTlsPins(List<Map<String, String>> pins) async {
+    _stateRevision += 1;
     state = state.copyWith(tlsPins: pins);
     await _persist();
   }
@@ -418,6 +426,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> _load() async {
+    final revision = _stateRevision;
     var loadedFromStorage = false;
     TransportConfig nextState = _defaultConfig;
     String? raw;
@@ -447,12 +456,14 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
       );
     }
 
+    if (revision != _stateRevision) return;
     state = nextState;
 
     try {
       // Startup source-of-truth is the stored user preference.
       // Apply stored mode to backend first; do not pre-override from backend.
       await _applyTunnel(nextState);
+      if (revision != _stateRevision) return;
       await _persist();
     } catch (_) {
       // Keep current backend untouched when mode cannot be resolved yet.
@@ -475,6 +486,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     TorBridgeConfig config, {
     bool apply = true,
   }) async {
+    _stateRevision += 1;
     state = state.copyWith(torBridge: config);
     await _persist();
     if (apply && state.mode == 'tor') {
