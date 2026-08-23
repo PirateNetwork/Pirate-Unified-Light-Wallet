@@ -56,7 +56,7 @@ Run from `app/`:
 ```bash
 dart run tool/audit_runtime_translations.dart
 flutter analyze --fatal-infos
-flutter test --no-test-assets
+bash ../scripts/test-flutter.sh
 ```
 
 The translation audit fails for:

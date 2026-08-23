@@ -161,7 +161,7 @@ test\:rust: ## Run Rust unit and integration tests
 
 test\:flutter: ## Run Flutter tests
 	@echo "$(BLUE)🎯 Running Flutter tests...$(NC)"
-	@cd $(APP_DIR) && $(FLUTTER) test --coverage
+	@FLUTTER="$(FLUTTER)" bash ./scripts/test-flutter.sh --coverage
 	@echo "$(GREEN)✅ Flutter tests passed$(NC)"
 
 test\:integration: ## Run integration tests
