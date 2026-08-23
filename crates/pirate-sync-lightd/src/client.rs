@@ -141,7 +141,16 @@ impl GlobalTransportState {
         self: Arc<Self>,
         requested: NetTransportConfig,
     ) -> Result<Arc<NetTransportManager>> {
-        let config = resolve_transport_config(requested.clone());
+        // Never satisfy an old request by silently routing it through the new
+        // transport. The endpoint and transport are one privacy decision: a
+        // stale I2P request must be cancelled, not sent directly (or via Tor).
+        if desired_transport_config()
+            .as_ref()
+            .is_some_and(|desired| desired != &requested)
+        {
+            return Err(Error::Cancelled);
+        }
+        let config = requested.clone();
         let existing = {
             let guard = Arc::clone(&self.manager).read_owned().await;
             guard.as_ref().map(Arc::clone)
@@ -151,6 +160,12 @@ impl GlobalTransportState {
                 .update_config(config)
                 .await
                 .map_err(map_net_error)?;
+            if desired_transport_config()
+                .as_ref()
+                .is_some_and(|desired| desired != &requested)
+            {
+                return Err(Error::Cancelled);
+            }
             return Ok(manager);
         }
 
@@ -158,7 +173,13 @@ impl GlobalTransportState {
         // empty-state path so concurrent bootstrap and connection requests
         // cannot launch separate embedded routers before either is published.
         let _initialization_guard = Arc::clone(&self.initialization).lock_owned().await;
-        let config = resolve_transport_config(requested);
+        if desired_transport_config()
+            .as_ref()
+            .is_some_and(|desired| desired != &requested)
+        {
+            return Err(Error::Cancelled);
+        }
+        let config = requested.clone();
         if let Some(manager) = {
             let guard = Arc::clone(&self.manager).read_owned().await;
             guard.as_ref().map(Arc::clone)
@@ -167,6 +188,12 @@ impl GlobalTransportState {
                 .update_config(config)
                 .await
                 .map_err(map_net_error)?;
+            if desired_transport_config()
+                .as_ref()
+                .is_some_and(|desired| desired != &requested)
+            {
+                return Err(Error::Cancelled);
+            }
             return Ok(manager);
         }
 
@@ -176,6 +203,12 @@ impl GlobalTransportState {
                 .map_err(map_net_error)?,
         );
         *Arc::clone(&self.manager).write_owned().await = Some(Arc::clone(&created));
+        if desired_transport_config()
+            .as_ref()
+            .is_some_and(|desired| desired != &requested)
+        {
+            return Err(Error::Cancelled);
+        }
         Ok(created)
     }
 
@@ -4851,7 +4884,11 @@ mod tests {
 
         let tor = NetTransportConfig::default();
         set_desired_transport_config(tor);
-        assert!(state.clone().get_matching(direct).await.is_none());
+        assert!(state.clone().get_matching(direct.clone()).await.is_none());
+        assert!(matches!(
+            state.clone().get_or_init(direct).await,
+            Err(Error::Cancelled)
+        ));
 
         state.shutdown().await;
         clear_desired_transport_config();
