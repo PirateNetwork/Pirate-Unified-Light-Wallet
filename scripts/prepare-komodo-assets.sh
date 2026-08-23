@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate the SDK's bundled coin assets and make its Flutter transformer offline.
+# Materialize pinned coin assets and make the SDK's Flutter transformer offline.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,7 +45,11 @@ resolve_python() {
 
 PYTHON_BIN="$(resolve_python)" || error "Python 3 is required."
 
+"$PYTHON_BIN" "$SCRIPT_DIR/prefetch-komodo-assets.py" \
+    --package-config "$PACKAGE_CONFIG" \
+    --asset-lock "$SCRIPT_DIR/komodo-coin-assets.lock.json"
+
 "$PYTHON_BIN" "$SCRIPT_DIR/configure-komodo-assets.py" \
     --package-config "$PACKAGE_CONFIG"
 
-echo "[prepare-komodo-assets] Flutter transformer network fetches are disabled."
+echo "[prepare-komodo-assets] Pinned coin assets are ready; transformer network fetches are disabled."

@@ -28,7 +28,7 @@ fi
 echo "[prepare-flutter-build] Prefetching checksummed KDF assets for $PLATFORM..."
 bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" "$PLATFORM"
 
-echo "[prepare-flutter-build] Locking the Komodo transformer to bundled assets..."
+echo "[prepare-flutter-build] Materializing pinned Komodo assets and disabling transformer fetches..."
 bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
 
 echo "[prepare-flutter-build] Hermetic Flutter asset preflight complete for $PLATFORM."
