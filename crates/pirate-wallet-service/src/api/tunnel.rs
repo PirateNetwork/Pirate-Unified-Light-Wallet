@@ -1,6 +1,22 @@
 use super::*;
-use pirate_sync_lightd::client::{LightClient, RetryConfig, TransportMode};
+use pirate_sync_lightd::client::{LightClient, LightdInfo, RetryConfig, TransportMode};
 use std::time::Duration;
+
+const MAINNET_SAPLING_ACTIVATION_HEIGHT: u64 = 152_855;
+
+fn node_identity_error(network: Option<NetworkType>, info: &LightdInfo) -> Option<String> {
+    match network {
+        Some(NetworkType::Mainnet)
+            if info.sapling_activation_height != MAINNET_SAPLING_ACTIVATION_HEIGHT =>
+        {
+            Some(format!(
+                "Endpoint reports Sapling activation height {}, expected {} for Pirate mainnet",
+                info.sapling_activation_height, MAINNET_SAPLING_ACTIVATION_HEIGHT
+            ))
+        }
+        _ => None,
+    }
+}
 
 fn parse_tunnel_mode_setting(mode: &str, socks5_url: Option<String>) -> Option<TunnelMode> {
     let normalized = mode.trim().to_lowercase();
@@ -549,7 +565,7 @@ async fn test_node_inner(
                         height
                     );
                     // Try to get server info if available
-                    let (server_version, chain_name) =
+                    let (server_version, chain_name, identity_error) =
                         match tokio::time::timeout(info_timeout, client.get_lightd_info()).await {
                             Ok(Ok(info)) => {
                                 tracing::info!(
@@ -557,22 +573,42 @@ async fn test_node_inner(
                                     info.version,
                                     info.chain_name
                                 );
-                                (Some(info.version), Some(info.chain_name))
+                                let identity_error = node_identity_error(
+                                    endpoint::detect_network_from_endpoint(&host, port),
+                                    &info,
+                                );
+                                (Some(info.version), Some(info.chain_name), identity_error)
                             }
                             Ok(Err(e)) => {
                                 tracing::warn!("test_node: Failed to get server info: {}", e);
-                                (None, None)
+                                (None, None, None)
                             }
                             Err(_) => {
                                 tracing::warn!(
                                     "test_node: Timed out fetching server info after {:?}",
                                     info_timeout
                                 );
-                                (None, None)
+                                (None, None, None)
                             }
                         };
 
                     let response_time = start_time.elapsed().as_millis() as u64;
+
+                    if let Some(error_message) = identity_error {
+                        return Ok(crate::models::NodeTestResult {
+                            success: false,
+                            latest_block_height: Some(height),
+                            transport_mode: format!("{:?}", transport),
+                            tls_enabled,
+                            tls_pin_matched,
+                            expected_pin: tls_pin,
+                            actual_pin,
+                            error_message: Some(error_message),
+                            response_time_ms: response_time,
+                            server_version,
+                            chain_name,
+                        });
+                    }
 
                     Ok(crate::models::NodeTestResult {
                         success: true,
@@ -670,5 +706,37 @@ async fn test_node_inner(
                 chain_name: None,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lightd_info(sapling_activation_height: u64) -> LightdInfo {
+        LightdInfo {
+            version: "test".to_string(),
+            vendor: "test".to_string(),
+            chain_name: "main".to_string(),
+            consensus_branch_id: "test".to_string(),
+            block_height: 4_102_415,
+            estimated_height: 4_102_415,
+            sapling_activation_height,
+        }
+    }
+
+    #[test]
+    fn rejects_reachable_server_with_non_mainnet_consensus_metadata() {
+        let error = node_identity_error(Some(NetworkType::Mainnet), &lightd_info(61));
+        assert!(error.is_some_and(|message| message.contains("expected 152855")));
+    }
+
+    #[test]
+    fn accepts_mainnet_consensus_metadata() {
+        assert!(node_identity_error(
+            Some(NetworkType::Mainnet),
+            &lightd_info(MAINNET_SAPLING_ACTIVATION_HEIGHT)
+        )
+        .is_none());
     }
 }

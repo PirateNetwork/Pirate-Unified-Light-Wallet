@@ -25,7 +25,6 @@ const MAINNET_LIGHTD_HOSTS: &[&str] = &[
     "4kbfoltkqir44ab62l6dhkovugdrdevxzjtp6duv6gga3ixoe6kwkcqd.onion",
     "ibdhmxvqg3imgf67el6y2zxakuf37h3dyug4ujpa6qb7zvrz7sacmnqd.onion",
     "5vjlbxmzx4gjfuwcot2qtfjdnxodzpe4jsw3ckx7i4maltz7j5qa.b32.i2p",
-    "47go5e2vfmm2o5qdl7zr7rzf57hxjt6z4453ugvgyfkl3bbobwmq.b32.i2p",
 ];
 const IRONWOOD_TESTNET_LIGHTD_HOSTS: &[&str] = &[
     "testlightwalletd1.cryptoforge.cc",

@@ -26,7 +26,7 @@ const String kMainnetTor2LightdHost =
     'ibdhmxvqg3imgf67el6y2zxakuf37h3dyug4ujpa6qb7zvrz7sacmnqd.onion';
 const String kMainnetI2p1LightdHost =
     '5vjlbxmzx4gjfuwcot2qtfjdnxodzpe4jsw3ckx7i4maltz7j5qa.b32.i2p';
-const String kMainnetI2p2LightdHost =
+const String _retiredMainnetI2p2LightdHost =
     '47go5e2vfmm2o5qdl7zr7rzf57hxjt6z4453ugvgyfkl3bbobwmq.b32.i2p';
 
 const String kIronwoodTestnet1LightdHost = 'testlightwalletd1.cryptoforge.cc';
@@ -190,14 +190,6 @@ class LightdEndpoint {
     route: LightdRoute.i2p,
   );
 
-  static final LightdEndpoint mainnetI2p2 = LightdEndpoint(
-    id: 'mainnet-i2p-2',
-    host: kMainnetI2p2LightdHost,
-    port: kMainnetHiddenLightdPort,
-    network: LightdNetwork.mainnet,
-    route: LightdRoute.i2p,
-  );
-
   static final LightdEndpoint autoIronwoodTestnetClearnet = LightdEndpoint(
     id: 'auto-ironwood-clearnet',
     host: kIronwoodTestnet1LightdHost,
@@ -296,11 +288,7 @@ class LightdEndpoint {
       ]);
 
   static final List<LightdEndpoint> mainnetI2pPresets =
-      List<LightdEndpoint>.unmodifiable([
-        autoMainnetI2p,
-        mainnetI2p1,
-        mainnetI2p2,
-      ]);
+      List<LightdEndpoint>.unmodifiable([mainnetI2p1]);
 
   static final List<LightdEndpoint> ironwoodClearnetPresets =
       List<LightdEndpoint>.unmodifiable([
@@ -361,7 +349,7 @@ class LightdEndpoint {
   ) {
     return switch ((network, mode.toLowerCase())) {
       (LightdNetwork.mainnet, 'tor') => autoMainnetTor,
-      (LightdNetwork.mainnet, 'i2p') => autoMainnetI2p,
+      (LightdNetwork.mainnet, 'i2p') => mainnetI2p1,
       (LightdNetwork.mainnet, _) => autoMainnetClearnet,
       (LightdNetwork.ironwoodTestnet, 'tor') => autoIronwoodTestnetTor,
       (LightdNetwork.ironwoodTestnet, 'i2p') => autoIronwoodTestnetI2p,
@@ -489,7 +477,9 @@ class LightdEndpoint {
           ? LightdNetwork.ironwoodTestnet
           : LightdNetwork.mainnet;
     }
-    if (host == _retiredMainnetTorHost || host == _retiredMainnetI2pHost) {
+    if (host == _retiredMainnetTorHost ||
+        host == _retiredMainnetI2pHost ||
+        host == _retiredMainnetI2p2LightdHost) {
       return LightdNetwork.mainnet;
     }
     return null;

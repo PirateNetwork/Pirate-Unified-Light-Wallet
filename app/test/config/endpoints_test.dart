@@ -73,11 +73,7 @@ void main() {
         includeTestnet: false,
       );
 
-      expect(presets, <LightdEndpoint>[
-        LightdEndpoint.autoMainnetI2p,
-        LightdEndpoint.mainnetI2p1,
-        LightdEndpoint.mainnetI2p2,
-      ]);
+      expect(presets, <LightdEndpoint>[LightdEndpoint.mainnetI2p1]);
       expect(
         presets.every((endpoint) => endpoint.supportsTransport('i2p')),
         isTrue,
@@ -121,7 +117,6 @@ void main() {
       for (final automatic in <LightdEndpoint>[
         LightdEndpoint.autoMainnetClearnet,
         LightdEndpoint.autoMainnetTor,
-        LightdEndpoint.autoMainnetI2p,
         LightdEndpoint.autoIronwoodTestnetClearnet,
         LightdEndpoint.autoIronwoodTestnetTor,
         LightdEndpoint.autoIronwoodTestnetI2p,
@@ -171,7 +166,7 @@ void main() {
           mode: 'i2p',
           current: LightdEndpoint.autoMainnetClearnet,
         ),
-        LightdEndpoint.autoMainnetI2p,
+        LightdEndpoint.mainnetI2p1,
       );
       expect(
         LightdEndpoint.replacementForTransport(
@@ -264,6 +259,9 @@ void main() {
       final retiredI2p = LightdEndpoint.tryParse(
         'http://rud5qc4s4tsjzuhzygzdweoorhofbgobo7zuo7qeor25oyqonitq.b32.i2p:9067',
       );
+      final misconfiguredI2p = LightdEndpoint.tryParse(
+        'http://47go5e2vfmm2o5qdl7zr7rzf57hxjt6z4453ugvgyfkl3bbobwmq.b32.i2p:9067',
+      );
 
       expect(
         LightdEndpoint.replacementForTransport(
@@ -284,7 +282,14 @@ void main() {
           mode: 'i2p',
           current: retiredI2p,
         ),
-        LightdEndpoint.autoMainnetI2p,
+        LightdEndpoint.mainnetI2p1,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'i2p',
+          current: misconfiguredI2p,
+        ),
+        LightdEndpoint.mainnetI2p1,
       );
     });
   });
