@@ -176,6 +176,12 @@ void main() {
       expect(find.textContaining('64.23.167.130'), findsNothing);
       expect(find.text('Automatic server selection'), findsOneWidget);
       expect(find.text('Auto'), findsOneWidget);
+      expect(
+        find.byTooltip(
+          'Auto can sync faster by downloading different parts of the blockchain from several trusted servers at the same time.',
+        ),
+        findsNWidgets(2),
+      );
       expect(find.text('CryptoForge 1'), findsOneWidget);
       expect(find.text('CryptoForge 2'), findsOneWidget);
       expect(find.text('Mathnodes'), findsOneWidget);
