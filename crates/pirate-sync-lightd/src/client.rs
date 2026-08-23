@@ -5176,7 +5176,7 @@ mod integration_tests {
                 state.tips.insert(index, highest_tip.saturating_sub(1));
             }
         }
-        assert!(client.candidate_order(highest_tip).await.len() > 0);
+        assert!(!client.candidate_order(highest_tip).await.is_empty());
 
         let state = client.endpoint_pool.read().await;
         assert!(state
