@@ -86,6 +86,18 @@ for package_name in "${package_names[@]}"; do
   tarball_size="$(wc -c < "$tarball" | tr -d '[:space:]')"
   if (( tarball_size > MAX_TARBALL_BYTES )); then
     echo "$package_name tarball is too large for npm publish: $tarball_size bytes" >&2
+    node - "$DIST_DIR/$package_name-npm-pack.json" <<'NODE'
+const fs = require('fs');
+
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))[0];
+const files = [...(report?.files ?? [])]
+  .sort((left, right) => right.size - left.size)
+  .slice(0, 10);
+console.error('Largest packed files:');
+for (const file of files) {
+  console.error(`  ${file.size} bytes  ${file.path}`);
+}
+NODE
     exit 1
   fi
 
