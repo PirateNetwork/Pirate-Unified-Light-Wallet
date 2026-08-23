@@ -13,7 +13,8 @@ REACT_NATIVE_BINARY_PACKAGE_PATHS = (
     Path("bindings/react-native-pirate-wallet-android/package.json"),
     Path("bindings/react-native-pirate-wallet-android-x86_64/package.json"),
     Path("bindings/react-native-pirate-wallet-ios-device/package.json"),
-    Path("bindings/react-native-pirate-wallet-ios-simulator/package.json"),
+    Path("bindings/react-native-pirate-wallet-ios-simulator-arm64/package.json"),
+    Path("bindings/react-native-pirate-wallet-ios-simulator-x86_64/package.json"),
 )
 TRACKED = (
     "cli",

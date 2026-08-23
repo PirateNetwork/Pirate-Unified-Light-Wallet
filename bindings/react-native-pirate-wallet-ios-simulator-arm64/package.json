@@ -1,0 +1,50 @@
+{
+  "name": "react-native-pirate-wallet-ios-simulator-arm64",
+  "version": "0.3.0",
+  "description": "arm64 iOS simulator native library for react-native-pirate-wallet",
+  "keywords": [
+    "react-native",
+    "pirate-chain",
+    "ios",
+    "wallet",
+    "privacy",
+    "shielded"
+  ],
+  "homepage": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/tree/main/bindings/react-native-pirate-wallet-ios-simulator-arm64#readme",
+  "bugs": {
+    "url": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet.git",
+    "directory": "bindings/react-native-pirate-wallet-ios-simulator-arm64"
+  },
+  "author": "Pirate Chain Contributors",
+  "license": "MIT",
+  "files": [
+    "ios/",
+    "scripts/",
+    "LICENSE-MIT",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "verify:package": "node scripts/verify-package.js",
+    "prepack": "npm run verify:package"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin"
+  ],
+  "pirateWalletNative": {
+    "platform": "ios-simulator",
+    "architectures": [
+      "arm64"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

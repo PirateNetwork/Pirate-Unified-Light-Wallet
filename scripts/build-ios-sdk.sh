@@ -6,10 +6,12 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATES_DIR="$PROJECT_ROOT/crates"
 SDK_DIR="$PROJECT_ROOT/bindings/ios-sdk"
 FRAMEWORKS_DIR="$SDK_DIR/Frameworks"
+DIST_DIR="$PROJECT_ROOT/dist/ios-sdk"
+REACT_NATIVE_SLICES_DIR="$DIST_DIR/react-native"
 CRATE_DIR="$CRATES_DIR/pirate-ffi-native"
 HEADER="$CRATE_DIR/pirate_wallet_service.h"
 IOS_MIN_DEPLOYMENT_TARGET="${IOS_MIN_DEPLOYMENT_TARGET:-15.0}"
-IOS_MAX_COMPRESSED_ARCHIVE_BYTES="${IOS_MAX_COMPRESSED_ARCHIVE_BYTES:-190000000}"
+IOS_NPM_MAX_COMPRESSED_ARCHIVE_BYTES="${IOS_NPM_MAX_COMPRESSED_ARCHIVE_BYTES:-190000000}"
 
 if [[ "$OSTYPE" != "darwin"* ]]; then
   echo "iOS SDK packaging requires macOS." >&2
@@ -89,8 +91,8 @@ verify_compressed_archive_budget() {
     echo "Could not measure compressed archive size for $target_name" >&2
     exit 1
   fi
-  if (( compressed_size > IOS_MAX_COMPRESSED_ARCHIVE_BYTES )); then
-    echo "$target_name exceeds the compressed iOS package budget: $compressed_size bytes (raw: $raw_size bytes, limit: $IOS_MAX_COMPRESSED_ARCHIVE_BYTES bytes)" >&2
+  if (( compressed_size > IOS_NPM_MAX_COMPRESSED_ARCHIVE_BYTES )); then
+    echo "$target_name exceeds the compressed iOS npm package budget: $compressed_size bytes (raw: $raw_size bytes, limit: $IOS_NPM_MAX_COMPRESSED_ARCHIVE_BYTES bytes)" >&2
     exit 1
   fi
 
@@ -137,6 +139,25 @@ strip_static_archive \
 verify_compressed_archive_budget \
   "$CRATES_DIR/target/aarch64-apple-ios/release/libpirate_ffi_native.a" \
   "ios-arm64"
+verify_compressed_archive_budget \
+  "$CRATES_DIR/target/aarch64-apple-ios-sim/release/libpirate_ffi_native.a" \
+  "ios-simulator-arm64"
+verify_compressed_archive_budget \
+  "$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native.a" \
+  "ios-simulator-x86_64"
+
+# npm publishes each simulator architecture independently. Preserve the thin
+# archives before producing the universal XCFramework used by SwiftPM and the
+# standalone iOS SDK. CocoaPods reconstructs the universal simulator slice on
+# the consumer's Mac, keeping each npm package well below the registry limit.
+rm -rf "$REACT_NATIVE_SLICES_DIR"
+mkdir -p "$REACT_NATIVE_SLICES_DIR"
+cp \
+  "$CRATES_DIR/target/aarch64-apple-ios-sim/release/libpirate_ffi_native.a" \
+  "$REACT_NATIVE_SLICES_DIR/ios-simulator-arm64.a"
+cp \
+  "$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native.a" \
+  "$REACT_NATIVE_SLICES_DIR/ios-simulator-x86_64.a"
 
 HEADERS_DIR="$TMP_DIR/include"
 mkdir -p "$HEADERS_DIR"
@@ -155,9 +176,6 @@ lipo -create \
   "$CRATES_DIR/target/aarch64-apple-ios-sim/release/libpirate_ffi_native.a" \
   "$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native.a" \
   -output "$SIM_LIB"
-verify_compressed_archive_budget \
-  "$SIM_LIB" \
-  "ios-arm64_x86_64-simulator"
 
 verify_architectures \
   "$CRATES_DIR/target/aarch64-apple-ios/release/libpirate_ffi_native.a" \
@@ -175,7 +193,6 @@ xcodebuild -create-xcframework \
   -library "$SIM_LIB" -headers "$HEADERS_DIR" \
   -output "$FRAMEWORKS_DIR/PirateWalletNative.xcframework"
 
-DIST_DIR="$PROJECT_ROOT/dist/ios-sdk"
 mkdir -p "$DIST_DIR"
 ZIP_PATH="$DIST_DIR/PirateWalletNative.xcframework.zip"
 rm -f "$ZIP_PATH" "$ZIP_PATH.sha256"

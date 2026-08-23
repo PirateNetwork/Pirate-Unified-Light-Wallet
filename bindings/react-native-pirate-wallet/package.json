@@ -55,7 +55,8 @@
     "react-native-pirate-wallet-android": "0.3.0",
     "react-native-pirate-wallet-android-x86_64": "0.3.0",
     "react-native-pirate-wallet-ios-device": "0.3.0",
-    "react-native-pirate-wallet-ios-simulator": "0.3.0"
+    "react-native-pirate-wallet-ios-simulator-arm64": "0.3.0",
+    "react-native-pirate-wallet-ios-simulator-x86_64": "0.3.0"
   },
   "publishConfig": {
     "access": "public"

@@ -13,7 +13,8 @@ package_names=(
   "react-native-pirate-wallet-android"
   "react-native-pirate-wallet-android-x86_64"
   "react-native-pirate-wallet-ios-device"
-  "react-native-pirate-wallet-ios-simulator"
+  "react-native-pirate-wallet-ios-simulator-arm64"
+  "react-native-pirate-wallet-ios-simulator-x86_64"
   "react-native-pirate-wallet"
 )
 
@@ -126,11 +127,9 @@ trap 'rm -rf "$consumer_dir"' EXIT
     --publish-layout
   node node_modules/react-native-pirate-wallet-android-x86_64/scripts/verify-package.js
   node node_modules/react-native-pirate-wallet-ios-device/scripts/verify-package.js
-  node node_modules/react-native-pirate-wallet-ios-simulator/scripts/verify-package.js
-  node node_modules/react-native-pirate-wallet/scripts/assemble-ios-framework.js \
-    --force
-  node node_modules/react-native-pirate-wallet/scripts/verify-package.js \
-    --all-platforms
+  node node_modules/react-native-pirate-wallet-ios-simulator-arm64/scripts/verify-package.js
+  node node_modules/react-native-pirate-wallet-ios-simulator-x86_64/scripts/verify-package.js
+  node node_modules/react-native-pirate-wallet/scripts/verify-package.js
   node -e '
     const fs = require("fs");
     const {resolveAndroidJniLibsPaths} = require(
