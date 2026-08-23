@@ -59,7 +59,30 @@ is now a thin wrapper surface over that backend for Flutter-specific FFI generat
 
 The architecture, performance work, and correctness guarantees behind the Supernova shielded-chain sync engine are documented in [`docs/sync-engine.md`](docs/sync-engine.md).
 
-Platform packaging is handled by the scripts in `scripts/`. A plain `flutter build` is useful for development, but it does not replace the release packaging scripts.
+Platform packaging is handled by the scripts in `scripts/`. Use those scripts
+for release artifacts; they checksum-prefetch the platform KDF binary and lock
+the dependency asset transformer to the SDK's validated bundled coin assets.
+
+For an unpackaged development build, run the same preflight after
+`flutter pub get --enforce-lockfile` and before Flutter. For example:
+
+```bash
+(cd app && flutter pub get --enforce-lockfile)
+bash scripts/prepare-flutter-build.sh windows
+(cd app && flutter build windows)
+```
+
+Replace `windows` with `android`, `ios`, `linux`, or `macos`. A raw
+`flutter build` without this preflight is unsupported: the upstream transformer
+may otherwise attempt network downloads or mutate its resolved build config.
+The preflight does not disable runtime coin updates.
+
+Run Flutter unit and widget tests through the checked-in wrapper so the asset
+transformer is never invoked by the test bundle:
+
+```bash
+bash scripts/test-flutter.sh
+```
 
 Toolchain
 ---------

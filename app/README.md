@@ -44,16 +44,24 @@ Audit translations:
 dart run tool/audit_runtime_translations.dart
 ```
 
-Build app-only outputs for development:
+Build app-only outputs for development from the repository root. The preflight
+checksum-prefetches the selected KDF binary and makes the dependency asset
+transformer use its bundled coin configuration and images without network
+access:
 
 ```bash
-flutter build windows --release
-flutter build linux --release
-flutter build macos --release
-flutter build apk --release --split-per-abi
-flutter build appbundle --release
-flutter build ios --release --no-codesign
+(cd app && flutter pub get --enforce-lockfile)
+bash scripts/prepare-flutter-build.sh windows
+(cd app && flutter build windows --release)
 ```
+
+For desktop and iOS builds, replace both occurrences of `windows` with
+`linux`, `macos`, or `ios`. For Android, pass `android` to the preflight and
+then build either the `apk` or `appbundle` Flutter target. Do not invoke a raw
+Flutter build after dependency resolution without rerunning the preflight.
+
+Run unit and widget tests through `bash scripts/test-flutter.sh`; it bypasses
+asset transformers without removing any assets from packaged applications.
 
 Release packaging
 -----------------
