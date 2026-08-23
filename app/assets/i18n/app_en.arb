@@ -1,5 +1,7 @@
 {
   "@@locale": "en",
+  "I2P is still starting. Keep the app open and try the connection test again in a minute.": "I2P is still starting. Keep the app open and try the connection test again in a minute.",
+  "The connection test timed out. The selected network may still be starting; try again shortly.": "The connection test timed out. The selected network may still be starting; try again shortly.",
   " • Change pending {amount}": " • Change pending {amount}",
   " • Change {amount}": " • Change {amount}",
   " • Change {spendable} (+{pending} pending)": " • Change {spendable} (+{pending} pending)",

@@ -1,5 +1,7 @@
 {
   "@@locale": "ur",
+  "I2P is still starting. Keep the app open and try the connection test again in a minute.": "I2P ابھی شروع ہو رہا ہے۔ ایپ کھلی رکھیں اور ایک منٹ بعد کنکشن ٹیسٹ دوبارہ آزمائیں۔",
+  "The connection test timed out. The selected network may still be starting; try again shortly.": "کنکشن ٹیسٹ کا وقت ختم ہو گیا۔ منتخب نیٹ ورک ابھی شروع ہو رہا ہو سکتا ہے؛ کچھ دیر بعد دوبارہ کوشش کریں۔",
   "Addresses you archive will appear here.": "آپ کے محفوظ شدہ پتے یہاں دکھائی دیں گے۔",
   "Archive": "محفوظ کریں",
   "Archive address": "پتہ محفوظ کریں",

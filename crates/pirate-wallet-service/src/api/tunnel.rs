@@ -398,7 +398,23 @@ pub async fn test_node(
     url: String,
     tls_pin: Option<String>,
 ) -> Result<crate::models::NodeTestResult> {
-    run_on_runtime(move || test_node_inner(url, tls_pin)).await
+    let transport = tunnel_transport_config().0;
+    let timeout = match transport {
+        TransportMode::I2p => Duration::from_secs(55),
+        TransportMode::Tor => Duration::from_secs(40),
+        TransportMode::Socks5 | TransportMode::Direct => Duration::from_secs(20),
+    };
+    run_on_runtime(move || async move {
+        tokio::time::timeout(timeout, test_node_inner(url, tls_pin))
+            .await
+            .map_err(|_| {
+                anyhow!(
+                    "Connection test timed out after {} seconds",
+                    timeout.as_secs()
+                )
+            })?
+    })
+    .await
 }
 
 async fn test_node_inner(

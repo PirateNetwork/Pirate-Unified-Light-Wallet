@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   static const String _i2pWarningKey = 'i2p_first_use_ack';
   bool _isTestingConnection = false;
   bool _isChangingTransport = false;
+  int _connectionTestGeneration = 0;
   bool _torBridgeFieldsInitialized = false;
   bool _i2pFieldsInitialized = false;
   String? _loadedI2pEndpoint;
@@ -165,7 +167,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                 text: _isTestingConnection
                     ? 'Testing...'.tr
                     : 'Test Node Connection'.tr,
-                onPressed: _isTestingConnection
+                onPressed: _isTestingConnection || _isChangingTransport
                     ? null
                     : () => _testNodeConnection(context, ref),
                 variant: PButtonVariant.secondary,
@@ -362,7 +364,13 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       final proceed = await _confirmI2pFirstUse(context);
       if (!proceed) return;
     }
-    setState(() => _isChangingTransport = true);
+    setState(() {
+      if (_isTestingConnection) {
+        _connectionTestGeneration += 1;
+        _isTestingConnection = false;
+      }
+      _isChangingTransport = true;
+    });
     try {
       await ref.read(transportConfigProvider.notifier).setMode(mode);
     } finally {
@@ -1104,6 +1112,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   }
 
   Future<void> _testNodeConnection(BuildContext context, WidgetRef ref) async {
+    final generation = ++_connectionTestGeneration;
+    final testedMode = ref.read(transportConfigProvider).mode.toLowerCase();
     setState(() {
       _isTestingConnection = true;
     });
@@ -1118,9 +1128,16 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       final normalizedPin = tlsPin == null || tlsPin.isEmpty ? null : tlsPin;
 
       // Test the node connection
-      final result = await FfiBridge.testNode(url: url, tlsPin: normalizedPin);
+      final result = await FfiBridge.testNode(
+        url: url,
+        tlsPin: normalizedPin,
+      ).timeout(_connectionTestTimeout(testedMode));
 
-      if (!context.mounted) return;
+      if (!context.mounted ||
+          generation != _connectionTestGeneration ||
+          ref.read(transportConfigProvider).mode.toLowerCase() != testedMode) {
+        return;
+      }
 
       // Show result dialog
       if (result.success) {
@@ -1128,17 +1145,38 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       } else {
         _showFailureDialog(context, result);
       }
+    } on TimeoutException {
+      if (!context.mounted || generation != _connectionTestGeneration) return;
+      _showErrorDialog(context, _connectionTimeoutMessage(testedMode));
     } catch (e) {
-      if (!context.mounted) return;
-      _showErrorDialog(context, e.toString());
+      if (!context.mounted || generation != _connectionTestGeneration) return;
+      final error = e.toString();
+      _showErrorDialog(
+        context,
+        error.toLowerCase().contains('timed out')
+            ? _connectionTimeoutMessage(testedMode)
+            : error,
+      );
     } finally {
-      if (mounted) {
+      if (mounted && generation == _connectionTestGeneration) {
         setState(() {
           _isTestingConnection = false;
         });
       }
     }
   }
+
+  Duration _connectionTestTimeout(String mode) => switch (mode) {
+    'i2p' => const Duration(seconds: 60),
+    'tor' => const Duration(seconds: 45),
+    _ => const Duration(seconds: 25),
+  };
+
+  String _connectionTimeoutMessage(String mode) => mode == 'i2p'
+      ? 'I2P is still starting. Keep the app open and try the connection test again in a minute.'
+            .tr
+      : 'The connection test timed out. The selected network may still be starting; try again shortly.'
+            .tr;
 
   void _showSuccessDialog(BuildContext context, NodeTestResult result) {
     showDialog<void>(

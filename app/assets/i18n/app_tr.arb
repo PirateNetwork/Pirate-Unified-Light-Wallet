@@ -1,5 +1,7 @@
 {
   "@@locale": "tr",
+  "I2P is still starting. Keep the app open and try the connection test again in a minute.": "I2P hâlâ başlatılıyor. Uygulamayı açık tutun ve bağlantı testini bir dakika sonra yeniden deneyin.",
+  "The connection test timed out. The selected network may still be starting; try again shortly.": "Bağlantı testi zaman aşımına uğradı. Seçilen ağ hâlâ başlatılıyor olabilir; kısa süre sonra tekrar deneyin.",
   "Addresses you archive will appear here.": "Arşivlediğiniz adresler burada görünür.",
   "Archive": "Arşivle",
   "Archive address": "Adresi arşivle",

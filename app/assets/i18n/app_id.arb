@@ -1,5 +1,7 @@
 {
   "@@locale": "id",
+  "I2P is still starting. Keep the app open and try the connection test again in a minute.": "I2P masih dimulai. Biarkan aplikasi tetap terbuka dan coba tes koneksi lagi satu menit lagi.",
+  "The connection test timed out. The selected network may still be starting; try again shortly.": "Tes koneksi kehabisan waktu. Jaringan yang dipilih mungkin masih dimulai; coba lagi sebentar lagi.",
   "Addresses you archive will appear here.": "Alamat yang Anda arsipkan akan muncul di sini.",
   "Archive": "Arsipkan",
   "Archive address": "Arsipkan alamat",

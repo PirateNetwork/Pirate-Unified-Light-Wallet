@@ -1,5 +1,7 @@
 {
   "@@locale": "zh_CN",
+  "I2P is still starting. Keep the app open and try the connection test again in a minute.": "I2P 仍在启动。请保持应用打开，并在一分钟后重新测试连接。",
+  "The connection test timed out. The selected network may still be starting; try again shortly.": "连接测试超时。所选网络可能仍在启动，请稍后重试。",
   "Addresses you archive will appear here.": "您归档的地址会显示在这里。",
   "Archive": "归档",
   "Archive address": "归档地址",

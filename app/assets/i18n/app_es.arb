@@ -1,5 +1,7 @@
 {
   "@@locale": "es",
+  "I2P is still starting. Keep the app open and try the connection test again in a minute.": "I2P todavía se está iniciando. Mantén la aplicación abierta y vuelve a probar la conexión dentro de un minuto.",
+  "The connection test timed out. The selected network may still be starting; try again shortly.": "La prueba de conexión agotó el tiempo de espera. Puede que la red seleccionada aún se esté iniciando; inténtalo de nuevo en breve.",
   "Addresses you archive will appear here.": "Las direcciones que archives aparecerán aquí.",
   "Archive": "Archivar",
   "Archive address": "Archivar dirección",

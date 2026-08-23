@@ -1,5 +1,7 @@
 {
   "@@locale": "ru",
+  "I2P is still starting. Keep the app open and try the connection test again in a minute.": "I2P всё ещё запускается. Оставьте приложение открытым и повторите проверку соединения через минуту.",
+  "The connection test timed out. The selected network may still be starting; try again shortly.": "Время проверки соединения истекло. Выбранная сеть, возможно, ещё запускается; повторите попытку чуть позже.",
   "Addresses you archive will appear here.": "Архивированные вами адреса появятся здесь.",
   "Archive": "Архивировать",
   "Archive address": "Архивировать адрес",

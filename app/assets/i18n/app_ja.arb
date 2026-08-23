@@ -1,5 +1,7 @@
 {
   "@@locale": "ja",
+  "I2P is still starting. Keep the app open and try the connection test again in a minute.": "I2P はまだ起動中です。アプリを開いたままにして、1 分後にもう一度接続テストを行ってください。",
+  "The connection test timed out. The selected network may still be starting; try again shortly.": "接続テストがタイムアウトしました。選択したネットワークがまだ起動中の可能性があります。しばらくしてからもう一度お試しください。",
   "Addresses you archive will appear here.": "アーカイブしたアドレスはここに表示されます。",
   "Archive": "アーカイブ",
   "Archive address": "アドレスをアーカイブ",
