@@ -9,6 +9,7 @@ FRAMEWORKS_DIR="$SDK_DIR/Frameworks"
 CRATE_DIR="$CRATES_DIR/pirate-ffi-native"
 HEADER="$CRATE_DIR/pirate_wallet_service.h"
 IOS_MIN_DEPLOYMENT_TARGET="${IOS_MIN_DEPLOYMENT_TARGET:-15.0}"
+IOS_MAX_COMPRESSED_ARCHIVE_BYTES="${IOS_MAX_COMPRESSED_ARCHIVE_BYTES:-190000000}"
 
 if [[ "$OSTYPE" != "darwin"* ]]; then
   echo "iOS SDK packaging requires macOS." >&2
@@ -24,13 +25,18 @@ export CARGO_INCREMENTAL=0
 export IPHONEOS_DEPLOYMENT_TARGET="$IOS_MIN_DEPLOYMENT_TARGET"
 # Keep release-only compiler data out of the static libraries at the source.
 # The XCFramework is consumed as a binary dependency, so Cargo debug metadata
-# and incremental state provide no value to downstream applications. Thin LTO
-# also removes duplicate/unreachable Rust code across crate boundaries before
-# the two simulator architectures are combined.
+# and incremental state provide no value to downstream applications.
+#
+# Do not enable LTO or collapse this build to one codegen unit. Those settings
+# are useful when producing a final executable, but this output is an
+# intermediate static archive. On Xcode 26 they more than doubled the packaged
+# archive by coalescing dependency code into large members. Preserve normal
+# release archive granularity so the consumer linker can load only the members
+# reachable from the two exported C entry points.
 export CARGO_PROFILE_RELEASE_DEBUG=0
 export CARGO_PROFILE_RELEASE_INCREMENTAL=false
-export CARGO_PROFILE_RELEASE_LTO=thin
-export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+export CARGO_PROFILE_RELEASE_LTO=false
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
 export CARGO_PROFILE_RELEASE_STRIP=debuginfo
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
@@ -71,6 +77,26 @@ strip_static_archive() {
   echo "Stripped iOS debug metadata and local symbols for $target_name ($original_size -> $stripped_size bytes)"
 }
 
+verify_compressed_archive_budget() {
+  local archive="$1"
+  local target_name="$2"
+  local raw_size
+  local compressed_size
+
+  raw_size="$(stat -f%z "$archive")"
+  compressed_size="$(gzip -9 -c "$archive" | wc -c | tr -d '[:space:]')"
+  if (( compressed_size <= 0 )); then
+    echo "Could not measure compressed archive size for $target_name" >&2
+    exit 1
+  fi
+  if (( compressed_size > IOS_MAX_COMPRESSED_ARCHIVE_BYTES )); then
+    echo "$target_name exceeds the compressed iOS package budget: $compressed_size bytes (raw: $raw_size bytes, limit: $IOS_MAX_COMPRESSED_ARCHIVE_BYTES bytes)" >&2
+    exit 1
+  fi
+
+  echo "Verified compressed iOS package budget for $target_name ($compressed_size compressed bytes; $raw_size raw bytes)"
+}
+
 verify_architectures() {
   local archive="$1"
   local label="$2"
@@ -108,6 +134,9 @@ strip_static_archive \
 strip_static_archive \
   "$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native.a" \
   "ios-simulator-x86_64"
+verify_compressed_archive_budget \
+  "$CRATES_DIR/target/aarch64-apple-ios/release/libpirate_ffi_native.a" \
+  "ios-arm64"
 
 HEADERS_DIR="$TMP_DIR/include"
 mkdir -p "$HEADERS_DIR"
@@ -126,6 +155,9 @@ lipo -create \
   "$CRATES_DIR/target/aarch64-apple-ios-sim/release/libpirate_ffi_native.a" \
   "$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native.a" \
   -output "$SIM_LIB"
+verify_compressed_archive_budget \
+  "$SIM_LIB" \
+  "ios-arm64_x86_64-simulator"
 
 verify_architectures \
   "$CRATES_DIR/target/aarch64-apple-ios/release/libpirate_ffi_native.a" \
@@ -161,6 +193,7 @@ PACKAGE_ZIP="$DIST_DIR/PirateWalletSDK-package.zip"
 rm -f "$PACKAGE_ZIP" "$PACKAGE_ZIP.sha256"
 (cd "$DIST_DIR" && ditto -c -k --sequesterRsrc --keepParent PirateWalletSDK-package "$PACKAGE_ZIP")
 (cd "$DIST_DIR" && shasum -a 256 "$(basename "$PACKAGE_ZIP")" > "$(basename "$PACKAGE_ZIP").sha256")
+rm -rf "$PACKAGE_STAGING"
 
 echo "Built iOS SDK XCFramework at $FRAMEWORKS_DIR/PirateWalletNative.xcframework"
 echo "Packaged $ZIP_PATH"
