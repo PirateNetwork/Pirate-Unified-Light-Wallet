@@ -290,7 +290,8 @@ jobs:
       - name: Run cargo audit
         run: |
           cd crates
-          cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0009
+          # Transitive through Arti/Tor; no fixed rsa release exists yet.
+          cargo audit --ignore RUSTSEC-2023-0071
 
   security-deny:
     name: Security - Cargo Deny

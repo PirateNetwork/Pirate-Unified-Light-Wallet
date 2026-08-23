@@ -65,7 +65,6 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
     "https://github.com/PirateNetwork/halo2.git",
     "https://github.com/PirateNetwork/orchard.git",
-    "https://github.com/PirateNetwork/zcash_note_encryption.git",
     "https://github.com/piratenetwork/librustzcash",
     "https://github.com/piratenetwork/sapling-crypto.git",
 ]
