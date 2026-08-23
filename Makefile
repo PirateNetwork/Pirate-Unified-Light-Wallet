@@ -22,12 +22,18 @@ FRB_CODEGEN_VERSION ?= 2.11.1
 # Detect OS
 ifeq ($(OS),Windows_NT)
     DETECTED_OS := Windows
+    FLUTTER_PLATFORM := windows
     FLUTTER := flutter.bat
     CARGO := cargo.exe
 else
     DETECTED_OS := $(shell uname -s)
     FLUTTER := flutter
     CARGO := cargo
+    ifeq ($(DETECTED_OS),Darwin)
+        FLUTTER_PLATFORM := macos
+    else ifeq ($(DETECTED_OS),Linux)
+        FLUTTER_PLATFORM := linux
+    endif
 endif
 
 ##@ General
@@ -98,6 +104,8 @@ build\:rust: ## Build Rust workspace
 
 build\:android: ## Build Android app
 	@echo "$(BLUE)🤖 Building Android app...$(NC)"
+	@cd $(APP_DIR) && $(FLUTTER) pub get --enforce-lockfile
+	@bash ./scripts/prepare-flutter-build.sh android
 	@cd $(APP_DIR) && $(FLUTTER) build apk --release
 	@cd $(APP_DIR) && $(FLUTTER) build appbundle --release
 	@echo "$(GREEN)✅ Android build complete$(NC)"
@@ -107,6 +115,8 @@ build\:android: ## Build Android app
 build\:ios: ## Build iOS app (macOS only)
 ifeq ($(DETECTED_OS),Darwin)
 	@echo "$(BLUE)🍎 Building iOS app...$(NC)"
+	@cd $(APP_DIR) && $(FLUTTER) pub get --enforce-lockfile
+	@bash ./scripts/prepare-flutter-build.sh ios
 	@cd $(APP_DIR) && $(FLUTTER) build ios --release --no-codesign
 	@echo "$(GREEN)✅ iOS build complete$(NC)"
 else
@@ -117,14 +127,20 @@ endif
 build\:desktop: ## Build desktop app (platform-dependent)
 ifeq ($(DETECTED_OS),Linux)
 	@echo "$(BLUE)🐧 Building Linux desktop app...$(NC)"
+	@cd $(APP_DIR) && $(FLUTTER) pub get --enforce-lockfile
+	@bash ./scripts/prepare-flutter-build.sh linux
 	@cd $(APP_DIR) && $(FLUTTER) build linux --release
 	@echo "$(GREEN)✅ Linux build complete$(NC)"
 else ifeq ($(DETECTED_OS),Darwin)
 	@echo "$(BLUE)🍎 Building macOS desktop app...$(NC)"
+	@cd $(APP_DIR) && $(FLUTTER) pub get --enforce-lockfile
+	@bash ./scripts/prepare-flutter-build.sh macos
 	@cd $(APP_DIR) && $(FLUTTER) build macos --release
 	@echo "$(GREEN)✅ macOS build complete$(NC)"
 else ifeq ($(DETECTED_OS),Windows)
 	@echo "$(BLUE)🪟 Building Windows desktop app...$(NC)"
+	@cd $(APP_DIR) && $(FLUTTER) pub get --enforce-lockfile
+	@bash ./scripts/prepare-flutter-build.sh windows
 	@cd $(APP_DIR) && $(FLUTTER) build windows --release
 	@echo "$(GREEN)✅ Windows build complete$(NC)"
 else
@@ -151,6 +167,8 @@ test\:flutter: ## Run Flutter tests
 test\:integration: ## Run integration tests
 	@echo "$(BLUE)🔗 Running integration tests...$(NC)"
 	@if ./scripts/e2e-preflight.sh; then \
+		cd $(APP_DIR) && $(FLUTTER) pub get --enforce-lockfile && cd ..; \
+		bash ./scripts/prepare-flutter-build.sh $(FLUTTER_PLATFORM); \
 		cd $(APP_DIR) && $(FLUTTER) test integration_test/; \
 		echo "$(GREEN)✅ Integration tests passed$(NC)"; \
 	else \

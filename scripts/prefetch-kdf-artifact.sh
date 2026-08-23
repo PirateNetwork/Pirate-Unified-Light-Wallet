@@ -37,8 +37,10 @@ if [ -z "$PYTHON_BIN" ]; then
         PYTHON_BIN="python3"
     elif command -v python >/dev/null 2>&1; then
         PYTHON_BIN="python"
+    elif command -v py >/dev/null 2>&1; then
+        PYTHON_BIN="py"
     else
-        echo "python3 or python is required to prefetch KDF artifacts" >&2
+        echo "Python 3 is required to prefetch KDF artifacts" >&2
         exit 127
     fi
 fi

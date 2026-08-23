@@ -351,11 +351,8 @@ flutter clean
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
-log "Fetching KDF iOS artifact..."
-bash "$SCRIPT_DIR/prefetch-kdf-ios.sh"
-
-log "Preparing Komodo coin assets..."
-bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+log "Preparing hermetic Flutter assets..."
+bash "$SCRIPT_DIR/prepare-flutter-build.sh" ios
 
 pushd "$IOS_DIR" >/dev/null
 if [ -f Podfile.lock ]; then

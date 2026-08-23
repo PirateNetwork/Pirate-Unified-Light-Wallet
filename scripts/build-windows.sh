@@ -228,11 +228,8 @@ flutter clean
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
-log "Fetching KDF Windows artifact..."
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" windows
-
-log "Preparing Komodo coin assets..."
-bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+log "Preparing hermetic Flutter assets..."
+bash "$SCRIPT_DIR/prepare-flutter-build.sh" windows
 
 # Build Windows app
 log "Building Windows app..."

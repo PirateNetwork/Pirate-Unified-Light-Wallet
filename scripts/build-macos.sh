@@ -538,11 +538,8 @@ flutter clean
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
-log "Fetching KDF macOS artifact..."
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" macos
-
-log "Preparing Komodo coin assets..."
-bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+log "Preparing hermetic Flutter assets..."
+bash "$SCRIPT_DIR/prepare-flutter-build.sh" macos
 
 log "Building macOS app (universal2)..."
 # On modern Flutter versions, `flutter build macos` produces a universal build by

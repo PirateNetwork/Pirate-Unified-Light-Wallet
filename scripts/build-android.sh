@@ -115,16 +115,10 @@ log "Building Rust Android libraries..."
 chmod +x "$SCRIPT_DIR/build-rust-android.sh"
 bash "$SCRIPT_DIR/build-rust-android.sh"
 
-# Fetch KDF artifacts before Flutter's asset transformer runs. This keeps
-# release builds pinned to the checksummed SDK config instead of doing a late
-# network fetch from the Flutter build step.
-log "Fetching KDF Android artifacts..."
-chmod +x "$SCRIPT_DIR/prefetch-kdf-artifact.sh"
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" android
-export OVERRIDE_DEFI_API_DOWNLOAD=false
-
-log "Preparing Komodo coin assets..."
-bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+# Fetch checksum-pinned KDF binaries, validate bundled coin assets, and disable
+# every dependency transformer network/update path before Flutter starts.
+log "Preparing hermetic Flutter assets..."
+bash "$SCRIPT_DIR/prepare-flutter-build.sh" android
 
 # Build based on type
 if [ "$BUILD_TYPE" = "bundle" ]; then

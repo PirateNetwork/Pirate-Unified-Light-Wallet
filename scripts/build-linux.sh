@@ -176,11 +176,8 @@ flutter clean
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
-log "Fetching KDF Linux artifact..."
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" linux
-
-log "Preparing Komodo coin assets..."
-bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+log "Preparing hermetic Flutter assets..."
+bash "$SCRIPT_DIR/prepare-flutter-build.sh" linux
 
 # Build Linux app
 log "Building Linux app..."

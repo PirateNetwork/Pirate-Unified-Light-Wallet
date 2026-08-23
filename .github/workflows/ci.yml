@@ -450,6 +450,9 @@ jobs:
             echo "Skipping integration tests (missing E2E prerequisites)."
             exit 0
           fi
+          cd ..
+          bash scripts/prepare-flutter-build.sh macos
+          cd app
           flutter config --enable-macos-desktop
           flutter test integration_test/ -d macos
 
@@ -535,46 +538,41 @@ jobs:
         if: matrix.platform == 'Windows'
         run: flutter config --enable-windows-desktop
 
-      - name: Prefetch KDF iOS artifact
+      - name: Prepare hermetic iOS assets
         if: matrix.platform == 'iOS'
         env:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
-          chmod +x scripts/prefetch-kdf-ios.sh
-          scripts/prefetch-kdf-ios.sh
+          bash scripts/prepare-flutter-build.sh ios
 
-      - name: Prefetch KDF Linux artifact
+      - name: Prepare hermetic Linux assets
         if: matrix.platform == 'Linux'
         env:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
-          chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh linux
+          bash scripts/prepare-flutter-build.sh linux
 
-      - name: Prefetch KDF macOS artifact
+      - name: Prepare hermetic macOS assets
         if: matrix.platform == 'macOS'
         env:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
-          chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh macos
+          bash scripts/prepare-flutter-build.sh macos
 
-      - name: Prefetch KDF Windows artifact
+      - name: Prepare hermetic Windows assets
         if: matrix.platform == 'Windows'
         env:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh windows
+          bash scripts/prepare-flutter-build.sh windows
 
-      - name: Prefetch KDF Android artifacts
+      - name: Prepare hermetic Android assets
         if: matrix.platform == 'Android'
         env:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
-          chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh android
+          bash scripts/prepare-flutter-build.sh android
 
       - name: Prime Android Gradle plugin cache
         if: matrix.platform == 'Android'
@@ -596,11 +594,8 @@ jobs:
 
       - name: Build Android
         if: matrix.platform == 'Android'
-        env:
-          OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
-          bash ../scripts/prepare-komodo-assets.sh
           status=1
           for attempt in 1 2 3; do
             if flutter build apk --release --split-per-abi --target-platform=android-arm64,android-arm; then
@@ -620,11 +615,8 @@ jobs:
 
       - name: Build iOS
         if: matrix.platform == 'iOS'
-        env:
-          OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
-          bash ../scripts/prepare-komodo-assets.sh
           flutter build ios --release --no-codesign --config-only
           status=1
           for attempt in 1 2 3; do
@@ -654,11 +646,8 @@ jobs:
 
       - name: Build Linux
         if: matrix.platform == 'Linux'
-        env:
-          OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
-          bash ../scripts/prepare-komodo-assets.sh
           status=1
           for attempt in 1 2 3; do
             if flutter build linux --release; then
@@ -676,12 +665,10 @@ jobs:
       - name: Build macOS
         if: matrix.platform == 'macOS'
         env:
-          OVERRIDE_DEFI_API_DOWNLOAD: "false"
           FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
           FLUTTER_XCODE_CODE_SIGNING_REQUIRED: "NO"
         run: |
           cd app
-          bash ../scripts/prepare-komodo-assets.sh
           status=1
           for attempt in 1 2 3; do
             if flutter build macos --release; then
@@ -698,12 +685,9 @@ jobs:
 
       - name: Build Windows
         if: matrix.platform == 'Windows'
-        env:
-          OVERRIDE_DEFI_API_DOWNLOAD: "false"
         shell: bash
         run: |
           cd app
-          bash ../scripts/prepare-komodo-assets.sh
           status=1
           for attempt in 1 2 3; do
             if flutter build windows --release; then
