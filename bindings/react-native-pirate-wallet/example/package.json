@@ -18,7 +18,8 @@
     "react-native-pirate-wallet-android": "file:../../react-native-pirate-wallet-android",
     "react-native-pirate-wallet-android-x86_64": "file:../../react-native-pirate-wallet-android-x86_64",
     "react-native-pirate-wallet-ios-device": "file:../../react-native-pirate-wallet-ios-device",
-    "react-native-pirate-wallet-ios-simulator": "file:../../react-native-pirate-wallet-ios-simulator"
+    "react-native-pirate-wallet-ios-simulator-arm64": "file:../../react-native-pirate-wallet-ios-simulator-arm64",
+    "react-native-pirate-wallet-ios-simulator-x86_64": "file:../../react-native-pirate-wallet-ios-simulator-x86_64"
   },
   "devDependencies": {
     "@babel/core": "7.29.6",

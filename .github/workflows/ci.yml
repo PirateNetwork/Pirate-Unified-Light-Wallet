@@ -1067,10 +1067,11 @@ jobs:
 
       - name: Stage native artifacts for React Native plugin
         run: |
-          mkdir -p bindings/android-sdk/src/main/jniLibs bindings/ios-sdk/Frameworks
+          mkdir -p bindings/android-sdk/src/main/jniLibs bindings/ios-sdk/Frameworks dist/ios-sdk
           cp -R /tmp/pirate-android-sdk-artifact/bindings/android-sdk/src/main/jniLibs/. bindings/android-sdk/src/main/jniLibs/
           rm -rf bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework
           cp -R /tmp/pirate-ios-sdk-artifact/bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework bindings/ios-sdk/Frameworks/
+          cp -R /tmp/pirate-ios-sdk-artifact/dist/ios-sdk/react-native dist/ios-sdk/
           chmod +x scripts/prepare-react-native-plugin.sh
           ./scripts/prepare-react-native-plugin.sh
 
@@ -1098,7 +1099,8 @@ jobs:
           node ../../react-native-pirate-wallet-android-x86_64/scripts/verify-package.js
           if [ "$(uname -s)" = "Darwin" ]; then
             node ../../react-native-pirate-wallet-ios-device/scripts/verify-package.js
-            node ../../react-native-pirate-wallet-ios-simulator/scripts/verify-package.js
+            node ../../react-native-pirate-wallet-ios-simulator-arm64/scripts/verify-package.js
+            node ../../react-native-pirate-wallet-ios-simulator-x86_64/scripts/verify-package.js
           fi
           node -e 'require("../react-native.config.js")'
 
@@ -1193,10 +1195,11 @@ jobs:
 
       - name: Stage native artifacts for React Native plugin
         run: |
-          mkdir -p bindings/android-sdk/src/main/jniLibs bindings/ios-sdk/Frameworks
+          mkdir -p bindings/android-sdk/src/main/jniLibs bindings/ios-sdk/Frameworks dist/ios-sdk
           cp -R /tmp/pirate-android-sdk-artifact/bindings/android-sdk/src/main/jniLibs/. bindings/android-sdk/src/main/jniLibs/
           rm -rf bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework
           cp -R /tmp/pirate-ios-sdk-artifact/bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework bindings/ios-sdk/Frameworks/
+          cp -R /tmp/pirate-ios-sdk-artifact/dist/ios-sdk/react-native dist/ios-sdk/
           chmod +x scripts/prepare-react-native-plugin.sh
           ./scripts/prepare-react-native-plugin.sh
 
@@ -2749,8 +2752,8 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t npm_tarballs < <(find npm-artifact -type f -name '*.tgz' -print)
-          if [ "${#npm_tarballs[@]}" -ne 5 ]; then
-            echo "Expected five npm tarballs, found ${#npm_tarballs[@]}" >&2
+          if [ "${#npm_tarballs[@]}" -ne 6 ]; then
+            echo "Expected six npm tarballs, found ${#npm_tarballs[@]}" >&2
             exit 1
           fi
 
@@ -2840,7 +2843,8 @@ jobs:
           verify_package react-native-pirate-wallet-android NPM_ANDROID
           verify_package react-native-pirate-wallet-android-x86_64 NPM_ANDROID_X86_64
           verify_package react-native-pirate-wallet-ios-device NPM_IOS_DEVICE
-          verify_package react-native-pirate-wallet-ios-simulator NPM_IOS_SIMULATOR
+          verify_package react-native-pirate-wallet-ios-simulator-arm64 NPM_IOS_SIMULATOR_ARM64
+          verify_package react-native-pirate-wallet-ios-simulator-x86_64 NPM_IOS_SIMULATOR_X86_64
           verify_package react-native-pirate-wallet NPM_MAIN
 
       - name: Publish Android ARM npm package with provenance
@@ -2855,9 +2859,13 @@ jobs:
         if: env.NPM_IOS_DEVICE_ALREADY_PUBLISHED != 'true'
         run: npm publish "$NPM_IOS_DEVICE_TARBALL" --access public
 
-      - name: Publish iOS simulator npm package with provenance
-        if: env.NPM_IOS_SIMULATOR_ALREADY_PUBLISHED != 'true'
-        run: npm publish "$NPM_IOS_SIMULATOR_TARBALL" --access public
+      - name: Publish iOS arm64 simulator npm package with provenance
+        if: env.NPM_IOS_SIMULATOR_ARM64_ALREADY_PUBLISHED != 'true'
+        run: npm publish "$NPM_IOS_SIMULATOR_ARM64_TARBALL" --access public
+
+      - name: Publish iOS x86_64 simulator npm package with provenance
+        if: env.NPM_IOS_SIMULATOR_X86_64_ALREADY_PUBLISHED != 'true'
+        run: npm publish "$NPM_IOS_SIMULATOR_X86_64_TARBALL" --access public
 
       - name: Publish React Native npm package with provenance
         if: env.NPM_MAIN_ALREADY_PUBLISHED != 'true'
