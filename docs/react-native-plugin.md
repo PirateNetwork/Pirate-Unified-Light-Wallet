@@ -158,12 +158,19 @@ native companions. They use the `react_native_plugin` version from
 wrapper.
 
 The iOS SDK build uses a release-only Cargo configuration with debug metadata
-disabled, thin LTO enabled, and one code-generation unit. It then removes
-DWARF data and local symbols from each thin static archive before creating the
-XCFramework. The package verifiers reject any unrecognized framework files, so
-debug bundles and other build by-products cannot silently enter an npm release.
-Device arm64 and simulator arm64/x86_64 code remain in their respective native
-packages, and the build verifies those exact architecture sets before staging.
+and incremental compilation disabled. It deliberately keeps LTO disabled and
+uses normal release code-generation granularity because the SDK output is an
+intermediate static archive, not a final executable. This lets downstream
+linkers load only reachable archive members and avoids the large package
+regression caused by coalescing the Rust dependency graph into one unit.
+
+The build removes DWARF data and local symbols from each thin archive, verifies
+the exact device and simulator architectures, and measures the gzip-compressed
+device and universal simulator payloads against a package budget before
+creating the XCFramework. Package verifiers reject unrecognized framework
+files, so debug bundles and other build by-products cannot silently enter an
+npm release. Temporary Swift package staging is deleted after its archive is
+created instead of being uploaded as a duplicate SDK payload.
 
 ## Installing in a React Native app
 

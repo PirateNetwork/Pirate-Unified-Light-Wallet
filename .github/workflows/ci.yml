@@ -45,7 +45,7 @@ jobs:
       - name: Verify immutable GitHub Action refs
         run: python3 scripts/check_pinned_actions.py
 
-      - name: Test hermetic Flutter asset configuration
+      - name: Test build and asset policies
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 
   frb-codegen:
