@@ -60,8 +60,9 @@ is now a thin wrapper surface over that backend for Flutter-specific FFI generat
 The architecture, performance work, and correctness guarantees behind the Supernova shielded-chain sync engine are documented in [`docs/sync-engine.md`](docs/sync-engine.md).
 
 Platform packaging is handled by the scripts in `scripts/`. Use those scripts
-for release artifacts; they checksum-prefetch the platform KDF binary and lock
-the dependency asset transformer to the SDK's validated bundled coin assets.
+for release artifacts; they checksum-prefetch the platform KDF binary and the
+SDK-pinned coin snapshot, materialize only its configured JSON and icon paths,
+then disable the dependency transformer's network fetches.
 
 For an unpackaged development build, run the same preflight after
 `flutter pub get --enforce-lockfile` and before Flutter. For example:

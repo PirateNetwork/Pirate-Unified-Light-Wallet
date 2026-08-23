@@ -45,9 +45,9 @@ dart run tool/audit_runtime_translations.dart
 ```
 
 Build app-only outputs for development from the repository root. The preflight
-checksum-prefetches the selected KDF binary and makes the dependency asset
-transformer use its bundled coin configuration and images without network
-access:
+checksum-prefetches the selected KDF binary and SDK-pinned coin snapshot,
+materializes the required configuration and images, and disables dependency
+asset-transformer network access:
 
 ```bash
 (cd app && flutter pub get --enforce-lockfile)

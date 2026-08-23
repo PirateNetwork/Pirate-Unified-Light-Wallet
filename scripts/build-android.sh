@@ -115,8 +115,8 @@ log "Building Rust Android libraries..."
 chmod +x "$SCRIPT_DIR/build-rust-android.sh"
 bash "$SCRIPT_DIR/build-rust-android.sh"
 
-# Fetch checksum-pinned KDF binaries, validate bundled coin assets, and disable
-# every dependency transformer network/update path before Flutter starts.
+# Fetch checksum-pinned KDF binaries and coin assets, then disable every
+# dependency transformer network/update path before Flutter starts.
 log "Preparing hermetic Flutter assets..."
 bash "$SCRIPT_DIR/prepare-flutter-build.sh" android
 

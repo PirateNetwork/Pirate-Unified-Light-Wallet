@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Make the resolved Komodo asset transformer configuration hermetic.
 
-The SDK ships the coin configuration and icons that the wallet bundles. Native
-KDF executables are fetched separately by ``prefetch-kdf-artifact.sh`` and are
-verified against the checksums in the same SDK configuration. This tool checks
-that the bundled coin assets are present, then atomically disables every
-build-time network/update switch before Flutter invokes the SDK transformer.
+The pinned coin configuration and icons are materialized separately by
+``prefetch-komodo-assets.py``. Native KDF executables are fetched by
+``prefetch-kdf-artifact.sh`` and verified against the checksums in the same SDK
+configuration. This tool checks that all materialized assets are present, then
+atomically disables every build-time network/update switch before Flutter
+invokes the SDK transformer.
 """
 
 from __future__ import annotations
@@ -124,7 +125,7 @@ def _asset_path(package_root: Path, relative: str, config_path: Path) -> Path:
     posix_path = PurePosixPath(relative.rstrip("/"))
     if posix_path.is_absolute() or not posix_path.parts or ".." in posix_path.parts:
         raise ConfigurationError(
-            f"Unsafe bundled asset path {relative!r} in {config_path}",
+            f"Unsafe materialized asset path {relative!r} in {config_path}",
         )
 
     package_root = package_root.resolve()
@@ -133,12 +134,12 @@ def _asset_path(package_root: Path, relative: str, config_path: Path) -> Path:
         candidate.relative_to(package_root)
     except ValueError as exc:
         raise ConfigurationError(
-            f"Bundled asset path escapes the package root: {relative!r}",
+            f"Materialized asset path escapes the package root: {relative!r}",
         ) from exc
     return candidate
 
 
-def _validate_bundled_coin_assets(
+def _validate_materialized_coin_assets(
     package_root: Path,
     coins: dict[str, Any],
     config_path: Path,
@@ -229,7 +230,7 @@ def configure(package_config_path: Path) -> tuple[Path, int, int, bool]:
     if not isinstance(platforms, dict) or not platforms:
         raise ConfigurationError(f"No pinned KDF platforms configured in {config_path}")
 
-    mapped_files, folder_files = _validate_bundled_coin_assets(
+    mapped_files, folder_files = _validate_materialized_coin_assets(
         package_root,
         coins,
         config_path,
@@ -253,7 +254,7 @@ def configure(package_config_path: Path) -> tuple[Path, int, int, bool]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate bundled Komodo assets and disable transformer downloads.",
+        description="Validate materialized Komodo assets and disable transformer downloads.",
     )
     parser.add_argument(
         "--package-config",

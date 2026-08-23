@@ -98,7 +98,7 @@ class ConfigureKomodoAssetsTest(unittest.TestCase):
         self.assertFalse(MODULE.configure(package_config)[3])
         self.assertEqual(config_path.read_bytes(), original_bytes)
 
-    def test_refuses_to_disable_fetch_when_a_bundled_asset_is_missing(self) -> None:
+    def test_refuses_to_disable_fetch_when_a_materialized_asset_is_missing(self) -> None:
         temporary, package_config, config_path = self._fixture()
         self.addCleanup(temporary.cleanup)
         missing_asset = config_path.parents[1] / "assets" / "config" / "coins.json"
