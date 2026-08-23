@@ -301,13 +301,20 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  - --talk-name=org.freedesktop.secrets
   - --filesystem=xdg-data/pirate-wallet:create
 modules:
   - name: pirate-unified-wallet
     buildsystem: simple
     build-commands:
       - cp -r bundle /app/
-      - install -Dm755 bundle/pirate_unified_wallet /app/bin/pirate-unified-wallet
+      - |
+          install -d /app/bin
+          cat > /app/bin/pirate-unified-wallet <<'LAUNCHER'
+          #!/bin/sh
+          exec /app/bundle/pirate_unified_wallet "\$@"
+          LAUNCHER
+          chmod 0755 /app/bin/pirate-unified-wallet
       - |
           cat > com.pirate.wallet.desktop <<'DESKTOP'
           [Desktop Entry]
@@ -347,6 +354,10 @@ EOF
             --repo="$flatpak_repo_dir" \
             "$flatpak_build_dir" \
             "$FLATPAK_MANIFEST"
+
+        log "Verifying Flatpak runtime layout..."
+        flatpak build "$flatpak_build_dir" sh -eu -c \
+            'test -x /app/bin/pirate-unified-wallet; test -x /app/bundle/pirate_unified_wallet; test -d /app/bundle/data; test -d /app/bundle/lib; grep -Fq "/app/bundle/pirate_unified_wallet" /app/bin/pirate-unified-wallet'
 
         log "Creating Flatpak bundle..."
         flatpak build-bundle "$flatpak_repo_dir" \
