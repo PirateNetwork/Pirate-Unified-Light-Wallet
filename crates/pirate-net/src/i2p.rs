@@ -328,7 +328,10 @@ impl I2pClient {
         }
 
         let _guard = self.start_lock.clone().lock_owned().await;
-        self.shutdown_requested.store(false, Ordering::SeqCst);
+        // Shutdown is terminal for this client instance. A connector may
+        // still hold a clone after TransportManager removes it; never let
+        // that stale clone resurrect an orphaned i2pd process. Intentional
+        // reuse goes through update_config(), which clears this latch.
         let status = Arc::clone(&self.status).lock_owned().await.clone();
         match status {
             I2pStatus::Ready if self.clone().child_is_running().await => return Ok(()),
@@ -653,5 +656,24 @@ mod tests {
         let config = I2pConfig::default();
         assert!(!config.enabled);
         assert!(config.ephemeral);
+    }
+
+    #[tokio::test]
+    async fn shutdown_client_cannot_be_restarted_by_a_stale_clone() {
+        let client = I2pClient::new(I2pConfig {
+            enabled: true,
+            binary_path: Some(PathBuf::from("missing-i2pd-for-lifecycle-test")),
+            ..I2pConfig::default()
+        })
+        .expect("client");
+        let stale = client.clone();
+
+        client.shutdown().await;
+
+        let error = stale
+            .start()
+            .await
+            .expect_err("shutdown must remain terminal");
+        assert!(error.to_string().contains("I2P shutdown requested"));
     }
 }

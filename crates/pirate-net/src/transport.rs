@@ -246,71 +246,84 @@ impl TransportManager {
     }
 
     async fn ensure_tor_bootstrapped(self: Arc<Self>, config: TransportConfig) -> Result<()> {
-        let tor_current = self
-            .tor_client
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        if let Some(tor) = tor_current {
-            let status = tor.status().await;
-            if matches!(status, TorStatus::Ready) {
+        let client = {
+            // Keep selection/publication atomic with update_config, but never
+            // hold this lock across the potentially long bootstrap itself.
+            let _update_guard = Arc::clone(&self.update_lock).lock_owned().await;
+            if !self.matches_config(&config) {
+                return Err(Error::Network(
+                    "Transport changed before Tor startup".to_string(),
+                ));
+            }
+            let mut current = self
+                .tor_client
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(client) = current.as_ref() {
+                client.clone()
+            } else {
                 log_debug_event(
                     "transport.rs:TransportManager::ensure_tor_bootstrapped",
-                    "transport_update_config_skip",
-                    &format!(
-                        "mode={:?} reason=config_unchanged status=ready",
-                        config.mode
-                    ),
+                    "transport_update_config_tor_recreate",
+                    "mode=Tor reason=missing_client",
                 );
-                return Ok(());
+                let client = TorClient::new(config.tor)?;
+                *current = Some(client.clone());
+                client
             }
+        };
 
+        let status = client.status().await;
+        if matches!(status, TorStatus::Ready) {
             log_debug_event(
                 "transport.rs:TransportManager::ensure_tor_bootstrapped",
-                "transport_update_config_tor_ensure",
-                &format!("mode={:?} status={:?}", config.mode, status),
+                "transport_update_config_skip",
+                &format!(
+                    "mode={:?} reason=config_unchanged status=ready",
+                    config.mode
+                ),
             );
-            tor.clone().bootstrap().await?;
             return Ok(());
         }
 
         log_debug_event(
             "transport.rs:TransportManager::ensure_tor_bootstrapped",
-            "transport_update_config_tor_recreate",
-            "mode=Tor reason=missing_client",
+            "transport_update_config_tor_ensure",
+            &format!("mode={:?} status={:?}", config.mode, status),
         );
-        let client = TorClient::new(config.tor)?;
-        client.clone().bootstrap().await?;
-        *self
-            .tor_client
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
+        client.bootstrap().await?;
         Ok(())
     }
 
     async fn ensure_i2p_started(self: Arc<Self>, config: TransportConfig) -> Result<()> {
-        let i2p_current = self
-            .i2p_client
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        if let Some(i2p) = i2p_current {
-            i2p.start().await?;
-            return Ok(());
-        }
+        let client = {
+            // Publish a replacement before startup so update_config can see
+            // and shut it down if the user changes mode while I2P is starting.
+            let _update_guard = Arc::clone(&self.update_lock).lock_owned().await;
+            if !self.matches_config(&config) {
+                return Err(Error::Network(
+                    "Transport changed before I2P startup".to_string(),
+                ));
+            }
+            let mut current = self
+                .i2p_client
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(client) = current.as_ref() {
+                client.clone()
+            } else {
+                let client = I2pClient::new(config.i2p)?;
+                *current = Some(client.clone());
+                client
+            }
+        };
 
-        let client = I2pClient::new(config.i2p)?;
-        client.clone().start().await?;
-        *self
-            .i2p_client
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
+        client.start().await?;
         Ok(())
     }
 
     /// Ensure the active transport has completed any required startup.
     pub async fn ensure_ready(self: Arc<Self>) -> Result<()> {
-        let _update_guard = Arc::clone(&self.update_lock).lock_owned().await;
         let config = self
             .config
             .read()
@@ -339,18 +352,6 @@ impl TransportManager {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone();
         if current_config == config {
-            match config.mode {
-                TransportMode::Tor if config.tor.enabled => {
-                    self.clone().ensure_tor_bootstrapped(config).await?;
-                    return Ok(());
-                }
-                TransportMode::I2p if config.i2p.enabled => {
-                    self.clone().ensure_i2p_started(config).await?;
-                    return Ok(());
-                }
-                _ => {}
-            }
-
             log_debug_event(
                 "transport.rs:TransportManager::update_config",
                 "transport_update_config_skip",
@@ -381,57 +382,54 @@ impl TransportManager {
             ),
         );
 
+        // Constructors validate the next configuration without starting a
+        // native transport. Do this before retiring the current clients so a
+        // malformed replacement cannot leave the manager half-configured.
+        let next_tor = if config.mode == TransportMode::Tor && config.tor.enabled {
+            info!("Initializing Tor client...");
+            Some(TorClient::new(config.tor.clone())?)
+        } else {
+            None
+        };
+        let next_i2p = if config.mode == TransportMode::I2p && config.i2p.enabled {
+            info!("Initializing I2P router...");
+            Some(I2pClient::new(config.i2p.clone())?)
+        } else {
+            None
+        };
+
+        // Detach old clients before awaiting shutdown so any connector created
+        // after this point cannot capture a transport that is being retired.
         let tor_current = self
             .tor_client
-            .read()
+            .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        if config.mode == TransportMode::Tor && config.tor.enabled {
-            if let Some(tor) = tor_current {
-                tor.clone().update_config(config.tor.clone()).await;
-                tor.clone().bootstrap().await?;
-            } else {
-                info!("Initializing Tor client...");
-                let client = TorClient::new(config.tor.clone())?;
-                client.clone().bootstrap().await?;
-                *self
-                    .tor_client
-                    .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
-            }
-        } else if let Some(tor) = tor_current {
+            .take();
+        if let Some(tor) = tor_current {
             tor.shutdown().await;
-            *self
-                .tor_client
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         }
 
         let i2p_current = self
             .i2p_client
-            .read()
+            .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        if config.mode == TransportMode::I2p && config.i2p.enabled {
-            if let Some(i2p) = i2p_current {
-                i2p.clone().update_config(config.i2p.clone()).await;
-                i2p.clone().start().await?;
-            } else {
-                info!("Initializing I2P router...");
-                let client = I2pClient::new(config.i2p.clone())?;
-                client.clone().start().await?;
-                *self
-                    .i2p_client
-                    .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(client);
-            }
-        } else if let Some(i2p) = i2p_current {
+            .take();
+        if let Some(i2p) = i2p_current {
             i2p.shutdown().await;
-            *self
-                .i2p_client
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         }
+
+        // Publish the new mode and fresh client handles without waiting for a
+        // potentially minutes-long bootstrap. bootstrap_transport/connector
+        // calls own readiness; a subsequent mode change can therefore acquire
+        // update_lock immediately and cancel those clients via shutdown.
+        *self
+            .tor_client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = next_tor;
+        *self
+            .i2p_client
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = next_i2p;
 
         // Update DNS resolver
         self.dns_resolver
@@ -1259,5 +1257,45 @@ mod tests {
         let mut other = config;
         other.mode = TransportMode::Socks5;
         assert!(!manager.matches_config(&other));
+    }
+
+    #[tokio::test]
+    async fn config_updates_do_not_wait_for_private_transport_bootstrap() {
+        let direct = TransportConfig {
+            mode: TransportMode::Direct,
+            ..TransportConfig::default()
+        };
+        let manager = Arc::new(
+            TransportManager::new(direct.clone())
+                .await
+                .expect("manager"),
+        );
+        let i2p = TransportConfig {
+            mode: TransportMode::I2p,
+            i2p: I2pConfig {
+                enabled: true,
+                binary_path: Some(std::path::PathBuf::from("missing-i2pd-for-config-test")),
+                ..I2pConfig::default()
+            },
+            ..TransportConfig::default()
+        };
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            Arc::clone(&manager).update_config(i2p.clone()),
+        )
+        .await
+        .expect("config publication must not await I2P startup")
+        .expect("I2P config");
+        assert!(manager.matches_config(&i2p));
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            Arc::clone(&manager).update_config(direct.clone()),
+        )
+        .await
+        .expect("switching away must remain responsive")
+        .expect("direct config");
+        assert!(manager.matches_config(&direct));
     }
 }

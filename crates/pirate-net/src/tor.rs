@@ -20,7 +20,7 @@ use hyper::Request;
 use hyper_util::rt::TokioIo;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, Mutex};
@@ -448,6 +448,7 @@ pub struct TorClient {
     bootstrap_lock: Arc<Mutex<()>>,
     stream_prefs: Arc<Mutex<StreamPrefs>>,
     bootstrap_generation: Arc<AtomicU64>,
+    shutdown_requested: Arc<AtomicBool>,
 }
 
 #[allow(dead_code)]
@@ -467,11 +468,13 @@ impl TorClient {
             bootstrap_lock: Arc::new(Mutex::new(())),
             stream_prefs: Arc::new(Mutex::new(StreamPrefs::new())),
             bootstrap_generation: Arc::new(AtomicU64::new(0)),
+            shutdown_requested: Arc::new(AtomicBool::new(false)),
         })
     }
 
     /// Update Tor configuration (clears active client so it can be re-bootstrapped)
     pub async fn update_config(self, config: TorConfig) {
+        self.shutdown_requested.store(false, Ordering::SeqCst);
         *self.config.lock().await = config;
         *self.client.lock().await = None;
         *self.status.lock().await = TorStatus::NotStarted;
@@ -486,6 +489,9 @@ impl TorClient {
     /// Bootstrap Tor connection (blocking until ready or error)
     pub async fn bootstrap(self) -> Result<()> {
         let _guard = self.bootstrap_lock.clone().lock_owned().await;
+        if self.shutdown_requested.load(Ordering::SeqCst) {
+            return Err(Error::Tor("Tor shutdown requested".to_string()));
+        }
         let timeout = self.config.lock().await.bootstrap_timeout;
 
         let status = { self.status.lock().await.clone() };
@@ -682,6 +688,8 @@ impl TorClient {
     /// Shutdown Tor client
     pub async fn shutdown(self) {
         info!("Shutting down Tor client...");
+        self.shutdown_requested.store(true, Ordering::SeqCst);
+        self.bootstrap_generation.fetch_add(1, Ordering::SeqCst);
         *self.client.lock().await = None;
         *self.status.lock().await = TorStatus::NotStarted;
         log_debug_event(
@@ -909,6 +917,7 @@ impl Clone for TorClient {
             bootstrap_lock: Arc::clone(&self.bootstrap_lock),
             stream_prefs: Arc::clone(&self.stream_prefs),
             bootstrap_generation: Arc::clone(&self.bootstrap_generation),
+            shutdown_requested: Arc::clone(&self.shutdown_requested),
         }
     }
 }
@@ -1064,5 +1073,19 @@ mod tests {
         let client = TorClient::new(TorConfig::default()).unwrap();
         assert_eq!(client.status().await, TorStatus::NotStarted);
         assert!(!client.is_ready().await);
+    }
+
+    #[tokio::test]
+    async fn shutdown_client_cannot_be_restarted_by_a_stale_clone() {
+        let client = TorClient::new(TorConfig::default()).expect("client");
+        let stale = client.clone();
+
+        client.shutdown().await;
+
+        let error = stale
+            .bootstrap()
+            .await
+            .expect_err("shutdown must remain terminal");
+        assert!(error.to_string().contains("Tor shutdown requested"));
     }
 }
