@@ -427,7 +427,7 @@ class LightdEndpoint {
   bool supportsTransport(String mode) {
     return switch (mode.toLowerCase()) {
       'i2p' => route == LightdRoute.i2p,
-      'tor' => route != LightdRoute.i2p,
+      'tor' => route == LightdRoute.tor,
       _ => route == LightdRoute.clearnet,
     };
   }

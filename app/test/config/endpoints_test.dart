@@ -244,6 +244,14 @@ void main() {
         ),
         LightdEndpoint.mathNodesMainnet,
       );
+      expect(
+        LightdEndpoint.replacementForTransport(
+          mode: 'tor',
+          current: LightdEndpoint.autoMainnetI2p,
+          storedNonI2p: LightdEndpoint.mathNodesMainnet,
+        ),
+        LightdEndpoint.autoMainnetTor,
+      );
     });
 
     test('retired presets migrate to the matching automatic route', () {
