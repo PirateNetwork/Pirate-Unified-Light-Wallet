@@ -1,6 +1,6 @@
 //! I2P integration (desktop only)
 //!
-//! Provides an embedded I2P router process with ephemeral identities.
+//! Provides an embedded I2P router process.
 
 use crate::debug_log::log_debug_event;
 use crate::{Error, Result, Socks5Config};
@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 #[cfg(target_os = "macos")]
 use std::path::Path;
@@ -50,7 +50,11 @@ pub struct I2pConfig {
     pub address: String,
     /// SOCKS proxy port
     pub socks_port: u16,
-    /// Use ephemeral identities (new data dir per launch)
+    /// Use ephemeral router state (new data dir per launch).
+    ///
+    /// Persistent state is the production default because discarding i2pd's
+    /// network database on every launch can make the router unusable for many
+    /// minutes. The router identity is not an application destination key.
     pub ephemeral: bool,
     /// Router startup timeout
     pub startup_timeout: Duration,
@@ -66,7 +70,7 @@ impl Default for I2pConfig {
             data_dir: None,
             address: "127.0.0.1".to_string(),
             socks_port: 4447,
-            ephemeral: true,
+            ephemeral: false,
             startup_timeout: Duration::from_secs(180),
             extra_args: Vec::new(),
         }
@@ -278,6 +282,7 @@ pub struct I2pClient {
     child: Arc<Mutex<Option<Child>>>,
     ephemeral_dir: Arc<Mutex<Option<PathBuf>>>,
     start_lock: Arc<Mutex<()>>,
+    connect_lock: Arc<Mutex<()>>,
     shutdown_requested: Arc<AtomicBool>,
 }
 
@@ -296,6 +301,7 @@ impl I2pClient {
             child: Arc::new(Mutex::new(None)),
             ephemeral_dir: Arc::new(Mutex::new(None)),
             start_lock: Arc::new(Mutex::new(())),
+            connect_lock: Arc::new(Mutex::new(())),
             shutdown_requested: Arc::new(AtomicBool::new(false)),
         })
     }
@@ -494,6 +500,16 @@ impl I2pClient {
         }
     }
 
+    /// Serialize destination discovery through i2pd.
+    ///
+    /// A cold router can otherwise receive dozens of simultaneous lease-set
+    /// lookups from independent gRPC channels. i2pd rejects that burst before
+    /// its tunnels are ready, which delays recovery and makes the UI appear
+    /// permanently offline.
+    pub(crate) async fn connection_guard(self) -> OwnedMutexGuard<()> {
+        self.connect_lock.lock_owned().await
+    }
+
     /// Stop the embedded router
     pub async fn shutdown(self) {
         self.shutdown_requested.store(true, Ordering::SeqCst);
@@ -596,6 +612,7 @@ impl Clone for I2pClient {
             child: Arc::clone(&self.child),
             ephemeral_dir: Arc::clone(&self.ephemeral_dir),
             start_lock: Arc::clone(&self.start_lock),
+            connect_lock: Arc::clone(&self.connect_lock),
             shutdown_requested: Arc::clone(&self.shutdown_requested),
         }
     }
@@ -655,7 +672,7 @@ mod tests {
     fn test_i2p_config_default() {
         let config = I2pConfig::default();
         assert!(!config.enabled);
-        assert!(config.ephemeral);
+        assert!(!config.ephemeral);
     }
 
     #[tokio::test]

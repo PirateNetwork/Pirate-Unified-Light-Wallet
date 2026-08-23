@@ -522,6 +522,11 @@ impl TransportManager {
                     .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
                 fetch_url_bytes_via_tor(tor, url, headers, Duration::from_secs(60)).await
             }
+            TransportMode::I2p => {
+                require_i2p_url(url)?;
+                let client = self.create_http_client().await?;
+                fetch_url_bytes_with_client(&client, url, headers).await
+            }
             _ => {
                 let client = self.create_http_client().await?;
                 fetch_url_bytes_with_client(&client, url, headers).await
@@ -1116,16 +1121,27 @@ async fn connect_via_socks5(socks5: Socks5Config, uri: Uri) -> Result<ConnectorS
         ),
     );
 
-    let stream = match (socks5.username.as_ref(), socks5.password.as_ref()) {
+    let result = match (socks5.username.as_ref(), socks5.password.as_ref()) {
         (Some(user), Some(pass)) => {
             Socks5Stream::connect_with_password(proxy_addr, (host.as_str(), port), user, pass)
                 .await
-                .map_err(|e| Error::Network(format!("SOCKS5 connect failed: {}", e)))?
+                .map_err(|e| Error::Network(format!("SOCKS5 connect failed: {}", e)))
         }
         _ => Socks5Stream::connect(proxy_addr, (host.as_str(), port))
             .await
-            .map_err(|e| Error::Network(format!("SOCKS5 connect failed: {}", e)))?,
+            .map_err(|e| Error::Network(format!("SOCKS5 connect failed: {}", e))),
     };
+    let stream = result.map_err(|error| {
+        log_debug_event(
+            "transport.rs:connect_via_socks5",
+            "connect_socks5_error",
+            &format!(
+                "target={}:{} proxy={}:{} auth={} error={}",
+                host, port, socks5.host, socks5.port, has_auth, error
+            ),
+        );
+        error
+    })?;
 
     log_debug_event(
         "transport.rs:connect_via_socks5",
@@ -1187,6 +1203,13 @@ async fn connect_tor_stream(tor: TorClient, host: &str, port: u16) -> Result<Box
 }
 
 async fn connect_via_i2p(i2p: I2pClient, uri: Uri) -> Result<ConnectorStream> {
+    let (host, _) = uri_host_port(&uri)?;
+    if !is_i2p_destination(&host) {
+        return Err(Error::Network(format!(
+            "I2P transport refuses non-I2P destination '{}'",
+            host
+        )));
+    }
     let status = i2p.clone().status().await;
     log_debug_event(
         "transport.rs:connect_via_i2p",
@@ -1200,13 +1223,66 @@ async fn connect_via_i2p(i2p: I2pClient, uri: Uri) -> Result<ConnectorStream> {
         "connect_i2p_proxy",
         &format!("proxy={}:{} auth=false", proxy.host, proxy.port),
     );
-    connect_via_socks5(proxy, uri).await
+    let _connection_guard = i2p.clone().connection_guard().await;
+    let retry_delays = [0_u64, 1, 2, 4, 6];
+    let mut last_error = None;
+    for (attempt, delay_secs) in retry_delays.into_iter().enumerate() {
+        if delay_secs > 0 {
+            tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+        }
+        match connect_via_socks5(proxy.clone(), uri.clone()).await {
+            Ok(stream) => return Ok(stream),
+            Err(error) => {
+                log_debug_event(
+                    "transport.rs:connect_via_i2p",
+                    "connect_i2p_retry",
+                    &format!(
+                        "target={} attempt={} max_attempts={} error={}",
+                        host,
+                        attempt + 1,
+                        retry_delays.len(),
+                        error
+                    ),
+                );
+                last_error = Some(error);
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| Error::Network("I2P connection failed".to_string())))
 }
 
 async fn connect_i2p_stream(i2p: I2pClient, host: &str, port: u16) -> Result<BoxedStream> {
+    if !is_i2p_destination(host) {
+        return Err(Error::Network(format!(
+            "I2P transport refuses non-I2P destination '{}'",
+            host
+        )));
+    }
     i2p.clone().start().await?;
     let proxy = i2p.clone().proxy_config().await;
+    let _connection_guard = i2p.clone().connection_guard().await;
     connect_socks5_stream(proxy, host, port).await
+}
+
+fn is_i2p_destination(host: &str) -> bool {
+    let normalized = host.trim_end_matches('.').to_ascii_lowercase();
+    normalized.ends_with(".i2p")
+}
+
+fn require_i2p_url(url: &str) -> Result<()> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|error| Error::Network(format!("Invalid URL for I2P transport: {error}")))?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| Error::Network("I2P URL has no destination host".to_string()))?;
+
+    if !is_i2p_destination(host) {
+        return Err(Error::Network(format!(
+            "I2P transport refuses non-I2P URL destination '{host}'"
+        )));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1241,6 +1317,19 @@ mod tests {
             config_auth.proxy_url(),
             "socks5h://user:pass@proxy.example.com:1080"
         );
+    }
+
+    #[test]
+    fn i2p_transport_accepts_only_i2p_destinations() {
+        assert!(is_i2p_destination("example.i2p"));
+        assert!(is_i2p_destination("HASH.B32.I2P."));
+        assert!(!is_i2p_destination("example.com"));
+        assert!(!is_i2p_destination("example.onion"));
+
+        assert!(require_i2p_url("https://example.i2p/path").is_ok());
+        assert!(require_i2p_url("http://hash.b32.i2p:9067/").is_ok());
+        assert!(require_i2p_url("https://example.com/").is_err());
+        assert!(require_i2p_url("https://example.onion/").is_err());
     }
 
     #[tokio::test]
