@@ -220,7 +220,10 @@ void main() {
               _TestEndpointHealthNotifier.new,
             ),
           ],
-          child: const MaterialApp(home: NodeSettingsScreen()),
+          child: MaterialApp(
+            theme: ThemeData(splashFactory: NoSplash.splashFactory),
+            home: const NodeSettingsScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
