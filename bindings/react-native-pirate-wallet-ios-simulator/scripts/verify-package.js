@@ -29,6 +29,36 @@ function rejectPath(relativePath) {
   }
 }
 
+function verifyFrameworkFiles(expectedFiles) {
+  const frameworkRoot = path.join(packageRoot, framework);
+  const actualFiles = [];
+  if (!fs.statSync(frameworkRoot, {throwIfNoEntry: false})?.isDirectory()) {
+    fail(`Required framework directory is missing: ${framework}`);
+    return;
+  }
+
+  function visit(directory) {
+    for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(absolutePath);
+      } else if (entry.isFile()) {
+        actualFiles.push(path.relative(frameworkRoot, absolutePath));
+      } else {
+        fail(`Unsupported entry in iOS framework: ${absolutePath}`);
+      }
+    }
+  }
+
+  visit(frameworkRoot);
+  const expected = new Set(expectedFiles.map(file => path.normalize(file)));
+  for (const actualFile of actualFiles) {
+    if (!expected.has(path.normalize(actualFile))) {
+      fail(`Unexpected file in iOS framework: ${actualFile}`);
+    }
+  }
+}
+
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'),
 );
@@ -63,6 +93,12 @@ if (packageJson.os?.length !== 1 || packageJson.os[0] !== 'darwin') {
   `${framework}/${slice}/Headers/pirate_wallet_service.h`,
   `${framework}/${slice}/libpirate_ffi_native.a`,
 ].forEach(requireFile);
+verifyFrameworkFiles([
+  'Info.plist',
+  `${slice}/Headers/module.modulemap`,
+  `${slice}/Headers/pirate_wallet_service.h`,
+  `${slice}/libpirate_ffi_native.a`,
+]);
 [
   'android',
   'example',
