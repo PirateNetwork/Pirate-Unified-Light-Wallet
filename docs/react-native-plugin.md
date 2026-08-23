@@ -6,10 +6,14 @@ The React Native packages in this repo live in:
 - `bindings/react-native-pirate-wallet-android/`
 - `bindings/react-native-pirate-wallet-android-x86_64/`
 - `bindings/react-native-pirate-wallet-ios-device/`
-- `bindings/react-native-pirate-wallet-ios-simulator/`
+- `bindings/react-native-pirate-wallet-ios-simulator-arm64/`
+- `bindings/react-native-pirate-wallet-ios-simulator-x86_64/`
 
-The public package contains the JavaScript API and platform bridges. The four
-companion packages contain the native Android and iOS binaries.
+The public package contains the JavaScript API and platform bridges. The five
+companion packages contain the native Android and iOS binaries. The simulator
+architectures are published separately so no npm tarball carries two copies of
+the Rust dependency graph; CocoaPods combines them into a universal simulator
+slice during installation.
 
 Related paths:
 
@@ -124,7 +128,7 @@ That script copies:
 into:
 
 - the Android ARM and x86_64 companion packages
-- the iOS device and simulator companion packages
+- the iOS device and two architecture-specific simulator companion packages
 
 If those native artifacts are missing, the React Native package will not build correctly.
 
@@ -142,7 +146,8 @@ Important files:
 - `bindings/react-native-pirate-wallet-android/package.json`
 - `bindings/react-native-pirate-wallet-android-x86_64/package.json`
 - `bindings/react-native-pirate-wallet-ios-device/package.json`
-- `bindings/react-native-pirate-wallet-ios-simulator/package.json`
+- `bindings/react-native-pirate-wallet-ios-simulator-arm64/package.json`
+- `bindings/react-native-pirate-wallet-ios-simulator-x86_64/package.json`
 
 The package README carries the JavaScript API and RPC reference:
 
@@ -152,7 +157,7 @@ The example app is the minimal real consumer used by CI:
 
 - `bindings/react-native-pirate-wallet/example/`
 
-Release CI creates and tests npm tarballs for the public wrapper and four
+Release CI creates and tests npm tarballs for the public wrapper and five
 native companions. They use the `react_native_plugin` version from
 `release-artifacts.toml`; publication sends the native packages before the
 wrapper.

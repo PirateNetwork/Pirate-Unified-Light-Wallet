@@ -77,7 +77,9 @@ await sdk.configureAccountStorage({
 - `src/`
 
 Native libraries are distributed in exact-version Android ARM, Android x86_64,
-iOS device, and iOS simulator companion packages.
+iOS device, iOS simulator arm64, and iOS simulator x86_64 companion packages.
+On macOS, CocoaPods combines the two thin simulator archives into the universal
+XCFramework slice expected by Xcode.
 
 ## Preparing native artifacts in this repo
 
@@ -90,7 +92,8 @@ bash scripts/prepare-react-native-plugin.sh
 That copies:
 
 - Android JNI libraries into the two Android companion packages
-- iOS XCFramework slices into the two iOS companion packages
+- the iOS device XCFramework slice and two thin simulator archives into the
+  three iOS companion packages
 
 There is also a minimal consumer app in:
 

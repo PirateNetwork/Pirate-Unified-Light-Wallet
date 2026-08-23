@@ -50,9 +50,9 @@ class IosPackagingPolicyTest(unittest.TestCase):
             "debuginfo",
         )
 
-    def test_device_and_universal_simulator_have_size_gates(self) -> None:
+    def test_each_publishable_ios_archive_has_a_size_gate(self) -> None:
         self.assertIn(
-            'IOS_MAX_COMPRESSED_ARCHIVE_BYTES="${IOS_MAX_COMPRESSED_ARCHIVE_BYTES:-190000000}"',
+            'IOS_NPM_MAX_COMPRESSED_ARCHIVE_BYTES="${IOS_NPM_MAX_COMPRESSED_ARCHIVE_BYTES:-190000000}"',
             self.ios_build,
         )
         self.assertRegex(
@@ -61,7 +61,29 @@ class IosPackagingPolicyTest(unittest.TestCase):
         )
         self.assertRegex(
             self.ios_build,
-            r'verify_compressed_archive_budget \\\n+  "\$SIM_LIB" \\\n+  "ios-arm64_x86_64-simulator"',
+            r'verify_compressed_archive_budget \\\n+  "\$CRATES_DIR/target/aarch64-apple-ios-sim/release/libpirate_ffi_native\.a" \\\n+  "ios-simulator-arm64"',
+        )
+        self.assertRegex(
+            self.ios_build,
+            r'verify_compressed_archive_budget \\\n+  "\$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native\.a" \\\n+  "ios-simulator-x86_64"',
+        )
+        self.assertNotRegex(
+            self.ios_build,
+            r'verify_compressed_archive_budget \\\n+  "\$SIM_LIB"',
+        )
+
+    def test_simulator_npm_payloads_are_architecture_split(self) -> None:
+        self.assertIn(
+            '"react-native-pirate-wallet-ios-simulator-arm64"',
+            self.react_native_package,
+        )
+        self.assertIn(
+            '"react-native-pirate-wallet-ios-simulator-x86_64"',
+            self.react_native_package,
+        )
+        self.assertNotIn(
+            '"react-native-pirate-wallet-ios-simulator"',
+            self.react_native_package,
         )
 
     def test_temporary_swift_package_tree_is_not_uploaded(self) -> None:
@@ -80,6 +102,14 @@ class IosPackagingPolicyTest(unittest.TestCase):
             '$package_name-npm-pack.json',
             self.react_native_package,
         )
+
+    def test_packaging_emits_wrapper_and_five_native_companions(self) -> None:
+        package_entries = re.findall(
+            r'^  "react-native-pirate-wallet[^\"]*"$',
+            self.react_native_package,
+            re.MULTILINE,
+        )
+        self.assertEqual(len(package_entries), 6)
 
 
 if __name__ == "__main__":

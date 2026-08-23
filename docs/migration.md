@@ -82,7 +82,7 @@ The replacement path from this repo is now:
 React Native package:
 
 - repo-owned package path: `bindings/react-native-pirate-wallet`
-- native binary package paths: `bindings/react-native-pirate-wallet-{android,android-x86_64,ios-device,ios-simulator}`
+- native binary package paths: `bindings/react-native-pirate-wallet-{android,android-x86_64,ios-device,ios-simulator-arm64,ios-simulator-x86_64}`
 - JS wrapper: mirrors the shielded-first SDK surface
 - Android native bridge: JNI-based bridge over `libpirate_ffi_native.so`
 - iOS native bridge: Swift bridge over `PirateWalletNative.xcframework`
