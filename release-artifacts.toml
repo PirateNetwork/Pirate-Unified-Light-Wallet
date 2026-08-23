@@ -26,5 +26,5 @@ version = "0.3.0"
 artifact = "pirate-android-sdk"
 
 [react_native_plugin]
-version = "0.3.0"
+version = "0.3.1"
 artifact = "react-native-pirate-wallet"
