@@ -157,6 +157,14 @@ native companions. They use the `react_native_plugin` version from
 `release-artifacts.toml`; publication sends the native packages before the
 wrapper.
 
+The iOS SDK build uses a release-only Cargo configuration with debug metadata
+disabled, thin LTO enabled, and one code-generation unit. It then removes
+DWARF data and local symbols from each thin static archive before creating the
+XCFramework. The package verifiers reject any unrecognized framework files, so
+debug bundles and other build by-products cannot silently enter an npm release.
+Device arm64 and simulator arm64/x86_64 code remain in their respective native
+packages, and the build verifies those exact architecture sets before staging.
+
 ## Installing in a React Native app
 
 Typical install flow:

@@ -22,6 +22,16 @@ fi
 
 export CARGO_INCREMENTAL=0
 export IPHONEOS_DEPLOYMENT_TARGET="$IOS_MIN_DEPLOYMENT_TARGET"
+# Keep release-only compiler data out of the static libraries at the source.
+# The XCFramework is consumed as a binary dependency, so Cargo debug metadata
+# and incremental state provide no value to downstream applications. Thin LTO
+# also removes duplicate/unreachable Rust code across crate boundaries before
+# the two simulator architectures are combined.
+export CARGO_PROFILE_RELEASE_DEBUG=0
+export CARGO_PROFILE_RELEASE_INCREMENTAL=false
+export CARGO_PROFILE_RELEASE_LTO=thin
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+export CARGO_PROFILE_RELEASE_STRIP=debuginfo
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
 TMP_DIR="$(mktemp -d)"
@@ -35,7 +45,11 @@ strip_static_archive() {
   local symbols_file="$TMP_DIR/$target_name-exported-symbols.txt"
 
   original_size="$(stat -f%z "$archive")"
-  xcrun strip -S "$archive"
+  # -S drops DWARF/debug data. -x drops local linker symbols while retaining
+  # the external and undefined symbols a static archive needs at link time.
+  # Keep this as a post-build defence because vendored C archives do not
+  # necessarily inherit Cargo's Rust code-generation settings.
+  xcrun strip -S -x "$archive"
   xcrun ranlib "$archive"
   stripped_size="$(stat -f%z "$archive")"
 
@@ -54,15 +68,36 @@ strip_static_archive() {
     fi
   done
 
-  echo "Stripped iOS debug symbols for $target_name ($original_size -> $stripped_size bytes)"
+  echo "Stripped iOS debug metadata and local symbols for $target_name ($original_size -> $stripped_size bytes)"
+}
+
+verify_architectures() {
+  local archive="$1"
+  local label="$2"
+  shift 2
+  local actual
+  local expected
+  actual="$(lipo -archs "$archive")"
+
+  if (( $(wc -w <<< "$actual") != $# )); then
+    echo "$label has unexpected architectures: $actual" >&2
+    exit 1
+  fi
+  for expected in "$@"; do
+    if [[ " $actual " != *" $expected "* ]]; then
+      echo "$label is missing architecture $expected: $actual" >&2
+      exit 1
+    fi
+  done
+  echo "Verified $label architectures: $actual"
 }
 
 cd "$CRATES_DIR"
 # The XCFramework packages static libraries only. Build just the staticlib
 # artifact so iOS packaging does not waste time or fail linking an unused cdylib.
-cargo rustc --release --target aarch64-apple-ios --package pirate-ffi-native --lib -- --crate-type staticlib
-cargo rustc --release --target aarch64-apple-ios-sim --package pirate-ffi-native --lib -- --crate-type staticlib
-cargo rustc --release --target x86_64-apple-ios --package pirate-ffi-native --lib -- --crate-type staticlib
+cargo rustc --release --locked --target aarch64-apple-ios --package pirate-ffi-native --lib -- --crate-type staticlib
+cargo rustc --release --locked --target aarch64-apple-ios-sim --package pirate-ffi-native --lib -- --crate-type staticlib
+cargo rustc --release --locked --target x86_64-apple-ios --package pirate-ffi-native --lib -- --crate-type staticlib
 
 strip_static_archive \
   "$CRATES_DIR/target/aarch64-apple-ios/release/libpirate_ffi_native.a" \
@@ -91,6 +126,15 @@ lipo -create \
   "$CRATES_DIR/target/aarch64-apple-ios-sim/release/libpirate_ffi_native.a" \
   "$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native.a" \
   -output "$SIM_LIB"
+
+verify_architectures \
+  "$CRATES_DIR/target/aarch64-apple-ios/release/libpirate_ffi_native.a" \
+  "iOS device archive" \
+  arm64
+verify_architectures \
+  "$SIM_LIB" \
+  "iOS simulator archive" \
+  arm64 x86_64
 
 mkdir -p "$FRAMEWORKS_DIR"
 rm -rf "$FRAMEWORKS_DIR/PirateWalletNative.xcframework"
