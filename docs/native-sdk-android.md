@@ -82,10 +82,17 @@ It deliberately does not expose:
 
 ## Build
 
-Build the native header:
+Build the native library and validate its checked-in ABI header:
 
 ```bash
 bash scripts/build-native-ffi.sh
+```
+
+Regenerate the public header only when intentionally changing the C ABI:
+
+```bash
+cargo install cbindgen --locked --version 0.29.3
+bash scripts/generate-native-ffi-header.sh --write
 ```
 
 Build the Android SDK:

@@ -77,10 +77,19 @@ Behavior:
 
 ## Build
 
-Generate the native header:
+Build the native library and validate its checked-in ABI header:
 
 ```bash
 bash scripts/build-native-ffi.sh
+```
+
+Header generation is an explicit maintainer operation and requires the pinned
+cbindgen version. It is intentionally separate from packaging so a runner's
+ambient tools can never mutate release inputs:
+
+```bash
+cargo install cbindgen --locked --version 0.29.3
+bash scripts/generate-native-ffi-header.sh --write
 ```
 
 Package the iOS SDK:

@@ -1,10 +1,8 @@
 language = "C"
+cpp_compat = true
 pragma_once = true
 include_guard = "PIRATE_WALLET_SERVICE_H"
 include_version = true
-
-[parse]
-expand = ["pirate-ffi-native"]
 
 [export]
 include = [
