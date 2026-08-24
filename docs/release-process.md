@@ -7,7 +7,8 @@ Release inputs
 
 Before building release artifacts:
 
-- update the application version in `app/pubspec.yaml`
+- set the upcoming application baseline in `app/pubspec.yaml` so local and
+  non-tag builds identify themselves accurately
 - ensure Rust, Flutter, and dependency checks pass
 - ensure platform signing inputs are available where required
 - ensure release notes and published checksums will be prepared with the artifacts
@@ -34,7 +35,8 @@ v1.1.1
 the script updates `app/pubspec.yaml` for the build so that Flutter platform metadata uses:
 
 - build name: `1.1.1`
-- build number: `1` by default, unless `VERSION_BUILD_NUMBER` is set
+- build number: `10101` by default (`major * 10000 + minor * 100 + patch`),
+  unless `VERSION_BUILD_NUMBER` is set
 
 That version then flows into:
 
@@ -45,6 +47,11 @@ That version then flows into:
 - the in-app settings version display via `package_info_plus`
 
 Rust build info used by the Verify Build screen is also resolved from `app/pubspec.yaml`, so it matches the app release version instead of the crate workspace version.
+
+The committed baseline prevents ordinary development builds from falling back
+to an obsolete release number. Tag builds still resolve the tag independently,
+and malformed `v...` tags fail packaging instead of silently publishing with
+the baseline version.
 
 Backend artifact version gating
 -------------------------------

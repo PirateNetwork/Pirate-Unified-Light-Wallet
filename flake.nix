@@ -124,7 +124,7 @@
             shellEnv
             // {
               inherit pname;
-              version = "1.0.6";
+              version = "1.1.8";
               src = ./.;
               nativeBuildInputs = commonPackageInputs ++ extraNativeBuildInputs;
               dontConfigure = true;

@@ -518,6 +518,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev
 
+      - name: Resolve tagged application version
+        run: bash scripts/sync-version-from-tag.sh
+
       - name: Get dependencies
         run: |
           cd app
