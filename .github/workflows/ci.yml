@@ -900,9 +900,8 @@ jobs:
             -o -name 'pirate_ffi_native.dll' \
             -o -name 'pirate_ffi_native.lib' \
           \) -exec cp -f {} dist/native-ffi/ \;
-          if [ -f crates/pirate-ffi-native/pirate_wallet_service.h ]; then
-            cp -f crates/pirate-ffi-native/pirate_wallet_service.h dist/native-ffi/
-          fi
+          test -s crates/pirate-ffi-native/pirate_wallet_service.h
+          cp -f crates/pirate-ffi-native/pirate_wallet_service.h dist/native-ffi/
           cp -R bindings/ios-sdk/. dist/native-ffi/ios-sdk/
           cp -R bindings/android-sdk/. dist/native-ffi/android-sdk/
 
