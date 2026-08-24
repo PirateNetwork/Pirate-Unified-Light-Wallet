@@ -3592,7 +3592,8 @@ impl LightClient {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
 
-            let request = tonic::Request::new(Empty {});
+            let mut request = tonic::Request::new(Empty {});
+            request.set_timeout(self.config.request_timeout);
             let response = client.get_lightd_info(request).await?;
 
             Ok(LightdInfo::from(response.into_inner()))

@@ -309,6 +309,8 @@ const HISTORIC_AUX_FLUSH_INTERVAL_MS: u64 = 30_000;
 const HISTORIC_SPARSE_CHECKPOINT_INTERVAL: u64 = 50_000;
 const MAX_REORG_SEARCH_DEPTH: u64 = 2_000;
 const CANONICAL_BLOCK_WINDOW: usize = MAX_REORG_SEARCH_DEPTH as usize + 1;
+const I2P_SERVER_INFO_TIMEOUT: Duration = Duration::from_secs(45);
+const I2P_SERVER_INFO_ATTEMPTS: usize = 2;
 #[cfg(test)]
 const SERVER_BATCH_GROUP_TARGET_BYTES: u64 = 4_000_000;
 #[cfg(test)]
@@ -335,6 +337,29 @@ enum TipWitnessValidationOutcome {
 struct WitnessCheckDbOutcome {
     repair_range: Option<(u64, u64)>,
     checked: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ServerInfoValidationPolicy {
+    attempt_timeout: Duration,
+    max_attempts: usize,
+}
+
+fn server_info_validation_policy(transport: TransportMode) -> ServerInfoValidationPolicy {
+    match transport {
+        TransportMode::Direct => ServerInfoValidationPolicy {
+            attempt_timeout: Duration::from_secs(5),
+            max_attempts: 1,
+        },
+        TransportMode::I2p => ServerInfoValidationPolicy {
+            attempt_timeout: I2P_SERVER_INFO_TIMEOUT,
+            max_attempts: I2P_SERVER_INFO_ATTEMPTS,
+        },
+        TransportMode::Tor | TransportMode::Socks5 => ServerInfoValidationPolicy {
+            attempt_timeout: Duration::from_secs(15),
+            max_attempts: 1,
+        },
+    }
 }
 
 impl Default for SyncConfig {
@@ -1552,20 +1577,67 @@ impl SyncEngine {
     }
 
     async fn validated_server_info(&self) -> Result<LightdInfo> {
-        let timeout = match self.client.transport_mode() {
-            TransportMode::Direct => Duration::from_secs(5),
-            TransportMode::Tor | TransportMode::I2p | TransportMode::Socks5 => {
-                Duration::from_secs(15)
+        let transport = self.client.transport_mode();
+        let policy = server_info_validation_policy(transport);
+        let mut attempt = 0usize;
+
+        let info = loop {
+            attempt += 1;
+            append_sync_decision_log(
+                "sync.rs:validated_server_info",
+                "server info validation attempt",
+                format!(
+                    "\"transport\":\"{:?}\",\"attempt\":{},\"max_attempts\":{},\"timeout_ms\":{}",
+                    transport,
+                    attempt,
+                    policy.max_attempts,
+                    policy.attempt_timeout.as_millis()
+                ),
+            );
+
+            let result =
+                tokio::time::timeout(policy.attempt_timeout, self.client.get_lightd_info()).await;
+
+            match result {
+                Ok(Ok(info)) => break info,
+                Ok(Err(error)) if attempt >= policy.max_attempts => return Err(error),
+                Err(_) if attempt >= policy.max_attempts => {
+                    return Err(Error::Network(format!(
+                        "Timed out after {} attempts of {:?} while validating server consensus over {:?}",
+                        policy.max_attempts, policy.attempt_timeout, transport
+                    )));
+                }
+                Ok(Err(error)) => {
+                    tracing::warn!(
+                        "Server-info validation failed over {:?} (attempt {}/{}): {}; reconnecting",
+                        transport,
+                        attempt,
+                        policy.max_attempts,
+                        error
+                    );
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        "Server-info validation timed out over {:?} after {:?} (attempt {}/{}); reconnecting",
+                        transport,
+                        policy.attempt_timeout,
+                        attempt,
+                        policy.max_attempts
+                    );
+                }
             }
+
+            self.client.disconnect().await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::timeout(policy.attempt_timeout, self.client.connect())
+                .await
+                .map_err(|_| {
+                    Error::Network(format!(
+                        "Timed out after {:?} while reconnecting {:?} for server validation",
+                        policy.attempt_timeout, transport
+                    ))
+                })??;
         };
-        let info = tokio::time::timeout(timeout, self.client.get_lightd_info())
-            .await
-            .map_err(|_| {
-                Error::Network(format!(
-                    "Timed out after {:?} while validating the server consensus branch",
-                    timeout
-                ))
-            })??;
         self.validate_server_consensus_branch(&info).await?;
         Ok(info)
     }
@@ -11513,6 +11585,38 @@ fn trial_decrypt_block(
 mod tests {
     use super::*;
     use rand::{rngs::StdRng, SeedableRng};
+
+    #[test]
+    fn server_info_validation_reserves_extra_time_and_a_fresh_channel_for_i2p() {
+        assert_eq!(
+            server_info_validation_policy(TransportMode::I2p),
+            ServerInfoValidationPolicy {
+                attempt_timeout: Duration::from_secs(45),
+                max_attempts: 2,
+            }
+        );
+        assert_eq!(
+            server_info_validation_policy(TransportMode::Direct),
+            ServerInfoValidationPolicy {
+                attempt_timeout: Duration::from_secs(5),
+                max_attempts: 1,
+            }
+        );
+        assert_eq!(
+            server_info_validation_policy(TransportMode::Tor),
+            ServerInfoValidationPolicy {
+                attempt_timeout: Duration::from_secs(15),
+                max_attempts: 1,
+            }
+        );
+        assert_eq!(
+            server_info_validation_policy(TransportMode::Socks5),
+            ServerInfoValidationPolicy {
+                attempt_timeout: Duration::from_secs(15),
+                max_attempts: 1,
+            }
+        );
+    }
 
     fn shardtree_test_database(
         passphrase: &str,
