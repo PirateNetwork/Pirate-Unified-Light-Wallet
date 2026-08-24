@@ -172,6 +172,7 @@ const SAPLING_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
 const ORCHARD_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
 const SAPLING_TABLE_PREFIX: &str = "sapling";
 const ORCHARD_TABLE_PREFIX: &str = "orchard";
+const SYNC_KEY_INVENTORY_LOG_SCHEMA_VERSION: u8 = 1;
 const MIN_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 8_000_000;
 const DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 64_000_000;
 const MAX_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 128_000_000;
@@ -228,6 +229,7 @@ fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKey
 
     Ok(Some(WalletKeyGroup {
         key_id,
+        key_type: key.key_type,
         sapling_dfvk,
         orchard_fvk,
         sapling_ivk,
@@ -1995,8 +1997,13 @@ impl SyncEngine {
             account_id: secret.account_id,
             address_network_type,
         };
+        let trial_decrypt_keys = TrialDecryptKeys::from_key_groups(&key_groups);
+        let key_inventory =
+            SyncKeyInventory::from_sources(&account_keys, &key_groups, &trial_decrypt_keys);
+        key_inventory.append_debug_event(&wallet_id);
+
         self.storage = Some(sink);
-        self.trial_decrypt_keys = TrialDecryptKeys::from_key_groups(&key_groups);
+        self.trial_decrypt_keys = trial_decrypt_keys;
         self.keys = key_groups;
         if let Ok(mut last) = self.last_witness_check_height.try_write() {
             *last = 0;
@@ -7357,6 +7364,7 @@ impl SyncEngine {
 
             let mut fallback = WalletKeyGroup {
                 key_id: 0,
+                key_type: KeyType::ImportView,
                 sapling_dfvk: None,
                 orchard_fvk: None,
                 sapling_ivk: None,
@@ -10946,6 +10954,7 @@ struct PositionMaps {
 #[derive(Clone)]
 struct WalletKeyGroup {
     key_id: i64,
+    key_type: KeyType,
     sapling_dfvk: Option<ExtendedFullViewingKey>,
     orchard_fvk: Option<IronwoodExtendedFullViewingKey>,
     sapling_ivk: Option<[u8; 32]>,
@@ -10963,6 +10972,192 @@ struct TrialDecryptKeys {
     orchard_key_ids: Vec<i64>,
     orchard_scopes: Vec<AddressScope>,
     orchard_fvks: Vec<orchard::keys::FullViewingKey>,
+}
+
+/// Privacy-safe summary of the keys that reached the sync scanner.
+///
+/// Stored account-key counts are deliberately kept separate from usable key
+/// groups and prepared IVKs. That distinction makes incomplete or unsupported
+/// records visible without logging any key bytes, addresses, or fingerprints.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct SyncKeyInventory {
+    account_key_count: usize,
+    key_group_count: usize,
+    seed_count: usize,
+    imported_spending_count: usize,
+    imported_viewing_count: usize,
+    spendable_count: usize,
+    sapling_key_group_count: usize,
+    ironwood_key_group_count: usize,
+    sapling_imported_spending_count: usize,
+    ironwood_imported_spending_count: usize,
+    sapling_imported_viewing_count: usize,
+    ironwood_imported_viewing_count: usize,
+    sapling_imported_spending_key_group_count: usize,
+    ironwood_imported_spending_key_group_count: usize,
+    sapling_imported_spending_ivk_count: usize,
+    ironwood_imported_spending_ivk_count: usize,
+    sapling_min_birthday_height: Option<i64>,
+    ironwood_min_birthday_height: Option<i64>,
+    sapling_ivk_count: usize,
+    ironwood_ivk_count: usize,
+    sapling_external_ivk_count: usize,
+    sapling_internal_ivk_count: usize,
+    ironwood_external_ivk_count: usize,
+    ironwood_internal_ivk_count: usize,
+}
+
+impl SyncKeyInventory {
+    fn from_sources(
+        account_keys: &[AccountKey],
+        key_groups: &[WalletKeyGroup],
+        trial_decrypt_keys: &TrialDecryptKeys,
+    ) -> Self {
+        let sapling_imported_spending_key_ids = key_groups
+            .iter()
+            .filter(|group| group.key_type == KeyType::ImportSpend && group.sapling_dfvk.is_some())
+            .map(|group| group.key_id)
+            .collect::<HashSet<_>>();
+        let ironwood_imported_spending_key_ids = key_groups
+            .iter()
+            .filter(|group| group.key_type == KeyType::ImportSpend && group.orchard_fvk.is_some())
+            .map(|group| group.key_id)
+            .collect::<HashSet<_>>();
+        let mut inventory = Self {
+            account_key_count: account_keys.len(),
+            key_group_count: key_groups.len(),
+            sapling_key_group_count: key_groups
+                .iter()
+                .filter(|group| group.sapling_dfvk.is_some())
+                .count(),
+            ironwood_key_group_count: key_groups
+                .iter()
+                .filter(|group| group.orchard_fvk.is_some())
+                .count(),
+            sapling_imported_spending_key_group_count: sapling_imported_spending_key_ids.len(),
+            ironwood_imported_spending_key_group_count: ironwood_imported_spending_key_ids.len(),
+            sapling_imported_spending_ivk_count: trial_decrypt_keys
+                .sapling_key_ids
+                .iter()
+                .filter(|key_id| sapling_imported_spending_key_ids.contains(key_id))
+                .count(),
+            ironwood_imported_spending_ivk_count: trial_decrypt_keys
+                .orchard_key_ids
+                .iter()
+                .filter(|key_id| ironwood_imported_spending_key_ids.contains(key_id))
+                .count(),
+            sapling_ivk_count: trial_decrypt_keys.sapling_ivks.len(),
+            ironwood_ivk_count: trial_decrypt_keys.orchard_ivks.len(),
+            sapling_external_ivk_count: trial_decrypt_keys
+                .sapling_scopes
+                .iter()
+                .filter(|scope| **scope == AddressScope::External)
+                .count(),
+            sapling_internal_ivk_count: trial_decrypt_keys
+                .sapling_scopes
+                .iter()
+                .filter(|scope| **scope == AddressScope::Internal)
+                .count(),
+            ironwood_external_ivk_count: trial_decrypt_keys
+                .orchard_scopes
+                .iter()
+                .filter(|scope| **scope == AddressScope::External)
+                .count(),
+            ironwood_internal_ivk_count: trial_decrypt_keys
+                .orchard_scopes
+                .iter()
+                .filter(|scope| **scope == AddressScope::Internal)
+                .count(),
+            ..Self::default()
+        };
+
+        for key in account_keys {
+            let has_sapling = key.sapling_extsk.is_some() || key.sapling_dfvk.is_some();
+            let has_ironwood = key.orchard_extsk.is_some() || key.orchard_fvk.is_some();
+
+            match key.key_type {
+                KeyType::Seed => inventory.seed_count += 1,
+                KeyType::ImportSpend => {
+                    inventory.imported_spending_count += 1;
+                    inventory.sapling_imported_spending_count += usize::from(has_sapling);
+                    inventory.ironwood_imported_spending_count += usize::from(has_ironwood);
+                }
+                KeyType::ImportView => {
+                    inventory.imported_viewing_count += 1;
+                    inventory.sapling_imported_viewing_count += usize::from(has_sapling);
+                    inventory.ironwood_imported_viewing_count += usize::from(has_ironwood);
+                }
+            }
+            if key.spendable {
+                inventory.spendable_count += 1;
+            }
+            if has_sapling {
+                inventory.sapling_min_birthday_height = Some(
+                    inventory
+                        .sapling_min_birthday_height
+                        .map_or(key.birthday_height, |height| {
+                            height.min(key.birthday_height)
+                        }),
+                );
+            }
+            if has_ironwood {
+                inventory.ironwood_min_birthday_height = Some(
+                    inventory
+                        .ironwood_min_birthday_height
+                        .map_or(key.birthday_height, |height| {
+                            height.min(key.birthday_height)
+                        }),
+                );
+            }
+        }
+
+        inventory
+    }
+
+    fn append_debug_event(self, wallet_id: &str) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let event = serde_json::json!({
+            "id": "log_sync_key_inventory",
+            "timestamp": timestamp,
+            "location": "sync::SyncEngine::with_wallet_at_path",
+            "message": "sync key inventory",
+            "data": {
+                "schema_version": SYNC_KEY_INVENTORY_LOG_SCHEMA_VERSION,
+                "wallet_id": wallet_id,
+                "account_key_count": self.account_key_count,
+                "key_group_count": self.key_group_count,
+                "seed_count": self.seed_count,
+                "imported_spending_count": self.imported_spending_count,
+                "imported_viewing_count": self.imported_viewing_count,
+                "spendable_count": self.spendable_count,
+                "sapling_key_group_count": self.sapling_key_group_count,
+                "ironwood_key_group_count": self.ironwood_key_group_count,
+                "sapling_imported_spending_count": self.sapling_imported_spending_count,
+                "ironwood_imported_spending_count": self.ironwood_imported_spending_count,
+                "sapling_imported_viewing_count": self.sapling_imported_viewing_count,
+                "ironwood_imported_viewing_count": self.ironwood_imported_viewing_count,
+                "sapling_imported_spending_key_group_count": self.sapling_imported_spending_key_group_count,
+                "ironwood_imported_spending_key_group_count": self.ironwood_imported_spending_key_group_count,
+                "sapling_imported_spending_ivk_count": self.sapling_imported_spending_ivk_count,
+                "ironwood_imported_spending_ivk_count": self.ironwood_imported_spending_ivk_count,
+                "sapling_min_birthday_height": self.sapling_min_birthday_height,
+                "ironwood_min_birthday_height": self.ironwood_min_birthday_height,
+                "sapling_ivk_count": self.sapling_ivk_count,
+                "ironwood_ivk_count": self.ironwood_ivk_count,
+                "sapling_external_ivk_count": self.sapling_external_ivk_count,
+                "sapling_internal_ivk_count": self.sapling_internal_ivk_count,
+                "ironwood_external_ivk_count": self.ironwood_external_ivk_count,
+                "ironwood_internal_ivk_count": self.ironwood_internal_ivk_count,
+            },
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "K",
+        });
+        append_debug_log_line(&event.to_string());
+    }
 }
 
 impl TrialDecryptKeys {
@@ -11708,6 +11903,95 @@ mod tests {
             .derive_account(133, 0)
             .unwrap();
         (sapling, ironwood)
+    }
+
+    #[test]
+    fn sync_key_inventory_distinguishes_imported_pools_and_trial_ivks() {
+        const MNEMONIC: &str =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        const OTHER_MNEMONIC: &str =
+            "legal winner thank year wave sausage worth useful legal winner thank yellow";
+        let (sapling, ironwood) = test_spending_keys(MNEMONIC);
+        let (imported_sapling, imported_ironwood) = test_spending_keys(OTHER_MNEMONIC);
+        let keys = vec![
+            AccountKey {
+                id: Some(1),
+                account_id: 1,
+                key_type: KeyType::Seed,
+                key_scope: KeyScope::Account,
+                label: None,
+                birthday_height: 1,
+                created_at: 1,
+                spendable: true,
+                sapling_extsk: Some(sapling.to_bytes()),
+                sapling_dfvk: None,
+                orchard_extsk: Some(ironwood.to_bytes()),
+                orchard_fvk: None,
+                encrypted_mnemonic: None,
+            },
+            AccountKey {
+                id: Some(2),
+                account_id: 1,
+                key_type: KeyType::ImportSpend,
+                key_scope: KeyScope::Account,
+                label: None,
+                birthday_height: 1,
+                created_at: 2,
+                spendable: true,
+                sapling_extsk: Some(imported_sapling.to_bytes()),
+                sapling_dfvk: None,
+                orchard_extsk: None,
+                orchard_fvk: None,
+                encrypted_mnemonic: None,
+            },
+            AccountKey {
+                id: Some(3),
+                account_id: 1,
+                key_type: KeyType::ImportView,
+                key_scope: KeyScope::Account,
+                label: None,
+                birthday_height: 1,
+                created_at: 3,
+                spendable: false,
+                sapling_extsk: None,
+                sapling_dfvk: None,
+                orchard_extsk: None,
+                orchard_fvk: Some(imported_ironwood.to_extended_fvk().to_bytes()),
+                encrypted_mnemonic: None,
+            },
+        ];
+        let key_groups = keys
+            .iter()
+            .filter_map(|key| build_key_group_from_account_key(key).unwrap())
+            .collect::<Vec<_>>();
+        let trial_decrypt_keys = TrialDecryptKeys::from_key_groups(&key_groups);
+
+        let inventory = SyncKeyInventory::from_sources(&keys, &key_groups, &trial_decrypt_keys);
+
+        assert_eq!(inventory.account_key_count, 3);
+        assert_eq!(inventory.key_group_count, 3);
+        assert_eq!(inventory.seed_count, 1);
+        assert_eq!(inventory.imported_spending_count, 1);
+        assert_eq!(inventory.imported_viewing_count, 1);
+        assert_eq!(inventory.spendable_count, 2);
+        assert_eq!(inventory.sapling_key_group_count, 2);
+        assert_eq!(inventory.ironwood_key_group_count, 2);
+        assert_eq!(inventory.sapling_imported_spending_count, 1);
+        assert_eq!(inventory.ironwood_imported_spending_count, 0);
+        assert_eq!(inventory.sapling_imported_viewing_count, 0);
+        assert_eq!(inventory.ironwood_imported_viewing_count, 1);
+        assert_eq!(inventory.sapling_imported_spending_key_group_count, 1);
+        assert_eq!(inventory.ironwood_imported_spending_key_group_count, 0);
+        assert_eq!(inventory.sapling_imported_spending_ivk_count, 2);
+        assert_eq!(inventory.ironwood_imported_spending_ivk_count, 0);
+        assert_eq!(inventory.sapling_min_birthday_height, Some(1));
+        assert_eq!(inventory.ironwood_min_birthday_height, Some(1));
+        assert_eq!(inventory.sapling_ivk_count, 4);
+        assert_eq!(inventory.ironwood_ivk_count, 4);
+        assert_eq!(inventory.sapling_external_ivk_count, 2);
+        assert_eq!(inventory.sapling_internal_ivk_count, 2);
+        assert_eq!(inventory.ironwood_external_ivk_count, 2);
+        assert_eq!(inventory.ironwood_internal_ivk_count, 2);
     }
 
     #[test]
