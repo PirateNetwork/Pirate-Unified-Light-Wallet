@@ -4,11 +4,20 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 
 MANIFEST_PATH = Path("release-artifacts.toml")
 REACT_NATIVE_PACKAGE_PATH = Path("bindings/react-native-pirate-wallet/package.json")
+RUST_WORKSPACE_PATH = Path("crates/Cargo.toml")
+RUST_ARTIFACT_PACKAGE_PATHS = {
+    "cli": Path("crates/piratewallet-cli/Cargo.toml"),
+    "qortal_cli": Path("crates/pirate-qortal-cli/Cargo.toml"),
+    "qortal_jni": Path("crates/pirate-qortal-jni/Cargo.toml"),
+    "native_ffi": Path("crates/pirate-ffi-native/Cargo.toml"),
+}
+ANDROID_SDK_GRADLE_PATH = Path("bindings/android-sdk/build.gradle.kts")
 REACT_NATIVE_BINARY_PACKAGE_PATHS = (
     Path("bindings/react-native-pirate-wallet-android/package.json"),
     Path("bindings/react-native-pirate-wallet-android-x86_64/package.json"),
@@ -90,15 +99,67 @@ def changed_artifacts(current: dict, previous: dict | None) -> dict:
     return result
 
 
+def require_matching_version(
+    current: dict,
+    artifact: str,
+    source_name: str,
+    source_version: str | None,
+) -> None:
+    release_version = current.get(artifact, {}).get("version")
+    if source_version != release_version:
+        raise ValueError(
+            f"{source_name} version does not match release-artifacts.toml "
+            f"({source_version!r} != {release_version!r})"
+        )
+
+
+def rust_package_version(path: Path, workspace_version: str) -> str | None:
+    package = tomllib.loads(path.read_text(encoding="utf-8")).get("package", {})
+    version = package.get("version")
+    if isinstance(version, str):
+        return version
+    if isinstance(version, dict) and version.get("workspace") is True:
+        return workspace_version
+    return None
+
+
 def validate_source_versions(current: dict) -> None:
+    workspace = tomllib.loads(RUST_WORKSPACE_PATH.read_text(encoding="utf-8"))
+    workspace_version = workspace.get("workspace", {}).get("package", {}).get(
+        "version"
+    )
+    if not isinstance(workspace_version, str):
+        raise ValueError("Rust workspace package version is missing")
+    for artifact, package_path in RUST_ARTIFACT_PACKAGE_PATHS.items():
+        require_matching_version(
+            current,
+            artifact,
+            package_path.parent.name,
+            rust_package_version(package_path, workspace_version),
+        )
+
+    android_gradle = ANDROID_SDK_GRADLE_PATH.read_text(encoding="utf-8")
+    android_version_match = re.search(
+        r'^version\s*=\s*"([^"]+)"\s*$',
+        android_gradle,
+        re.MULTILINE,
+    )
+    require_matching_version(
+        current,
+        "android_sdk",
+        "Android SDK",
+        None if android_version_match is None else android_version_match.group(1),
+    )
+
     package = json.loads(REACT_NATIVE_PACKAGE_PATH.read_text(encoding="utf-8"))
     package_version = package.get("version")
     release_version = current.get("react_native_plugin", {}).get("version")
-    if package_version != release_version:
-        raise ValueError(
-            "React Native package version does not match release-artifacts.toml "
-            f"({package_version!r} != {release_version!r})"
-        )
+    require_matching_version(
+        current,
+        "react_native_plugin",
+        "React Native package",
+        package_version,
+    )
     for binary_package_path in REACT_NATIVE_BINARY_PACKAGE_PATHS:
         binary_package = json.loads(binary_package_path.read_text(encoding="utf-8"))
         binary_package_name = binary_package.get("name")
