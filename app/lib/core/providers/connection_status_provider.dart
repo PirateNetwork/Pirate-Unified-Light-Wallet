@@ -8,6 +8,17 @@ import 'wallet_providers.dart';
 
 enum ConnectionStatusLevel { secure, limited, connecting, offline }
 
+/// Whether current runtime evidence is sufficient to report a connection.
+///
+/// A validated endpoint remains authoritative while sync is obtaining its
+/// initial target height or recovering a stopped task.
+bool hasValidatedConnectionSignal({
+  required bool hasSyncStatus,
+  required EndpointHealthPhase endpointHealthPhase,
+}) {
+  return hasSyncStatus || endpointHealthPhase == EndpointHealthPhase.healthy;
+}
+
 /// Real-time connection status used by status indicators outside the home screen.
 ///
 /// This mirrors the same runtime signals as Home:
@@ -75,7 +86,13 @@ final connectionStatusLevelProvider = Provider<ConnectionStatusLevel>((ref) {
         ? ConnectionStatusLevel.offline
         : ConnectionStatusLevel.connecting;
   }
-  if (!hasStatus) {
+  // Endpoint health is the authoritative connection signal. Sync progress can
+  // legitimately have no target while a private transport validates its first
+  // server snapshot, or briefly after a recoverable sync-task restart.
+  if (!hasValidatedConnectionSignal(
+    hasSyncStatus: hasStatus,
+    endpointHealthPhase: endpointHealth.phase,
+  )) {
     return ConnectionStatusLevel.connecting;
   }
   return usesPrivacyTunnel
