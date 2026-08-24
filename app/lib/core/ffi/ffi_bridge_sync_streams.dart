@@ -2,10 +2,61 @@
 
 part of 'ffi_bridge.dart';
 
+@visibleForTesting
+class SyncRestartBackoff {
+  static const List<Duration> _delays = <Duration>[
+    Duration(seconds: 2),
+    Duration(seconds: 5),
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
+  ];
+
+  int _stoppedPolls = 0;
+  int _runningPolls = 0;
+  int _restartAttempts = 0;
+  DateTime? _lastRestartAttempt;
+
+  bool shouldRestart({required bool isRunning, required DateTime now}) {
+    if (isRunning) {
+      _stoppedPolls = 0;
+      _runningPolls += 1;
+      if (_runningPolls >= 3) {
+        _restartAttempts = 0;
+        _lastRestartAttempt = null;
+      }
+      return false;
+    }
+
+    _runningPolls = 0;
+    _stoppedPolls += 1;
+    if (_stoppedPolls < 2) return false;
+
+    final lastAttempt = _lastRestartAttempt;
+    if (lastAttempt == null) return true;
+    final delayIndex = (_restartAttempts - 1).clamp(0, _delays.length - 1);
+    return now.difference(lastAttempt) >= _delays[delayIndex];
+  }
+
+  void recordRestartAttempt(DateTime now) {
+    _lastRestartAttempt = now;
+    _restartAttempts += 1;
+    _stoppedPolls = 0;
+  }
+
+  void reset() {
+    _stoppedPolls = 0;
+    _runningPolls = 0;
+    _restartAttempts = 0;
+    _lastRestartAttempt = null;
+  }
+}
+
 class _SyncProgressPollState {
   int idleCount = 0;
   int lastHeight = 0;
   int lastTargetHeight = 0;
+  final SyncRestartBackoff restartBackoff = SyncRestartBackoff();
 
   void recordProgress(SyncStatus status) {
     final currentHeight = status.localHeight.toInt();
@@ -74,6 +125,7 @@ class _FfiBridgeSyncStreamHelper {
           tunnelMode,
         );
         if (!tunnelReady) {
+          state.restartBackoff.reset();
           final status = await FfiBridge.syncStatus(id);
           yield status;
           await Future<void>.delayed(const Duration(seconds: 2));
@@ -82,6 +134,23 @@ class _FfiBridgeSyncStreamHelper {
 
         final isRunning = await FfiBridge.isSyncRunning(id);
         final status = await FfiBridge.syncStatus(id);
+
+        final now = DateTime.now();
+        if (state.restartBackoff.shouldRestart(
+          isRunning: isRunning,
+          now: now,
+        )) {
+          state.restartBackoff.recordRestartAttempt(now);
+          if (!await FfiBridge.isDecoyMode()) {
+            try {
+              await FfiBridge.startSync(id, SyncMode.compact);
+            } catch (error) {
+              debugPrint('Automatic sync restart failed: $error');
+            }
+          } else {
+            state.restartBackoff.reset();
+          }
+        }
 
         yield status;
         state.recordProgress(status);
