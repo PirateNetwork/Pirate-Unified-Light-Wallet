@@ -2747,6 +2747,9 @@ jobs:
       - release
       - backend-release-plan
     steps:
+      - name: Checkout publication verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
       - name: Download React Native npm package
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -2839,10 +2842,9 @@ jobs:
             if npm view "$package_name@$EXPECTED_VERSION" dist.integrity --json \
                 >"$view_json" 2>"$view_error"; then
               local registry_integrity
-              registry_integrity="$(node -e '
-                const fs = require("fs");
-                process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], "utf8")));
-              ' "$view_json")"
+              registry_integrity="$(
+                node scripts/read-npm-view-integrity.js "$view_json"
+              )"
               if [ "$registry_integrity" != "$local_integrity" ]; then
                 echo "$package_name@$EXPECTED_VERSION already exists with different contents" >&2
                 exit 1
