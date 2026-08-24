@@ -34,6 +34,12 @@ Current build scripts produce the following release artifacts:
 - Android: split APKs and `.aab`
 - iOS: `.ipa`
 
+Linux AppImage and Debian releases support Ubuntu 22.04 and newer. Their ABI
+contract is glibc 2.35: release builds run on Ubuntu 22.04, Linux i2pd is built
+from its current immutable source revision on that same baseline, and CI scans
+every bundled ELF before packaging. Flatpak releases use their declared
+Freedesktop runtime but pass the same bundled-binary compatibility check.
+
 Additional backend deliverables are built from the Rust workspace:
 
 - `piratewallet-cli` under `crates/piratewallet-cli/`

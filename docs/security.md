@@ -10,7 +10,9 @@ The repository includes build and release controls intended to make shipped arti
 - Release scripts write SHA-256 checksum files next to generated artifacts.
 - `scripts/generate-sbom.sh` generates SBOM outputs for the Rust and Flutter dependency sets.
 - `scripts/generate-provenance.sh` generates provenance metadata and optional Sigstore bundles when `cosign` is available.
-- Desktop Tor Browser and i2pd assets are fetched through project scripts that verify pinned hashes before bundling.
+- Desktop Tor assets and non-Linux i2pd binaries are fetched through project scripts that verify pinned hashes before bundling.
+- Linux i2pd is compiled with its native dependencies from an immutable upstream source commit on the Ubuntu 22.04 ABI baseline.
+- CI rejects any published Linux ELF that imports a glibc symbol newer than 2.35.
 - The checked-in Nix flake exposes native build shells and native package targets for Linux and macOS hosts.
 For release verification procedures, use `verify-build.md`.
 

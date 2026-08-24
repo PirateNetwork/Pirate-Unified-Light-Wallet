@@ -112,6 +112,12 @@ bash scripts/build-linux.sh flatpak
 bash scripts/build-linux.sh deb
 ```
 
+Linux AppImage and Debian artifacts target Ubuntu 22.04 (`GLIBC_2.35`). The
+release script scans the complete Flutter bundle, including Rust, KDF, Tor, and
+I2P executables, and fails packaging if any ELF exceeds that ABI ceiling. Do not
+replace the pinned Linux runner with a floating image without providing an
+equivalent Ubuntu 22.04 sysroot or build container.
+
 macOS:
 
 ```bash
