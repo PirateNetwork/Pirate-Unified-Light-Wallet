@@ -25,6 +25,10 @@ I2PD_BASE_URL="${I2PD_BASE_URL:-https://github.com/PurpleI2P/i2pd/releases/downl
 I2PD_LINUX_AMD64_SHA512="${I2PD_LINUX_AMD64_SHA512:-bec531e3d97b6b397c936438c368677d34a29e1fc8268a67fb1b10675e011a4144d999150eb62fe6f73ff393a3d80dee38c7edea27a9a88030355a7d5ac4b635}"
 I2PD_LINUX_ARM64_SHA512="${I2PD_LINUX_ARM64_SHA512:-dcd146b91441d161448fe77300d4806eecf01e5279d1159992065736221ec7bdef67f8aec8bb5552c4e99277e7f9f7afcfab49d3949c49bceef2807395075527}"
 I2PD_MACOS_SHA512="${I2PD_MACOS_SHA512:-1c3c82b42d134b01fedad1c465cb6c6d04af70df9417c44441ff421779017a412b6537c4f23a2334daa2a121f4dd71344bfc4f91fea7cd455e2144914134500c}"
+I2PD_LINUX_SOURCE="${I2PD_LINUX_SOURCE:-only}"
+I2PD_REPO_URL="${I2PD_REPO_URL:-https://github.com/PurpleI2P/i2pd.git}"
+I2PD_REF="${I2PD_REF:-2.59.0}"
+I2PD_COMMIT="${I2PD_COMMIT:-896f548175aa605efd15ecbfb744588e0c14f64f}"
 
 TOR_PT_SOURCE="${TOR_PT_SOURCE:-auto}"
 SNOWFLAKE_REPO_URL="${SNOWFLAKE_REPO_URL:-https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake.git}"
@@ -105,7 +109,8 @@ clone_repo() {
   local url="$1"
   local dest="$2"
   rm -rf "$dest"
-  git clone "$url" "$dest"
+  git init -q "$dest"
+  git -C "$dest" remote add origin "$url"
 }
 
 normalize_mode() {
@@ -124,6 +129,24 @@ tor_pt_source_enabled() {
 tor_pt_source_only() {
   local mode
   mode="$(normalize_mode "$TOR_PT_SOURCE")"
+  case "$mode" in
+    only) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+i2pd_linux_source_enabled() {
+  local mode
+  mode="$(normalize_mode "$I2PD_LINUX_SOURCE")"
+  case "$mode" in
+    1|true|yes|on|auto|only) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+i2pd_linux_source_only() {
+  local mode
+  mode="$(normalize_mode "$I2PD_LINUX_SOURCE")"
   case "$mode" in
     only) return 0 ;;
     *) return 1 ;;
@@ -221,6 +244,7 @@ ensure_repo() {
       return 1
     fi
   fi
+  git -C "$dest" remote set-url origin "$url"
   if ! (cd "$dest" && retry_cmd "$FETCH_RETRY_ATTEMPTS" "$FETCH_RETRY_DELAY_SECONDS" "fetch $commit from $url" env GIT_TERMINAL_PROMPT=0 git fetch --depth 1 origin "$commit" >/dev/null 2>&1); then
     warn "Failed to fetch $commit from $url"
     return 1
@@ -443,6 +467,74 @@ extract_archive_or_copy() {
   cp "$found" "$dest"
 }
 
+build_i2pd_linux_from_source() {
+  if ! i2pd_linux_source_enabled; then
+    return 1
+  fi
+
+  local command
+  for command in git make "${CXX:-c++}"; do
+    if ! have_cmd "$command"; then
+      warn "Missing $command; cannot build the Linux i2pd compatibility binary."
+      return 1
+    fi
+  done
+
+  local build_root="$I2P_DIR/.build/i2pd"
+  if ! ensure_repo "$I2PD_REPO_URL" "$I2PD_REF" "$I2PD_COMMIT" "$build_root"; then
+    warn "Failed to materialize pinned i2pd source at $I2PD_COMMIT."
+    return 1
+  fi
+
+  local jobs="${I2PD_BUILD_JOBS:-}"
+  if [[ -z "$jobs" ]]; then
+    if have_cmd nproc; then
+      jobs="$(nproc)"
+    else
+      jobs=2
+    fi
+  fi
+
+  log "Building i2pd $I2PD_REF from pinned source for Linux/$ARCH_LABEL"
+  (
+    cd "$build_root"
+    make clean >/dev/null 2>&1 || true
+    make \
+      USE_STATIC=yes \
+      USE_UPNP=no \
+      USE_GIT_VERSION=no \
+      DEBUG=no \
+      CXXFLAGS="-Os -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2" \
+      LDFLAGS="-Wl,-z,relro,-z,now -Wl,--as-needed -Wl,--build-id=none -static-libgcc -static-libstdc++" \
+      -j"$jobs"
+  ) || {
+    warn "Pinned i2pd source build failed."
+    return 1
+  }
+
+  local dest_name
+  case "$ARCH_LABEL" in
+    x86_64) dest_name="i2pd-x86_64" ;;
+    aarch64) dest_name="i2pd-aarch64" ;;
+    *) error "Unsupported Linux architecture for i2pd: $ARCH_LABEL" ;;
+  esac
+
+  [[ -x "$build_root/i2pd" ]] || {
+    warn "Pinned i2pd source build did not produce an executable."
+    return 1
+  }
+  cp "$build_root/i2pd" "$I2P_DIR/linux/$dest_name"
+  if have_cmd strip; then
+    strip --strip-unneeded "$I2P_DIR/linux/$dest_name" || \
+      warn "Unable to strip $dest_name."
+  fi
+  chmod +x "$I2P_DIR/linux/$dest_name"
+  if ! "$I2P_DIR/linux/$dest_name" --version >/dev/null; then
+    warn "The pinned i2pd binary cannot execute on its build host."
+    return 1
+  fi
+}
+
 fetch_i2p() {
   local version="$I2PD_VERSION"
   local base_url="$I2PD_BASE_URL"
@@ -493,6 +585,16 @@ fetch_i2p() {
   fi
 
   if [[ "$PLATFORM" == "linux" ]]; then
+    if build_i2pd_linux_from_source; then
+      log "Linux i2pd built from pinned source."
+      rm -rf "$tmpdir"
+      return 0
+    fi
+    if i2pd_linux_source_only; then
+      error "Pinned Linux i2pd source build is required. Install build-essential, libboost-program-options-dev, libssl-dev, and zlib1g-dev."
+    fi
+
+    warn "Falling back to the checksummed upstream Linux i2pd package. Compatibility verification must approve it before release."
     have_cmd ar || error "Missing 'ar' for extracting .deb packages"
     local deb_arch
     local dest_name
