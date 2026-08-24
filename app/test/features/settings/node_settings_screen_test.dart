@@ -293,7 +293,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('.b32.i2p'), findsWidgets);
-    expect(find.text('Auto'), findsOneWidget);
+    expect(find.text('Pirate I2P 1'), findsOneWidget);
+    expect(find.text('Auto'), findsNothing);
     expect(find.text('Auto (Ironwood testnet)'), findsOneWidget);
     expect(find.text('Mathnodes'), findsNothing);
     expect(find.textContaining('.onion'), findsNothing);
