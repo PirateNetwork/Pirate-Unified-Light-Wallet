@@ -257,6 +257,7 @@ Documentation index
 - Supernova sync engine architecture and performance: `docs/sync-engine.md`
 - Build verification: `docs/verify-build.md`
 - Security notes: `docs/security.md`
+- Key import and sync debug telemetry: `docs/debug-key-telemetry.md`
 - Release process: `docs/release-process.md`
 - CLI guide: `docs/cli.md`
 - Qortal integration handoff: `docs/qortal-handoff.md`
