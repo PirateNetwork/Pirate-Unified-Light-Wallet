@@ -5,6 +5,100 @@ use zcash_client_backend::encoding::{
     encode_extended_full_viewing_key, encode_extended_spending_key,
 };
 
+const KEY_IMPORT_LOG_SCHEMA_VERSION: u8 = 1;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct AccountKeyInventory {
+    account_key_count: usize,
+    imported_spending_count: usize,
+    sapling_imported_spending_count: usize,
+    ironwood_imported_spending_count: usize,
+}
+
+impl AccountKeyInventory {
+    fn from_account_keys(keys: &[AccountKey]) -> Self {
+        let mut inventory = Self {
+            account_key_count: keys.len(),
+            ..Self::default()
+        };
+
+        for key in keys {
+            if key.key_type != KeyType::ImportSpend {
+                continue;
+            }
+
+            inventory.imported_spending_count += 1;
+            if key.sapling_extsk.is_some() || key.sapling_dfvk.is_some() {
+                inventory.sapling_imported_spending_count += 1;
+            }
+            if key.orchard_extsk.is_some() || key.orchard_fvk.is_some() {
+                inventory.ironwood_imported_spending_count += 1;
+            }
+        }
+
+        inventory
+    }
+}
+
+fn append_key_import_requested(
+    wallet_id: &WalletId,
+    birthday_height: u32,
+    sapling_requested: bool,
+    ironwood_requested: bool,
+) {
+    let timestamp = unix_timestamp_millis();
+    let event = serde_json::json!({
+        "id": "log_key_import_requested",
+        "timestamp": timestamp,
+        "location": "api::key_management::import_spending_key",
+        "message": "spending key import requested",
+        "data": {
+            "schema_version": KEY_IMPORT_LOG_SCHEMA_VERSION,
+            "wallet_id": wallet_id,
+            "birthday_height": birthday_height,
+            "sapling_requested": sapling_requested,
+            "ironwood_requested": ironwood_requested,
+        },
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "K",
+    });
+    pirate_core::debug_log::append_line(&event.to_string());
+}
+
+fn append_key_import_persisted(
+    wallet_id: &WalletId,
+    birthday_height: u32,
+    sapling_stored: bool,
+    ironwood_stored: bool,
+    inventory: Option<AccountKeyInventory>,
+) {
+    let timestamp = unix_timestamp_millis();
+    let event = serde_json::json!({
+        "id": "log_key_import_persisted",
+        "timestamp": timestamp,
+        "location": "api::key_management::import_spending_key",
+        "message": "spending key import persisted",
+        "data": {
+            "schema_version": KEY_IMPORT_LOG_SCHEMA_VERSION,
+            "wallet_id": wallet_id,
+            "birthday_height": birthday_height,
+            "sapling_stored": sapling_stored,
+            "ironwood_stored": ironwood_stored,
+            "account_key_count": inventory.map(|value| value.account_key_count),
+            "imported_spending_count": inventory.map(|value| value.imported_spending_count),
+            "sapling_imported_spending_count": inventory
+                .map(|value| value.sapling_imported_spending_count),
+            "ironwood_imported_spending_count": inventory
+                .map(|value| value.ironwood_imported_spending_count),
+        },
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "K",
+    });
+    pirate_core::debug_log::append_line(&event.to_string());
+}
+
 pub(super) fn export_sapling_viewing_key(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
 
@@ -284,6 +378,15 @@ pub(super) fn import_spending_key(
     label: Option<String>,
     birthday_height: u32,
 ) -> Result<i64> {
+    let sapling_requested = sapling_key.is_some();
+    let ironwood_requested = ironwood_key.is_some();
+    append_key_import_requested(
+        &wallet_id,
+        birthday_height,
+        sapling_requested,
+        ironwood_requested,
+    );
+
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
@@ -356,6 +459,17 @@ pub(super) fn import_spending_key(
     let key_id = repo
         .upsert_account_key(&encrypted)
         .map_err(|e| anyhow!(e.to_string()))?;
+    let inventory = repo
+        .get_account_keys(secret.account_id)
+        .ok()
+        .map(|keys| AccountKeyInventory::from_account_keys(&keys));
+    append_key_import_persisted(
+        &wallet_id,
+        birthday_height,
+        sapling_requested,
+        ironwood_requested,
+        inventory,
+    );
     sync_control::clear_wallet_data_caches(&wallet_id);
     Ok(key_id)
 }
@@ -393,6 +507,47 @@ fn encode_sapling_xfvk_from_bytes(bytes: &[u8], network: NetworkType) -> Option<
         sapling_extfvk_hrp_for_network(network),
         &extfvk,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account_key(key_type: KeyType, sapling: bool, ironwood: bool) -> AccountKey {
+        AccountKey {
+            id: None,
+            account_id: 1,
+            key_type,
+            key_scope: KeyScope::Account,
+            label: None,
+            birthday_height: 1,
+            created_at: 1,
+            spendable: key_type != KeyType::ImportView,
+            sapling_extsk: sapling.then(|| vec![0x11]),
+            sapling_dfvk: None,
+            orchard_extsk: ironwood.then(|| vec![0x22]),
+            orchard_fvk: None,
+            encrypted_mnemonic: None,
+        }
+    }
+
+    #[test]
+    fn account_key_inventory_counts_imported_pools_from_metadata() {
+        let keys = vec![
+            account_key(KeyType::Seed, true, true),
+            account_key(KeyType::ImportSpend, true, false),
+            account_key(KeyType::ImportSpend, false, true),
+            account_key(KeyType::ImportSpend, true, true),
+            account_key(KeyType::ImportView, true, false),
+        ];
+
+        let inventory = AccountKeyInventory::from_account_keys(&keys);
+
+        assert_eq!(inventory.account_key_count, 5);
+        assert_eq!(inventory.imported_spending_count, 3);
+        assert_eq!(inventory.sapling_imported_spending_count, 2);
+        assert_eq!(inventory.ironwood_imported_spending_count, 2);
+    }
 }
 
 fn encode_ironwood_extsk(
