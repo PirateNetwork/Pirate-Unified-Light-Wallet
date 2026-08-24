@@ -862,7 +862,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             target_height: 0,
             percent: 0.0,
             eta: None,
-            stage: crate::models::SyncStage::Headers,
+            stage: crate::models::SyncStage::Preparing,
             last_checkpoint: None,
             blocks_per_second: 0.0,
             notes_decrypted: 0,
@@ -919,6 +919,14 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
     };
     let progress_handle = Arc::clone(&progress);
     let perf_handle = Arc::clone(&perf);
+    {
+        // Publish the durable resume height before the first network RPC. If a
+        // private circuit stalls, status polling must not replace a known
+        // wallet height with the SyncProgress default of 0/0.
+        let progress = progress.write().await;
+        progress.set_current(start_height as u64);
+        progress.set_stage(pirate_sync_lightd::progress::SyncStage::Preparing);
+    }
     tokio::spawn(monitor_sync_profile_initial_tip(
         profile_session.clone(),
         Arc::clone(&progress),
@@ -936,7 +944,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             target_height: 0,
             percent: 0.0,
             eta: None,
-            stage: crate::models::SyncStage::Headers,
+            stage: crate::models::SyncStage::Preparing,
             last_checkpoint: None,
             blocks_per_second: 0.0,
             notes_decrypted: 0,
