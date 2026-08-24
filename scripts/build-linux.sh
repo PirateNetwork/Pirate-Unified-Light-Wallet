@@ -194,6 +194,11 @@ stage_rust_linux "$BUNDLE_DIR"
 log "Verifying bundled KDF artifacts..."
 bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" linux "$BUNDLE_DIR"
 
+log "Verifying Ubuntu 22.04 binary compatibility..."
+python3 "$SCRIPT_DIR/verify_linux_glibc.py" \
+    --max-version 2.35 \
+    "$BUNDLE_DIR"
+
 OUTPUT_DIR="$PROJECT_ROOT/dist/linux"
 mkdir -p "$OUTPUT_DIR"
 
@@ -276,6 +281,10 @@ EOF
     else
         ARCH=x86_64 "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
     fi
+
+    python3 "$SCRIPT_DIR/verify_linux_glibc.py" \
+        --max-version 2.35 \
+        "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
     
     # Generate checksum
     cd "$OUTPUT_DIR"

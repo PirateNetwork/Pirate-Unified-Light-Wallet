@@ -475,7 +475,7 @@ jobs:
             os: macos-latest
             build-command: ios unsigned xcodebuild
           - platform: Linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
             build-command: flutter build linux --release
           - platform: macOS
             os: macos-latest
@@ -662,6 +662,10 @@ jobs:
           done
           exit "$status"
 
+      - name: Verify Linux build compatibility
+        if: matrix.platform == 'Linux'
+        run: python3 scripts/verify_linux_glibc.py --max-version 2.35 app/build/linux/x64/release/bundle
+
       - name: Build macOS
         if: matrix.platform == 'macOS'
         env:
@@ -748,7 +752,7 @@ jobs:
       matrix:
         include:
           - platform: Linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
             bin-ext: ""
             artifact-name: cli-linux
           - platform: macOS
@@ -790,6 +794,10 @@ jobs:
           cp "crates/target/release/piratewallet-cli${{ matrix.bin-ext }}" dist/cli/
           cp "crates/target/release/pirate-qortal-cli${{ matrix.bin-ext }}" dist/cli/
 
+      - name: Verify Linux CLI compatibility
+        if: matrix.platform == 'Linux'
+        run: python3 scripts/verify_linux_glibc.py --max-version 2.35 dist/cli
+
       - name: Upload CLI binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -808,11 +816,11 @@ jobs:
       matrix:
         include:
           - platform: Linux x86_64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact-name: qortal-jni-linux-x86_64
           - platform: Linux aarch64
-            os: ubuntu-24.04-arm
+            os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             artifact-name: qortal-jni-linux-aarch64
           - platform: macOS x86_64
@@ -852,6 +860,10 @@ jobs:
           chmod +x scripts/build-qortal-jni.sh
           scripts/build-qortal-jni.sh
 
+      - name: Verify Linux Qortal JNI compatibility
+        if: startsWith(matrix.platform, 'Linux')
+        run: python3 scripts/verify_linux_glibc.py --max-version 2.35 dist/qortal-jni
+
       - name: Upload Qortal JNI library
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -860,7 +872,7 @@ jobs:
 
   package-native-ffi:
     name: Package - Native FFI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs:
       - rust-test
       - backend-release-plan
@@ -893,6 +905,9 @@ jobs:
           fi
           cp -R bindings/ios-sdk/. dist/native-ffi/ios-sdk/
           cp -R bindings/android-sdk/. dist/native-ffi/android-sdk/
+
+      - name: Verify Linux native FFI compatibility
+        run: python3 scripts/verify_linux_glibc.py --max-version 2.35 dist/native-ffi
 
       - name: Upload native FFI package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1746,7 +1761,7 @@ jobs:
 
   package-linux:
     name: Package - Linux (AppImage/Flatpak/Deb + SBOM)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       REPRODUCIBLE: "1"
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
