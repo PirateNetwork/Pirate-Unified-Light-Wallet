@@ -172,7 +172,7 @@ const SAPLING_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
 const ORCHARD_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
 const SAPLING_TABLE_PREFIX: &str = "sapling";
 const ORCHARD_TABLE_PREFIX: &str = "orchard";
-const SYNC_KEY_INVENTORY_LOG_SCHEMA_VERSION: u8 = 1;
+const SYNC_KEY_INVENTORY_LOG_SCHEMA_VERSION: u8 = 2;
 const MIN_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 8_000_000;
 const DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 64_000_000;
 const MAX_PERSISTENCE_SHARDTREE_CACHE_BYTES: u64 = 128_000_000;
@@ -188,7 +188,10 @@ fn persistence_shardtree_cache_limit(max_batch_memory_bytes: Option<u64>) -> u64
 }
 
 /// Shard height used for subtree-addressed spendability/repair scheduling.
-fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKeyGroup>> {
+fn build_key_group_from_account_key(
+    key: &AccountKey,
+    seed_derivation: Option<(u32, bool)>,
+) -> Result<Option<WalletKeyGroup>> {
     let key_id = key.id.unwrap_or(0);
 
     let sapling_dfvk = if let Some(ref extsk_bytes) = key.sapling_extsk {
@@ -230,6 +233,8 @@ fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKey
     Ok(Some(WalletKeyGroup {
         key_id,
         key_type: key.key_type,
+        seed_derivation_index: seed_derivation.map(|(index, _)| index),
+        discovery_candidate: seed_derivation.is_some_and(|(_, candidate)| candidate),
         sapling_dfvk,
         orchard_fvk,
         sapling_ivk,
@@ -1983,9 +1988,22 @@ impl SyncEngine {
             account_keys = repo.get_account_keys(secret.account_id)?;
         }
 
+        let seed_derived_keys = repo
+            .get_seed_derived_account_keys(secret.account_id)?
+            .into_iter()
+            .map(|metadata| {
+                (
+                    metadata.key_id,
+                    (metadata.derivation_index, metadata.is_discovery_candidate),
+                )
+            })
+            .collect::<HashMap<_, _>>();
         let mut key_groups = Vec::new();
         for key in &account_keys {
-            if let Some(group) = build_key_group_from_account_key(key)? {
+            let seed_derivation = key
+                .id
+                .and_then(|key_id| seed_derived_keys.get(&key_id).copied());
+            if let Some(group) = build_key_group_from_account_key(key, seed_derivation)? {
                 key_groups.push(group);
             }
         }
@@ -7365,6 +7383,8 @@ impl SyncEngine {
             let mut fallback = WalletKeyGroup {
                 key_id: 0,
                 key_type: KeyType::ImportView,
+                seed_derivation_index: None,
+                discovery_candidate: false,
                 sapling_dfvk: None,
                 orchard_fvk: None,
                 sapling_ivk: None,
@@ -10955,6 +10975,8 @@ struct PositionMaps {
 struct WalletKeyGroup {
     key_id: i64,
     key_type: KeyType,
+    seed_derivation_index: Option<u32>,
+    discovery_candidate: bool,
     sapling_dfvk: Option<ExtendedFullViewingKey>,
     orchard_fvk: Option<IronwoodExtendedFullViewingKey>,
     sapling_ivk: Option<[u8; 32]>,
@@ -10984,6 +11006,8 @@ struct SyncKeyInventory {
     account_key_count: usize,
     key_group_count: usize,
     seed_count: usize,
+    seed_derived_count: usize,
+    seed_discovery_candidate_count: usize,
     imported_spending_count: usize,
     imported_viewing_count: usize,
     spendable_count: usize,
@@ -11015,12 +11039,20 @@ impl SyncKeyInventory {
     ) -> Self {
         let sapling_imported_spending_key_ids = key_groups
             .iter()
-            .filter(|group| group.key_type == KeyType::ImportSpend && group.sapling_dfvk.is_some())
+            .filter(|group| {
+                group.key_type == KeyType::ImportSpend
+                    && group.seed_derivation_index.is_none()
+                    && group.sapling_dfvk.is_some()
+            })
             .map(|group| group.key_id)
             .collect::<HashSet<_>>();
         let ironwood_imported_spending_key_ids = key_groups
             .iter()
-            .filter(|group| group.key_type == KeyType::ImportSpend && group.orchard_fvk.is_some())
+            .filter(|group| {
+                group.key_type == KeyType::ImportSpend
+                    && group.seed_derivation_index.is_none()
+                    && group.orchard_fvk.is_some()
+            })
             .map(|group| group.key_id)
             .collect::<HashSet<_>>();
         let mut inventory = Self {
@@ -11068,24 +11100,43 @@ impl SyncKeyInventory {
                 .iter()
                 .filter(|scope| **scope == AddressScope::Internal)
                 .count(),
+            seed_derived_count: key_groups
+                .iter()
+                .filter(|group| group.seed_derivation_index.is_some())
+                .count(),
+            seed_discovery_candidate_count: key_groups
+                .iter()
+                .filter(|group| group.discovery_candidate)
+                .count(),
             ..Self::default()
         };
+
+        let seed_derived_key_ids = key_groups
+            .iter()
+            .filter(|group| group.seed_derivation_index.is_some())
+            .map(|group| group.key_id)
+            .collect::<HashSet<_>>();
 
         for key in account_keys {
             let has_sapling = key.sapling_extsk.is_some() || key.sapling_dfvk.is_some();
             let has_ironwood = key.orchard_extsk.is_some() || key.orchard_fvk.is_some();
 
-            match key.key_type {
-                KeyType::Seed => inventory.seed_count += 1,
-                KeyType::ImportSpend => {
-                    inventory.imported_spending_count += 1;
-                    inventory.sapling_imported_spending_count += usize::from(has_sapling);
-                    inventory.ironwood_imported_spending_count += usize::from(has_ironwood);
-                }
-                KeyType::ImportView => {
-                    inventory.imported_viewing_count += 1;
-                    inventory.sapling_imported_viewing_count += usize::from(has_sapling);
-                    inventory.ironwood_imported_viewing_count += usize::from(has_ironwood);
+            let is_seed_derived = key
+                .id
+                .is_some_and(|key_id| seed_derived_key_ids.contains(&key_id));
+            if !is_seed_derived {
+                match key.key_type {
+                    KeyType::Seed => inventory.seed_count += 1,
+                    KeyType::ImportSpend => {
+                        inventory.imported_spending_count += 1;
+                        inventory.sapling_imported_spending_count += usize::from(has_sapling);
+                        inventory.ironwood_imported_spending_count += usize::from(has_ironwood);
+                    }
+                    KeyType::ImportView => {
+                        inventory.imported_viewing_count += 1;
+                        inventory.sapling_imported_viewing_count += usize::from(has_sapling);
+                        inventory.ironwood_imported_viewing_count += usize::from(has_ironwood);
+                    }
                 }
             }
             if key.spendable {
@@ -11130,6 +11181,8 @@ impl SyncKeyInventory {
                 "account_key_count": self.account_key_count,
                 "key_group_count": self.key_group_count,
                 "seed_count": self.seed_count,
+                "seed_derived_count": self.seed_derived_count,
+                "seed_discovery_candidate_count": self.seed_discovery_candidate_count,
                 "imported_spending_count": self.imported_spending_count,
                 "imported_viewing_count": self.imported_viewing_count,
                 "spendable_count": self.spendable_count,
@@ -11191,15 +11244,21 @@ impl TrialDecryptKeys {
                 }
             }
 
-            if let Some(dfvk) = key.sapling_dfvk.as_ref() {
-                let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
-                if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes)) {
-                    let sapling_ivk = SaplingIvk(ivk_fr);
-                    prepared
-                        .sapling_ivks
-                        .push(PreparedIncomingViewingKey::new(&sapling_ivk));
-                    prepared.sapling_key_ids.push(key.key_id);
-                    prepared.sapling_scopes.push(AddressScope::Internal);
+            // The legacy wallet used each ZIP-32 account's external address
+            // directly (including for change), so preparing an internal IVK
+            // would double discovery work without adding historical coverage.
+            if key.seed_derivation_index.is_none() {
+                if let Some(dfvk) = key.sapling_dfvk.as_ref() {
+                    let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
+                    if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes))
+                    {
+                        let sapling_ivk = SaplingIvk(ivk_fr);
+                        prepared
+                            .sapling_ivks
+                            .push(PreparedIncomingViewingKey::new(&sapling_ivk));
+                        prepared.sapling_key_ids.push(key.key_id);
+                        prepared.sapling_scopes.push(AddressScope::Internal);
+                    }
                 }
             }
 
@@ -11962,7 +12021,7 @@ mod tests {
         ];
         let key_groups = keys
             .iter()
-            .filter_map(|key| build_key_group_from_account_key(key).unwrap())
+            .filter_map(|key| build_key_group_from_account_key(key, None).unwrap())
             .collect::<Vec<_>>();
         let trial_decrypt_keys = TrialDecryptKeys::from_key_groups(&key_groups);
 
@@ -11995,6 +12054,43 @@ mod tests {
     }
 
     #[test]
+    fn seed_derived_sapling_accounts_use_external_scope_without_counting_as_imports() {
+        const MNEMONIC: &str =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let account_one =
+            ExtendedSpendingKey::from_mnemonic_with_account(MNEMONIC, NetworkType::Mainnet, 1)
+                .unwrap();
+        let key = AccountKey {
+            id: Some(9),
+            account_id: 1,
+            key_type: KeyType::ImportSpend,
+            key_scope: KeyScope::Account,
+            label: Some("Seed account 1".to_string()),
+            birthday_height: 1,
+            created_at: 1,
+            spendable: true,
+            sapling_extsk: Some(account_one.to_bytes()),
+            sapling_dfvk: Some(account_one.to_extended_fvk().to_bytes()),
+            orchard_extsk: None,
+            orchard_fvk: None,
+            encrypted_mnemonic: None,
+        };
+        let group = build_key_group_from_account_key(&key, Some((1, true)))
+            .unwrap()
+            .expect("seed-derived key group");
+        let groups = vec![group];
+        let prepared = TrialDecryptKeys::from_key_groups(&groups);
+        let inventory = SyncKeyInventory::from_sources(&[key], &groups, &prepared);
+
+        assert_eq!(prepared.sapling_ivks.len(), 1);
+        assert_eq!(prepared.sapling_scopes, vec![AddressScope::External]);
+        assert_eq!(inventory.seed_derived_count, 1);
+        assert_eq!(inventory.seed_discovery_candidate_count, 1);
+        assert_eq!(inventory.imported_spending_count, 0);
+        assert_eq!(inventory.sapling_imported_spending_ivk_count, 0);
+    }
+
+    #[test]
     fn spending_keys_override_stale_cached_viewing_keys() {
         const MNEMONIC: &str =
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -12018,7 +12114,7 @@ mod tests {
             encrypted_mnemonic: None,
         };
 
-        let group = build_key_group_from_account_key(&key)
+        let group = build_key_group_from_account_key(&key, None)
             .unwrap()
             .expect("spendable key group");
 
