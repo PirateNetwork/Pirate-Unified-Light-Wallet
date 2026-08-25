@@ -16,14 +16,18 @@ struct AccountKeyInventory {
 }
 
 impl AccountKeyInventory {
-    fn from_account_keys(keys: &[AccountKey]) -> Self {
+    fn from_account_keys(keys: &[AccountKey], seed_derived_key_ids: &HashSet<i64>) -> Self {
         let mut inventory = Self {
             account_key_count: keys.len(),
             ..Self::default()
         };
 
         for key in keys {
-            if key.key_type != KeyType::ImportSpend {
+            if key.key_type != KeyType::ImportSpend
+                || key
+                    .id
+                    .is_some_and(|key_id| seed_derived_key_ids.contains(&key_id))
+            {
                 continue;
             }
 
@@ -145,17 +149,30 @@ pub(super) fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> 
 
     ensure_primary_account_key(&repo, &wallet_id, &secret)?;
     let keys = repo.get_account_keys(secret.account_id)?;
+    let seed_derived = repo
+        .get_seed_derived_account_keys(secret.account_id)?
+        .into_iter()
+        .map(|metadata| (metadata.key_id, metadata))
+        .collect::<HashMap<_, _>>();
 
     let mut items: Vec<KeyGroupInfo> = keys
         .into_iter()
         .filter_map(|key| {
             let id = key.id?;
+            let seed_derivation = seed_derived.get(&id);
+            if seed_derivation.is_some_and(|metadata| metadata.is_discovery_candidate) {
+                return None;
+            }
             let has_sapling = key.sapling_extsk.is_some() || key.sapling_dfvk.is_some();
             let has_ironwood = key.orchard_extsk.is_some() || key.orchard_fvk.is_some();
             Some(KeyGroupInfo {
                 id,
                 label: key.label,
-                key_type: key_type_to_info(key.key_type),
+                key_type: if seed_derivation.is_some() {
+                    KeyTypeInfo::Seed
+                } else {
+                    key_type_to_info(key.key_type)
+                },
                 spendable: key.spendable,
                 has_sapling,
                 has_ironwood,
@@ -459,10 +476,15 @@ pub(super) fn import_spending_key(
     let key_id = repo
         .upsert_account_key(&encrypted)
         .map_err(|e| anyhow!(e.to_string()))?;
-    let inventory = repo
-        .get_account_keys(secret.account_id)
-        .ok()
-        .map(|keys| AccountKeyInventory::from_account_keys(&keys));
+    let inventory = repo.get_account_keys(secret.account_id).ok().map(|keys| {
+        let seed_derived_key_ids = repo
+            .get_seed_derived_account_keys(secret.account_id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|metadata| metadata.key_id)
+            .collect::<HashSet<_>>();
+        AccountKeyInventory::from_account_keys(&keys, &seed_derived_key_ids)
+    });
     append_key_import_persisted(
         &wallet_id,
         birthday_height,
@@ -509,6 +531,24 @@ fn encode_sapling_xfvk_from_bytes(bytes: &[u8], network: NetworkType) -> Option<
     ))
 }
 
+fn encode_ironwood_extsk(
+    extsk: &IronwoodExtendedSpendingKey,
+    network: NetworkType,
+) -> Result<String> {
+    let hrp = Hrp::parse(ironwood_extsk_hrp_for_network(network))
+        .map_err(|e| anyhow!("Invalid Ironwood HRP: {}", e))?;
+    bech32::encode::<Bech32>(hrp, &extsk.to_bytes())
+        .map_err(|e| anyhow!("Bech32 encoding failed: {}", e))
+}
+
+fn network_type_name(network: NetworkType) -> &'static str {
+    match network {
+        NetworkType::Mainnet => "mainnet",
+        NetworkType::Testnet => "testnet",
+        NetworkType::Regtest => "regtest",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,37 +573,22 @@ mod tests {
 
     #[test]
     fn account_key_inventory_counts_imported_pools_from_metadata() {
+        let mut seed_derived = account_key(KeyType::ImportSpend, true, false);
+        seed_derived.id = Some(42);
         let keys = vec![
             account_key(KeyType::Seed, true, true),
             account_key(KeyType::ImportSpend, true, false),
             account_key(KeyType::ImportSpend, false, true),
             account_key(KeyType::ImportSpend, true, true),
             account_key(KeyType::ImportView, true, false),
+            seed_derived,
         ];
 
-        let inventory = AccountKeyInventory::from_account_keys(&keys);
+        let inventory = AccountKeyInventory::from_account_keys(&keys, &HashSet::from([42]));
 
-        assert_eq!(inventory.account_key_count, 5);
+        assert_eq!(inventory.account_key_count, 6);
         assert_eq!(inventory.imported_spending_count, 3);
         assert_eq!(inventory.sapling_imported_spending_count, 2);
         assert_eq!(inventory.ironwood_imported_spending_count, 2);
-    }
-}
-
-fn encode_ironwood_extsk(
-    extsk: &IronwoodExtendedSpendingKey,
-    network: NetworkType,
-) -> Result<String> {
-    let hrp = Hrp::parse(ironwood_extsk_hrp_for_network(network))
-        .map_err(|e| anyhow!("Invalid Ironwood HRP: {}", e))?;
-    bech32::encode::<Bech32>(hrp, &extsk.to_bytes())
-        .map_err(|e| anyhow!("Bech32 encoding failed: {}", e))
-}
-
-fn network_type_name(network: NetworkType) -> &'static str {
-    match network {
-        NetworkType::Mainnet => "mainnet",
-        NetworkType::Testnet => "testnet",
-        NetworkType::Regtest => "regtest",
     }
 }
