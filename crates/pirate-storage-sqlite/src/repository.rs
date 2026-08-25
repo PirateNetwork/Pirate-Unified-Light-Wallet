@@ -2334,7 +2334,7 @@ impl<'a> Repository<'a> {
         Ok(())
     }
 
-    /// Record the ZIP-32 provenance of a seed-derived Sapling account key.
+    /// Record the ZIP-32 provenance of a seed-derived shielded account key.
     pub fn upsert_seed_derived_account_key(
         &self,
         key_id: i64,
@@ -2354,7 +2354,7 @@ impl<'a> Repository<'a> {
         Ok(())
     }
 
-    /// Load seed-derived Sapling account provenance in derivation order.
+    /// Load seed-derived shielded account provenance in derivation order.
     pub fn get_seed_derived_account_keys(
         &self,
         account_id: i64,
@@ -2390,6 +2390,91 @@ impl<'a> Repository<'a> {
                 },
             )
             .collect()
+    }
+
+    /// Persist a consecutive set of user-added seed accounts atomically.
+    ///
+    /// `expected_previous_index` makes the read/derive/write workflow safe
+    /// against two callers attempting to add the same "next" account. The
+    /// caller can re-read and retry if another writer won that race.
+    pub fn insert_seed_derived_accounts(
+        &self,
+        account_id: i64,
+        expected_previous_index: Option<u32>,
+        accounts: &[(u32, AccountKey)],
+    ) -> Result<Vec<i64>> {
+        if accounts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.db.conn();
+        let owns_transaction = conn.is_autocommit();
+        if owns_transaction {
+            conn.execute_batch("BEGIN IMMEDIATE")?;
+        }
+
+        let result = (|| -> Result<Vec<i64>> {
+            let stored_previous = conn
+                .query_row(
+                    "SELECT MAX(derivation_index) FROM seed_derived_account_keys WHERE account_id = ?1",
+                    [account_id],
+                    |row| row.get::<_, Option<i64>>(0),
+                )?
+                .map(|index| {
+                    u32::try_from(index).map_err(|_| {
+                        Error::Storage(format!(
+                            "Invalid seed-derived account index {index}"
+                        ))
+                    })
+                })
+                .transpose()?;
+            if stored_previous != expected_previous_index {
+                return Err(Error::Storage(
+                    "Seed account sequence changed while accounts were being prepared; retry the operation"
+                        .to_string(),
+                ));
+            }
+
+            let expected_first = expected_previous_index.unwrap_or(0).saturating_add(1);
+            let mut key_ids = Vec::with_capacity(accounts.len());
+            for (offset, (derivation_index, key)) in accounts.iter().enumerate() {
+                let expected_index = expected_first
+                    .checked_add(offset as u32)
+                    .ok_or_else(|| Error::Storage("ZIP-32 account index overflow".to_string()))?;
+                if *derivation_index != expected_index || key.account_id != account_id {
+                    return Err(Error::Storage(
+                        "Seed accounts must be consecutive and belong to the target wallet"
+                            .to_string(),
+                    ));
+                }
+
+                let key_id = self.upsert_account_key(key)?;
+                self.upsert_seed_derived_account_key(key_id, account_id, *derivation_index, false)?;
+                key_ids.push(key_id);
+            }
+            conn.execute(
+                "INSERT INTO migration_state (key, value, updated_at) VALUES (?1, '1', ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                params![SEED_KEY_SCAN_REPLAY_MARKER, chrono::Utc::now().to_rfc3339()],
+            )?;
+            Ok(key_ids)
+        })();
+
+        match result {
+            Ok(key_ids) if owns_transaction => {
+                if let Err(error) = conn.execute_batch("COMMIT") {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    return Err(error.into());
+                }
+                Ok(key_ids)
+            }
+            Ok(key_ids) => Ok(key_ids),
+            Err(error) => {
+                if owns_transaction {
+                    let _ = conn.execute_batch("ROLLBACK");
+                }
+                Err(error)
+            }
+        }
     }
 
     /// Finalize lookahead keys after a successful scan.
@@ -5827,6 +5912,81 @@ mod tests {
             }]
         );
         assert!(repo.legacy_sapling_account_discovery_complete().unwrap());
+    }
+
+    #[test]
+    fn user_added_seed_accounts_are_consecutive_atomic_and_durable() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Sequential accounts".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let encrypted_key = |index: u32| {
+            repo.encrypt_account_key_fields(&AccountKey {
+                id: None,
+                account_id,
+                key_type: KeyType::ImportSpend,
+                key_scope: KeyScope::Account,
+                label: Some(format!("Seed account {index}")),
+                birthday_height: 1,
+                created_at: i64::from(index),
+                spendable: true,
+                sapling_extsk: Some(vec![index as u8; 169]),
+                sapling_dfvk: None,
+                orchard_extsk: None,
+                orchard_fvk: None,
+                encrypted_mnemonic: None,
+            })
+            .unwrap()
+        };
+
+        let first = vec![(1, encrypted_key(1)), (2, encrypted_key(2))];
+        let key_ids = repo
+            .insert_seed_derived_accounts(account_id, None, &first)
+            .unwrap();
+        assert_eq!(key_ids.len(), 2);
+        assert!(repo.seed_key_scan_replay_required().unwrap());
+        repo.clear_seed_key_scan_replay_required().unwrap();
+        assert_eq!(
+            repo.get_seed_derived_account_keys(account_id)
+                .unwrap()
+                .iter()
+                .map(|entry| (entry.derivation_index, entry.is_discovery_candidate))
+                .collect::<Vec<_>>(),
+            vec![(1, false), (2, false)]
+        );
+
+        let imported_id = repo.upsert_account_key(&encrypted_key(3)).unwrap();
+        let mut linked = encrypted_key(3);
+        linked.id = Some(imported_id);
+        repo.insert_seed_derived_accounts(account_id, Some(2), &[(3, linked)])
+            .unwrap();
+        assert_eq!(repo.get_account_keys(account_id).unwrap().len(), 3);
+        assert!(repo.seed_key_scan_replay_required().unwrap());
+        repo.clear_seed_key_scan_replay_required().unwrap();
+
+        let invalid_gap = vec![(4, encrypted_key(4)), (6, encrypted_key(6))];
+        assert!(repo
+            .insert_seed_derived_accounts(account_id, Some(3), &invalid_gap)
+            .is_err());
+        assert_eq!(repo.get_account_keys(account_id).unwrap().len(), 3);
+        assert!(!repo.seed_key_scan_replay_required().unwrap());
+        assert_eq!(
+            repo.get_seed_derived_account_keys(account_id)
+                .unwrap()
+                .len(),
+            3
+        );
+
+        let stale = vec![(1, encrypted_key(1))];
+        assert!(repo
+            .insert_seed_derived_accounts(account_id, None, &stale)
+            .is_err());
+        assert_eq!(repo.get_account_keys(account_id).unwrap().len(), 3);
     }
 
     #[test]

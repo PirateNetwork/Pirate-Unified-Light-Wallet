@@ -191,7 +191,7 @@ pub struct AccountKey {
     pub encrypted_mnemonic: Option<Vec<u8>>,
 }
 
-/// Provenance for a Sapling account key derived from a restored seed.
+/// Provenance for a shielded account key derived from a wallet seed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeedDerivedAccountKey {
     /// Account-key row containing the encrypted spending and viewing material.
