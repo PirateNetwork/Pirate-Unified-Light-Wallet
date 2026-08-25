@@ -2133,7 +2133,9 @@ impl<'a> Repository<'a> {
     /// the wallet service. This method supplies the storage guarantees that the
     /// legacy two-step key/address APIs cannot provide: exact-key idempotency,
     /// address ownership conflict detection, and a durable non-spendable marker
-    /// in the same transaction.
+    /// in the same transaction. If the connection already has an outer
+    /// transaction, this operation joins it and the outer caller owns rollback
+    /// after an error.
     pub fn import_verified_spending_key(
         &self,
         key: &AccountKey,
@@ -2309,6 +2311,8 @@ impl<'a> Repository<'a> {
             }
 
             let rescan_required = if key_scan_changed || address_scan_changed {
+                // A full replay from the imported key's birthday supersedes any
+                // narrower witness-repair range that was already queued.
                 let changed = conn.execute(
                     "UPDATE spendability_state SET spendable = 0, rescan_required = 1, repair_queued = 0, repair_from_height = 0, reason_code = ?1, updated_at = ?2 WHERE id = 1",
                     params![rescan_reason_code, chrono::Utc::now().to_rfc3339()],
@@ -6031,6 +6035,39 @@ mod tests {
         }
     }
 
+    fn verified_ironwood_import(account_id: i64, tag: u8, birthday_height: i64) -> AccountKey {
+        AccountKey {
+            id: None,
+            account_id,
+            key_type: KeyType::ImportSpend,
+            key_scope: KeyScope::Account,
+            label: Some("Recovered Ironwood key".to_string()),
+            birthday_height,
+            created_at: 1,
+            spendable: true,
+            sapling_extsk: None,
+            sapling_dfvk: None,
+            orchard_extsk: Some(vec![tag; 73]),
+            orchard_fvk: Some(vec![tag.wrapping_add(1); 137]),
+            encrypted_mnemonic: None,
+        }
+    }
+
+    fn verified_ironwood_address(account_id: i64, value: &str) -> Address {
+        Address {
+            id: None,
+            key_id: None,
+            account_id,
+            diversifier_index: 3,
+            address: value.to_string(),
+            address_type: AddressType::Ironwood,
+            label: None,
+            created_at: 1,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        }
+    }
+
     #[test]
     fn verified_spending_key_import_is_atomic_idempotent_and_rewinds_birthday() {
         let db = test_db();
@@ -6100,6 +6137,59 @@ mod tests {
         assert!(no_op.1);
         assert_eq!(no_op.2, 400);
         assert!(!no_op.3);
+        let ready_state = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert!(ready_state.spendable);
+        assert!(!ready_state.rescan_required);
+    }
+
+    #[test]
+    fn verified_ironwood_import_is_idempotent_and_preserves_ready_state() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Verified Ironwood import".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let address = verified_ironwood_address(account_id, "pirate1verified-ironwood");
+        let first = repo
+            .import_verified_spending_key(
+                &verified_ironwood_import(account_id, 0x81, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert!(!first.1);
+        assert!(first.3);
+        let stored = repo
+            .get_address_by_string(account_id, &address.address)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.key_id, Some(first.0));
+        assert_eq!(stored.diversifier_index, 3);
+        assert_eq!(stored.address_type, AddressType::Ironwood);
+
+        db.conn()
+            .execute(
+                "UPDATE spendability_state SET spendable = 1, rescan_required = 0, reason_code = 'READY' WHERE id = 1",
+                [],
+            )
+            .unwrap();
+        let no_op = repo
+            .import_verified_spending_key(
+                &verified_ironwood_import(account_id, 0x81, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert_eq!(no_op.0, first.0);
+        assert!(no_op.1);
+        assert!(!no_op.3);
+        assert_eq!(repo.get_account_keys(account_id).unwrap().len(), 1);
         let ready_state = crate::SpendabilityStateStorage::new(&db)
             .load_state()
             .unwrap();

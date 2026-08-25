@@ -513,6 +513,16 @@ struct VerifiedSpendingKeyMaterial {
     orchard_fvk: Option<Vec<u8>>,
 }
 
+fn normalized_bech32_decode_input(value: &str) -> String {
+    let has_lowercase = value.bytes().any(|byte| byte.is_ascii_lowercase());
+    let has_uppercase = value.bytes().any(|byte| byte.is_ascii_uppercase());
+    if has_uppercase && !has_lowercase {
+        value.to_ascii_lowercase()
+    } else {
+        value.to_string()
+    }
+}
+
 fn verify_spending_key_address(
     pool: VerifiedSpendingKeyPool,
     spending_key: &str,
@@ -523,6 +533,7 @@ fn verify_spending_key_address(
     if address_index > MAX_VERIFIED_IMPORT_ADDRESS_INDEX {
         return Err(anyhow!("Address index exceeds the recovery limit"));
     }
+    let address_for_decode = normalized_bech32_decode_input(expected_address);
     match pool {
         VerifiedSpendingKeyPool::Sapling => {
             let (extsk, network) = ExtendedSpendingKey::from_bech32_any(spending_key)
@@ -532,14 +543,14 @@ fn verify_spending_key_address(
                     "Spending key network does not match wallet network"
                 ));
             }
-            let decoded = PaymentAddress::decode_for_network(wallet_network, expected_address)
+            let decoded = PaymentAddress::decode_for_network(wallet_network, &address_for_decode)
                 .map_err(|_| anyhow!("Invalid Sapling address for wallet network"))?;
             let canonical = decoded.encode_for_network(wallet_network);
             let dfvk = extsk.to_extended_fvk();
             let derived = dfvk
                 .derive_address(address_index)
                 .encode_for_network(wallet_network);
-            if canonical != expected_address || derived != canonical {
+            if !canonical.eq_ignore_ascii_case(expected_address) || derived != canonical {
                 return Err(anyhow!(
                     "Expected address is not controlled by the spending key"
                 ));
@@ -560,7 +571,7 @@ fn verify_spending_key_address(
                     "Spending key network does not match wallet network"
                 ));
             }
-            let decoded = IronwoodPaymentAddress::decode_any_network(expected_address)
+            let decoded = IronwoodPaymentAddress::decode_any_network(&address_for_decode)
                 .map_err(|_| anyhow!("Invalid Ironwood address for wallet network"))?;
             let canonical = decoded
                 .encode_for_network(wallet_network)
@@ -570,7 +581,7 @@ fn verify_spending_key_address(
                 .address_at(address_index)
                 .encode_for_network(wallet_network)
                 .map_err(|_| anyhow!("Unable to derive Ironwood address"))?;
-            if canonical != expected_address || derived != canonical {
+            if !canonical.eq_ignore_ascii_case(expected_address) || derived != canonical {
                 return Err(anyhow!(
                     "Expected address is not controlled by the spending key"
                 ));
@@ -847,6 +858,60 @@ mod verified_import_tests {
         assert_eq!(ironwood.canonical_address, ironwood_address);
         assert!(ironwood.orchard_extsk.is_some());
         assert!(ironwood.sapling_extsk.is_none());
+    }
+
+    #[test]
+    fn accepts_uppercase_addresses_and_returns_canonical_lowercase() {
+        let (sapling_key, sapling_address) = sapling_key_and_address(NetworkType::Mainnet, 4);
+        let sapling = verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &sapling_key,
+            &sapling_address.to_ascii_uppercase(),
+            4,
+            NetworkType::Mainnet,
+        )
+        .unwrap();
+        assert_eq!(sapling.canonical_address, sapling_address);
+
+        let (ironwood_key, ironwood_address) = ironwood_key_and_address(NetworkType::Mainnet, 4);
+        let ironwood = verify_spending_key_address(
+            VerifiedSpendingKeyPool::Ironwood,
+            &ironwood_key,
+            &ironwood_address.to_ascii_uppercase(),
+            4,
+            NetworkType::Mainnet,
+        )
+        .unwrap();
+        assert_eq!(ironwood.canonical_address, ironwood_address);
+
+        let seed = ExtendedSpendingKey::seed_bytes_from_mnemonic(MNEMONIC).unwrap();
+        let wrong_network_address = IronwoodExtendedSpendingKey::master(&seed)
+            .unwrap()
+            .derive_account(133, 0)
+            .unwrap()
+            .to_extended_fvk()
+            .address_at(4)
+            .encode_for_network(NetworkType::Testnet)
+            .unwrap()
+            .to_ascii_uppercase();
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Ironwood,
+            &ironwood_key,
+            &wrong_network_address,
+            4,
+            NetworkType::Mainnet,
+        )
+        .is_err());
+
+        let mixed_case = format!("Z{}", &sapling_address[1..]);
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &sapling_key,
+            &mixed_case,
+            4,
+            NetworkType::Mainnet,
+        )
+        .is_err());
     }
 
     #[test]

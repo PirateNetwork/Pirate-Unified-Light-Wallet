@@ -203,6 +203,16 @@ spendability reports that the rescan has completed. An exact delayed retry is a
 true no-op: it preserves a completed rescan and returns the wallet's current
 `rescan_required` state instead of disabling spending again.
 
+Valid all-uppercase Bech32 addresses are accepted and returned in canonical
+lowercase form; mixed-case and wrong-network encodings are rejected. Callers do
+not need to normalize address casing before invoking this request.
+
+Starting the full birthday rescan deliberately clears any narrower queued
+witness-repair range because the historical replay supersedes it. The storage
+operation normally owns its immediate transaction. If a future native caller
+invokes it inside an existing transaction, that outer caller owns rollback on
+error.
+
 This operation is the native prerequisite for importing external Pirate wallet
 exports into Qortal's encrypted SQLite wallet. File parsing and user-facing
 format selection remain Qortal-side follow-up work. Viewing-key recovery is not
