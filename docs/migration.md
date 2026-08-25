@@ -48,6 +48,7 @@ Qortal integration:
 - `send` and `sendp2sh` use Qortal's supplied wallet-owned shielded address to select its full key group, including internal change
 - `list` supplies the incoming, outgoing, and change metadata consumed by Qortal Core
 - existing Qortal `wallet-<hash>.dat` blobs require one deterministic entropy-seed restore into encrypted SQLite; see `docs/qortal-handoff.md`
+- external spending-key recovery has a verified, retry-idempotent `invokeJson` prerequisite that atomically stores one pool key, its proven address, and a rescan-required gate; file-format parsing remains in the Qortal integration layer
 
 iOS SDK:
 

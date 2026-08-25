@@ -164,3 +164,46 @@ cargo test -p pirate-core qortal_p2sh --locked -- --nocapture
 The JNI library also exports `invokeJson(requestJson, pretty)`, which exposes
 the typed `WalletServiceRequest` contract directly for future Qortal code that
 no longer needs command-string compatibility.
+
+## Verified spending-key recovery
+
+Qortal recovery code should use `import_spending_key_verified`, not the older
+`import_spending_key` request. The verified request imports exactly one pool at
+a time and requires the caller to provide the receive address and its
+sequential address index:
+
+```json
+{
+  "method": "import_spending_key_verified",
+  "wallet_id": "<wallet UUID>",
+  "pool": "sapling",
+  "spending_key": "<encoded spending key>",
+  "expected_address": "<wallet receive address>",
+  "address_index": 0,
+  "label": "Recovered wallet",
+  "birthday_height": 123456
+}
+```
+
+Before modifying SQLite, the wallet service decodes the key and address for the
+active wallet network and derives the address at `address_index`. The index is
+bounded to 4096 so untrusted input cannot force an unbounded Sapling diversifier
+search. The wallet must already have a nonzero known chain tip, and the birthday
+must not exceed that tip. A mismatch is rejected without writing the key. A
+successful request atomically stores the encrypted key, verified address, and
+durable rescan-required state. Repeating the same request returns the existing
+key group instead of inserting a duplicate, and an earlier repeated birthday
+lowers the retained scan start.
+
+The response contains only `key_id`, `pool`, `address`, `address_index`,
+`birthday_height`, `already_imported`, and `rescan_required`; it never returns
+the spending key. When `rescan_required` is true, the caller must invoke
+`rescan` from the returned birthday and keep sending disabled until
+spendability reports that the rescan has completed. An exact delayed retry is a
+true no-op: it preserves a completed rescan and returns the wallet's current
+`rescan_required` state instead of disabling spending again.
+
+This operation is the native prerequisite for importing external Pirate wallet
+exports into Qortal's encrypted SQLite wallet. File parsing and user-facing
+format selection remain Qortal-side follow-up work. Viewing-key recovery is not
+covered by this request.

@@ -1395,6 +1395,27 @@ pub fn import_spending_key(
     )
 }
 
+/// Import one spending key only after proving a caller-supplied address.
+pub fn import_spending_key_verified(
+    wallet_id: WalletId,
+    pool: VerifiedSpendingKeyPool,
+    spending_key: String,
+    expected_address: String,
+    address_index: u32,
+    label: Option<String>,
+    birthday_height: u32,
+) -> Result<VerifiedSpendingKeyImport> {
+    key_management::import_spending_key_verified(
+        wallet_id,
+        pool,
+        spending_key,
+        expected_address,
+        address_index,
+        label,
+        birthday_height,
+    )
+}
+
 /// Export mnemonic seed through the raw advanced path.
 ///
 /// This path is intended for advanced callers such as CLIs or external wallet

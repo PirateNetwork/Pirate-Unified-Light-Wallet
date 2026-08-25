@@ -6,6 +6,7 @@ use zcash_client_backend::encoding::{
 };
 
 const KEY_IMPORT_LOG_SCHEMA_VERSION: u8 = 1;
+const MAX_VERIFIED_IMPORT_ADDRESS_INDEX: u32 = 4096;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct AccountKeyInventory {
@@ -504,6 +505,189 @@ pub(super) fn import_spending_key(
     Ok(key_id)
 }
 
+struct VerifiedSpendingKeyMaterial {
+    canonical_address: String,
+    sapling_extsk: Option<Vec<u8>>,
+    sapling_dfvk: Option<Vec<u8>>,
+    orchard_extsk: Option<Vec<u8>>,
+    orchard_fvk: Option<Vec<u8>>,
+}
+
+fn verify_spending_key_address(
+    pool: VerifiedSpendingKeyPool,
+    spending_key: &str,
+    expected_address: &str,
+    address_index: u32,
+    wallet_network: NetworkType,
+) -> Result<VerifiedSpendingKeyMaterial> {
+    if address_index > MAX_VERIFIED_IMPORT_ADDRESS_INDEX {
+        return Err(anyhow!("Address index exceeds the recovery limit"));
+    }
+    match pool {
+        VerifiedSpendingKeyPool::Sapling => {
+            let (extsk, network) = ExtendedSpendingKey::from_bech32_any(spending_key)
+                .map_err(|_| anyhow!("Invalid Sapling spending key"))?;
+            if network != wallet_network {
+                return Err(anyhow!(
+                    "Spending key network does not match wallet network"
+                ));
+            }
+            let decoded = PaymentAddress::decode_for_network(wallet_network, expected_address)
+                .map_err(|_| anyhow!("Invalid Sapling address for wallet network"))?;
+            let canonical = decoded.encode_for_network(wallet_network);
+            let dfvk = extsk.to_extended_fvk();
+            let derived = dfvk
+                .derive_address(address_index)
+                .encode_for_network(wallet_network);
+            if canonical != expected_address || derived != canonical {
+                return Err(anyhow!(
+                    "Expected address is not controlled by the spending key"
+                ));
+            }
+            Ok(VerifiedSpendingKeyMaterial {
+                canonical_address: canonical,
+                sapling_extsk: Some(extsk.to_bytes()),
+                sapling_dfvk: Some(dfvk.to_bytes()),
+                orchard_extsk: None,
+                orchard_fvk: None,
+            })
+        }
+        VerifiedSpendingKeyPool::Ironwood => {
+            let (extsk, network) = IronwoodExtendedSpendingKey::from_bech32_any(spending_key)
+                .map_err(|_| anyhow!("Invalid Ironwood spending key"))?;
+            if network != wallet_network {
+                return Err(anyhow!(
+                    "Spending key network does not match wallet network"
+                ));
+            }
+            let decoded = IronwoodPaymentAddress::decode_any_network(expected_address)
+                .map_err(|_| anyhow!("Invalid Ironwood address for wallet network"))?;
+            let canonical = decoded
+                .encode_for_network(wallet_network)
+                .map_err(|_| anyhow!("Invalid Ironwood address for wallet network"))?;
+            let fvk = extsk.to_extended_fvk();
+            let derived = fvk
+                .address_at(address_index)
+                .encode_for_network(wallet_network)
+                .map_err(|_| anyhow!("Unable to derive Ironwood address"))?;
+            if canonical != expected_address || derived != canonical {
+                return Err(anyhow!(
+                    "Expected address is not controlled by the spending key"
+                ));
+            }
+            Ok(VerifiedSpendingKeyMaterial {
+                canonical_address: canonical,
+                sapling_extsk: None,
+                sapling_dfvk: None,
+                orchard_extsk: Some(extsk.to_bytes()),
+                orchard_fvk: Some(fvk.to_bytes()),
+            })
+        }
+    }
+}
+
+fn validate_import_birthday(birthday_height: u32, known_tip: u64) -> Result<()> {
+    if birthday_height == 0 {
+        return Err(anyhow!("Birthday height must be greater than zero"));
+    }
+    if known_tip == 0 {
+        return Err(anyhow!(
+            "Wallet chain tip is unknown; synchronize before importing a key"
+        ));
+    }
+    if u64::from(birthday_height) > known_tip {
+        return Err(anyhow!(
+            "Birthday height exceeds the wallet's known chain tip"
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn import_spending_key_verified(
+    wallet_id: WalletId,
+    pool: VerifiedSpendingKeyPool,
+    spending_key: String,
+    expected_address: String,
+    address_index: u32,
+    label: Option<String>,
+    birthday_height: u32,
+) -> Result<VerifiedSpendingKeyImport> {
+    let label = label
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if label
+        .as_ref()
+        .is_some_and(|value| value.len() > pirate_storage_sqlite::MAX_LABEL_LENGTH)
+    {
+        return Err(anyhow!("Import label is too long"));
+    }
+
+    let (db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found"))?;
+    let wallet_network = wallet_network_type(&wallet_id)?;
+    let known_tip = pirate_storage_sqlite::SpendabilityStateStorage::new(&db)
+        .load_state()?
+        .target_height;
+    validate_import_birthday(birthday_height, known_tip)?;
+
+    let material = verify_spending_key_address(
+        pool,
+        &spending_key,
+        &expected_address,
+        address_index,
+        wallet_network,
+    )?;
+    let key = AccountKey {
+        id: None,
+        account_id: secret.account_id,
+        key_type: KeyType::ImportSpend,
+        key_scope: KeyScope::Account,
+        label,
+        birthday_height: i64::from(birthday_height),
+        created_at: chrono::Utc::now().timestamp(),
+        spendable: true,
+        sapling_extsk: material.sapling_extsk,
+        sapling_dfvk: material.sapling_dfvk,
+        orchard_extsk: material.orchard_extsk,
+        orchard_fvk: material.orchard_fvk,
+        encrypted_mnemonic: None,
+    };
+
+    let address = pirate_storage_sqlite::Address {
+        id: None,
+        key_id: None,
+        account_id: secret.account_id,
+        diversifier_index: address_index,
+        address: material.canonical_address.clone(),
+        address_type: match pool {
+            VerifiedSpendingKeyPool::Sapling => AddressType::Sapling,
+            VerifiedSpendingKeyPool::Ironwood => AddressType::Ironwood,
+        },
+        label: None,
+        created_at: chrono::Utc::now().timestamp(),
+        color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+        address_scope: pirate_storage_sqlite::AddressScope::External,
+    };
+
+    let (key_id, already_imported, effective_birthday, rescan_required) = repo
+        .import_verified_spending_key(&key, &address, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED)
+        .map_err(|error| anyhow!(error.to_string()))?;
+    sync_control::clear_wallet_data_caches(&wallet_id);
+
+    Ok(VerifiedSpendingKeyImport {
+        key_id,
+        pool,
+        address: material.canonical_address,
+        address_index,
+        birthday_height: u32::try_from(effective_birthday)
+            .map_err(|_| anyhow!("Stored birthday height is invalid"))?,
+        already_imported,
+        rescan_required,
+    })
+}
+
 fn key_type_to_info(key_type: KeyType) -> KeyTypeInfo {
     match key_type {
         KeyType::Seed => KeyTypeInfo::Seed,
@@ -598,5 +782,150 @@ mod tests {
         assert_eq!(inventory.imported_spending_count, 3);
         assert_eq!(inventory.sapling_imported_spending_count, 2);
         assert_eq!(inventory.ironwood_imported_spending_count, 2);
+    }
+}
+
+#[cfg(test)]
+mod verified_import_tests {
+    use super::*;
+
+    const MNEMONIC: &str =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const OTHER_MNEMONIC: &str =
+        "legal winner thank year wave sausage worth useful legal winner thank yellow";
+
+    fn sapling_key_and_address(network: NetworkType, index: u32) -> (String, String) {
+        let extsk = ExtendedSpendingKey::from_mnemonic_with_account(MNEMONIC, network, 0).unwrap();
+        let key =
+            encode_extended_spending_key(sapling_extsk_hrp_for_network(network), extsk.inner());
+        let address = extsk
+            .to_extended_fvk()
+            .derive_address(index)
+            .encode_for_network(network);
+        (key, address)
+    }
+
+    fn ironwood_key_and_address(network: NetworkType, index: u32) -> (String, String) {
+        let seed = ExtendedSpendingKey::seed_bytes_from_mnemonic(MNEMONIC).unwrap();
+        let extsk = IronwoodExtendedSpendingKey::master(&seed)
+            .unwrap()
+            .derive_account(133, 0)
+            .unwrap();
+        let key = encode_ironwood_extsk(&extsk, network).unwrap();
+        let address = extsk
+            .to_extended_fvk()
+            .address_at(index)
+            .encode_for_network(network)
+            .unwrap();
+        (key, address)
+    }
+
+    #[test]
+    fn verifies_sapling_and_ironwood_address_ownership() {
+        let (sapling_key, sapling_address) = sapling_key_and_address(NetworkType::Mainnet, 7);
+        let sapling = verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &sapling_key,
+            &sapling_address,
+            7,
+            NetworkType::Mainnet,
+        )
+        .unwrap();
+        assert_eq!(sapling.canonical_address, sapling_address);
+        assert!(sapling.sapling_extsk.is_some());
+        assert!(sapling.orchard_extsk.is_none());
+
+        let (ironwood_key, ironwood_address) = ironwood_key_and_address(NetworkType::Mainnet, 3);
+        let ironwood = verify_spending_key_address(
+            VerifiedSpendingKeyPool::Ironwood,
+            &ironwood_key,
+            &ironwood_address,
+            3,
+            NetworkType::Mainnet,
+        )
+        .unwrap();
+        assert_eq!(ironwood.canonical_address, ironwood_address);
+        assert!(ironwood.orchard_extsk.is_some());
+        assert!(ironwood.sapling_extsk.is_none());
+    }
+
+    #[test]
+    fn rejects_wrong_address_index_key_and_network_before_storage() {
+        let (key, address) = sapling_key_and_address(NetworkType::Mainnet, 2);
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &key,
+            &address,
+            3,
+            NetworkType::Mainnet,
+        )
+        .is_err());
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &key,
+            &address,
+            MAX_VERIFIED_IMPORT_ADDRESS_INDEX + 1,
+            NetworkType::Mainnet,
+        )
+        .is_err());
+
+        let other = ExtendedSpendingKey::from_mnemonic_with_account(
+            OTHER_MNEMONIC,
+            NetworkType::Mainnet,
+            0,
+        )
+        .unwrap();
+        let other_key = encode_extended_spending_key(
+            sapling_extsk_hrp_for_network(NetworkType::Mainnet),
+            other.inner(),
+        );
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &other_key,
+            &address,
+            2,
+            NetworkType::Mainnet,
+        )
+        .is_err());
+
+        let (testnet_key, testnet_address) = sapling_key_and_address(NetworkType::Testnet, 2);
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &testnet_key,
+            &testnet_address,
+            2,
+            NetworkType::Mainnet,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn accepts_recovery_index_limit_and_rejects_the_next_index() {
+        let (key, address) =
+            sapling_key_and_address(NetworkType::Mainnet, MAX_VERIFIED_IMPORT_ADDRESS_INDEX);
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &key,
+            &address,
+            MAX_VERIFIED_IMPORT_ADDRESS_INDEX,
+            NetworkType::Mainnet,
+        )
+        .is_ok());
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &key,
+            &address,
+            MAX_VERIFIED_IMPORT_ADDRESS_INDEX + 1,
+            NetworkType::Mainnet,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn birthday_requires_a_known_tip_and_must_not_exceed_it() {
+        assert!(validate_import_birthday(1, 0).is_err());
+        assert!(validate_import_birthday(0, 100).is_err());
+        assert!(validate_import_birthday(100, 100).is_ok());
+        assert!(validate_import_birthday(101, 100).is_err());
     }
 }

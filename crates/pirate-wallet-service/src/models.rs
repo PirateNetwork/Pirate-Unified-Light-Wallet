@@ -857,6 +857,35 @@ pub struct KeyExportInfo {
     pub ironwood_spending_key: Option<String>,
 }
 
+/// Shielded pool for a verified spending-key import.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VerifiedSpendingKeyPool {
+    /// Sapling shielded pool.
+    Sapling,
+    /// Ironwood shielded pool.
+    Ironwood,
+}
+
+/// Non-secret result of importing a spending key after address verification.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VerifiedSpendingKeyImport {
+    /// Existing or newly-created key group id.
+    pub key_id: i64,
+    /// Shielded pool controlled by the imported key.
+    pub pool: VerifiedSpendingKeyPool,
+    /// Canonical verified receive address.
+    pub address: String,
+    /// Sequential address index used for verification.
+    pub address_index: u32,
+    /// Earliest birthday retained for the key group.
+    pub birthday_height: u32,
+    /// Whether this request matched an already-imported key.
+    pub already_imported: bool,
+    /// Always true until the caller completes a rescan.
+    pub rescan_required: bool,
+}
+
 /// Network information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkInfo {

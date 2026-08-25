@@ -2127,6 +2127,232 @@ impl<'a> Repository<'a> {
         }
     }
 
+    /// Atomically import a caller-verified spending key and its receive address.
+    ///
+    /// The key and address must already have been cryptographically validated by
+    /// the wallet service. This method supplies the storage guarantees that the
+    /// legacy two-step key/address APIs cannot provide: exact-key idempotency,
+    /// address ownership conflict detection, and a durable non-spendable marker
+    /// in the same transaction.
+    pub fn import_verified_spending_key(
+        &self,
+        key: &AccountKey,
+        address: &Address,
+        rescan_reason_code: &str,
+    ) -> Result<(i64, bool, i64, bool)> {
+        if key.id.is_some()
+            || key.key_type != KeyType::ImportSpend
+            || key.key_scope != KeyScope::Account
+            || !key.spendable
+            || key.birthday_height <= 0
+        {
+            return Err(Error::Validation(
+                "Invalid verified spending-key import metadata".to_string(),
+            ));
+        }
+        let sapling_only = key.sapling_extsk.is_some()
+            && key.sapling_dfvk.is_some()
+            && key.orchard_extsk.is_none()
+            && key.orchard_fvk.is_none();
+        let ironwood_only = key.orchard_extsk.is_some()
+            && key.orchard_fvk.is_some()
+            && key.sapling_extsk.is_none()
+            && key.sapling_dfvk.is_none();
+        if !sapling_only && !ironwood_only {
+            return Err(Error::Validation(
+                "A verified import must contain exactly one shielded-pool key".to_string(),
+            ));
+        }
+        if address.id.is_some()
+            || address.key_id.is_some()
+            || address.account_id != key.account_id
+            || address.address_scope != AddressScope::External
+            || (sapling_only && address.address_type != AddressType::Sapling)
+            || (ironwood_only && address.address_type != AddressType::Ironwood)
+        {
+            return Err(Error::Validation(
+                "Invalid verified spending-key address metadata".to_string(),
+            ));
+        }
+
+        let conn = self.db.conn();
+        let owns_transaction = conn.is_autocommit();
+        if owns_transaction {
+            conn.execute_batch("BEGIN IMMEDIATE")?;
+        }
+
+        let result = (|| -> Result<(i64, bool, i64, bool)> {
+            let keys = self.get_account_keys(key.account_id)?;
+            let matching = keys.into_iter().find(|existing| {
+                if sapling_only {
+                    existing.sapling_extsk == key.sapling_extsk
+                } else {
+                    existing.orchard_extsk == key.orchard_extsk
+                }
+            });
+
+            let (key_id, already_imported, effective_birthday, key_scan_changed) =
+                if let Some(mut existing) = matching {
+                    let key_id = existing.id.ok_or_else(|| {
+                        Error::Storage("Stored account key has no id".to_string())
+                    })?;
+                    let effective_birthday = if existing.birthday_height <= 0 {
+                        key.birthday_height
+                    } else {
+                        existing.birthday_height.min(key.birthday_height)
+                    };
+                    let mut changed = false;
+                    let mut scan_changed = false;
+                    if effective_birthday != existing.birthday_height {
+                        existing.birthday_height = effective_birthday;
+                        changed = true;
+                        scan_changed = true;
+                    }
+                    if existing.label.is_none() && key.label.is_some() {
+                        existing.label.clone_from(&key.label);
+                        changed = true;
+                    }
+                    if sapling_only && existing.sapling_dfvk != key.sapling_dfvk {
+                        existing.sapling_dfvk.clone_from(&key.sapling_dfvk);
+                        changed = true;
+                        scan_changed = true;
+                    }
+                    if ironwood_only && existing.orchard_fvk != key.orchard_fvk {
+                        existing.orchard_fvk.clone_from(&key.orchard_fvk);
+                        changed = true;
+                        scan_changed = true;
+                    }
+                    if existing.key_type == KeyType::ImportSpend
+                        && (existing.key_scope != KeyScope::Account || !existing.spendable)
+                    {
+                        existing.key_scope = KeyScope::Account;
+                        existing.spendable = true;
+                        changed = true;
+                        scan_changed = true;
+                    }
+                    if changed {
+                        let encrypted = self.encrypt_account_key_fields(&existing)?;
+                        self.upsert_account_key(&encrypted)?;
+                    }
+                    (key_id, true, effective_birthday, scan_changed)
+                } else {
+                    let encrypted = self.encrypt_account_key_fields(key)?;
+                    let key_id = self.upsert_account_key(&encrypted)?;
+                    (key_id, false, key.birthday_height, true)
+                };
+
+            let existing_address: Option<(i64, Option<i64>, i64, String, String)> = conn
+                .query_row(
+                    "SELECT account_id, key_id, diversifier_index, address_type, address_scope FROM addresses WHERE address = ?1",
+                    [&address.address],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    },
+                )
+                .optional()?;
+            let address_exists = existing_address.is_some();
+            let expected_address_type = if sapling_only { "Sapling" } else { "Orchard" };
+            let address_scan_changed = if let Some((
+                account_id,
+                existing_key_id,
+                diversifier_index,
+                address_type,
+                address_scope,
+            )) = existing_address
+            {
+                if account_id != key.account_id || existing_key_id.is_some_and(|id| id != key_id) {
+                    return Err(Error::Validation(
+                        "Verified address is already assigned to another key".to_string(),
+                    ));
+                }
+                existing_key_id != Some(key_id)
+                    || diversifier_index != i64::from(address.diversifier_index)
+                    || address_type != expected_address_type
+                    || address_scope != "external"
+            } else {
+                true
+            };
+
+            if address_scan_changed {
+                if address_exists {
+                    conn.execute(
+                        "UPDATE addresses SET account_id = ?1, key_id = ?2, diversifier_index = ?3, address_type = ?4, address_scope = 'external' WHERE address = ?5",
+                        params![
+                            key.account_id,
+                            key_id,
+                            i64::from(address.diversifier_index),
+                            expected_address_type,
+                            &address.address,
+                        ],
+                    )?;
+                } else {
+                    conn.execute(
+                        "INSERT INTO addresses (account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'external')",
+                        params![
+                            key.account_id,
+                            key_id,
+                            i64::from(address.diversifier_index),
+                            &address.address,
+                            expected_address_type,
+                            &address.label,
+                            address.created_at,
+                            address.color_tag.as_u8() as i64,
+                        ],
+                    )?;
+                }
+            }
+
+            let rescan_required = if key_scan_changed || address_scan_changed {
+                let changed = conn.execute(
+                    "UPDATE spendability_state SET spendable = 0, rescan_required = 1, repair_queued = 0, repair_from_height = 0, reason_code = ?1, updated_at = ?2 WHERE id = 1",
+                    params![rescan_reason_code, chrono::Utc::now().to_rfc3339()],
+                )?;
+                if changed != 1 {
+                    return Err(Error::Storage(
+                        "Spendability state row is unavailable".to_string(),
+                    ));
+                }
+                true
+            } else {
+                conn.query_row(
+                    "SELECT rescan_required FROM spendability_state WHERE id = 1",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )? != 0
+            };
+
+            Ok((
+                key_id,
+                already_imported,
+                effective_birthday,
+                rescan_required,
+            ))
+        })();
+
+        match result {
+            Ok(value) if owns_transaction => {
+                if let Err(error) = conn.execute_batch("COMMIT") {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    return Err(error.into());
+                }
+                Ok(value)
+            }
+            Ok(value) => Ok(value),
+            Err(error) => {
+                if owns_transaction {
+                    let _ = conn.execute_batch("ROLLBACK");
+                }
+                Err(error)
+            }
+        }
+    }
+
     /// Encrypt account key material before storage.
     pub fn encrypt_account_key_fields(&self, key: &AccountKey) -> Result<AccountKey> {
         Ok(AccountKey {
@@ -5770,6 +5996,238 @@ mod tests {
         };
         let encrypted = repo.encrypt_account_key_fields(&key).unwrap();
         repo.upsert_account_key(&encrypted).unwrap()
+    }
+
+    fn verified_sapling_import(account_id: i64, tag: u8, birthday_height: i64) -> AccountKey {
+        AccountKey {
+            id: None,
+            account_id,
+            key_type: KeyType::ImportSpend,
+            key_scope: KeyScope::Account,
+            label: Some("Recovered Sapling key".to_string()),
+            birthday_height,
+            created_at: 1,
+            spendable: true,
+            sapling_extsk: Some(vec![tag; 169]),
+            sapling_dfvk: Some(vec![tag.wrapping_add(1); 128]),
+            orchard_extsk: None,
+            orchard_fvk: None,
+            encrypted_mnemonic: None,
+        }
+    }
+
+    fn verified_sapling_address(account_id: i64, value: &str) -> Address {
+        Address {
+            id: None,
+            key_id: None,
+            account_id,
+            diversifier_index: 0,
+            address: value.to_string(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at: 1,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        }
+    }
+
+    #[test]
+    fn verified_spending_key_import_is_atomic_idempotent_and_rewinds_birthday() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Verified import".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let address = verified_sapling_address(account_id, "zs1verified-import");
+
+        let first = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x31, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert!(!first.1);
+        assert_eq!(first.2, 500);
+        assert!(first.3);
+
+        let second = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x31, 400),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert_eq!(second.0, first.0);
+        assert!(second.1);
+        assert_eq!(second.2, 400);
+        assert!(second.3);
+
+        let keys = repo.get_account_keys(account_id).unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].birthday_height, 400);
+        let stored_address = repo
+            .get_address_by_string(account_id, &address.address)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored_address.key_id, Some(first.0));
+
+        let state = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert!(!state.spendable);
+        assert!(state.rescan_required);
+        assert_eq!(state.reason_code, "ERR_RESCAN_REQUIRED");
+
+        db.conn()
+            .execute(
+                "UPDATE spendability_state SET spendable = 1, rescan_required = 0, reason_code = 'READY' WHERE id = 1",
+                [],
+            )
+            .unwrap();
+        let no_op = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x31, 400),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert_eq!(no_op.0, first.0);
+        assert!(no_op.1);
+        assert_eq!(no_op.2, 400);
+        assert!(!no_op.3);
+        let ready_state = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert!(ready_state.spendable);
+        assert!(!ready_state.rescan_required);
+    }
+
+    #[test]
+    fn verified_spending_key_import_replaces_legacy_zero_birthday() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Legacy zero birthday".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let address = verified_sapling_address(account_id, "zs1legacy-zero-birthday");
+        let first = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x61, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        db.conn()
+            .execute(
+                "UPDATE account_keys SET birthday_height = 0 WHERE id = ?1",
+                [first.0],
+            )
+            .unwrap();
+
+        let repaired = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x61, 450),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert_eq!(repaired.0, first.0);
+        assert!(repaired.1);
+        assert_eq!(repaired.2, 450);
+        assert!(repaired.3);
+        assert_eq!(
+            repo.get_account_key_by_id(first.0)
+                .unwrap()
+                .unwrap()
+                .birthday_height,
+            450
+        );
+    }
+
+    #[test]
+    fn verified_spending_key_import_repairs_address_metadata_exactly() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Address metadata repair".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let address = verified_sapling_address(account_id, "zs1metadata-repair");
+        let first = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x71, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        db.conn()
+            .execute(
+                "UPDATE addresses SET key_id = NULL, diversifier_index = 7, address_type = 'Orchard', address_scope = 'internal' WHERE address = ?1",
+                [&address.address],
+            )
+            .unwrap();
+
+        let repaired = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x71, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert_eq!(repaired.0, first.0);
+        assert!(repaired.1);
+        assert!(repaired.3);
+        let stored = repo
+            .get_address_by_string(account_id, &address.address)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.key_id, Some(first.0));
+        assert_eq!(stored.diversifier_index, 0);
+        assert_eq!(stored.address_type, AddressType::Sapling);
+        assert_eq!(stored.address_scope, AddressScope::External);
+    }
+
+    #[test]
+    fn verified_spending_key_import_rolls_back_on_address_conflict() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Verified import conflict".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let address = verified_sapling_address(account_id, "zs1verified-conflict");
+
+        repo.import_verified_spending_key(
+            &verified_sapling_import(account_id, 0x41, 500),
+            &address,
+            "ERR_RESCAN_REQUIRED",
+        )
+        .unwrap();
+
+        let error = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x51, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap_err();
+        assert!(matches!(error, Error::Validation(_)));
+        assert_eq!(repo.get_account_keys(account_id).unwrap().len(), 1);
     }
 
     fn make_sapling_note_blob_and_commitment(
