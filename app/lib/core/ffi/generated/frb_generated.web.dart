@@ -12,13 +12,10 @@ import 'api/diagnostics.dart';
 import 'api/endpoint.dart';
 import 'api/seed_export.dart';
 import 'api/tunnel.dart';
-
 import 'dart:async';
 import 'dart:convert';
-
 import 'frb_generated.dart';
 import 'models.dart';
-
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
@@ -175,6 +172,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -500,6 +500,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -920,6 +923,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_i_64(raw.id),
       cst_encode_opt_String(raw.label),
       cst_encode_key_type_info(raw.keyType),
+      cst_encode_opt_box_autoadd_u_32(raw.seedAccountIndex),
       cst_encode_bool(raw.spendable),
       cst_encode_bool(raw.hasSapling),
       cst_encode_bool(raw.hasIronwood),
@@ -1012,6 +1016,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   JSAny cst_encode_list_prim_i_64_strict(Int64List raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw.inner.jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_prim_u_32_strict(Uint32List raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.jsify()!;
   }
 
   @protected
@@ -1677,6 +1687,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
@@ -1912,6 +1928,16 @@ class RustLibWire implements BaseWire {
     label,
     notes,
     color_tag,
+  );
+
+  void wire__crate__api__add_next_seed_accounts(
+    NativePortType port_,
+    String wallet_id,
+    int count,
+  ) => wasmModule.wire__crate__api__add_next_seed_accounts(
+    port_,
+    wallet_id,
+    count,
   );
 
   void wire__crate__api__address_exists_in_book(
@@ -3054,6 +3080,12 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String label,
     String? notes,
     int color_tag,
+  );
+
+  external void wire__crate__api__add_next_seed_accounts(
+    NativePortType port_,
+    String wallet_id,
+    int count,
   );
 
   external void wire__crate__api__address_exists_in_book(

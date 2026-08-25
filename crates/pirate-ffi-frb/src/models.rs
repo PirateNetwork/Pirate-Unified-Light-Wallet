@@ -480,6 +480,8 @@ pub struct KeyGroupInfo {
     pub label: Option<String>,
     /// Key type
     pub key_type: KeyTypeInfo,
+    /// ZIP-32 account index for seed-derived key groups.
+    pub seed_account_index: Option<u32>,
     /// Whether this key can spend
     pub spendable: bool,
     /// Sapling capability

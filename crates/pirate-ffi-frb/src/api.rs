@@ -1135,6 +1135,11 @@ pub fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> {
     convert_from_service(service::list_key_groups(wallet_id)?)
 }
 
+/// Add the next one or five durable ZIP-32 accounts derived from the wallet seed.
+pub fn add_next_seed_accounts(wallet_id: WalletId, count: u32) -> Result<Vec<u32>> {
+    service::add_next_seed_accounts(wallet_id, count)
+}
+
 /// Export viewing/spending keys for a specific key group.
 pub fn export_key_group_keys(wallet_id: WalletId, key_id: i64) -> Result<KeyExportInfo> {
     convert_from_service(service::export_key_group_keys(wallet_id, key_id)?)

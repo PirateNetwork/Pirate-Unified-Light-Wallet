@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1940509816;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1724411936;
 
 // Section: executor
 
@@ -96,6 +96,32 @@ fn wire__crate__api__add_address_book_entry_impl(
                             api_notes,
                             api_color_tag,
                         )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__add_next_seed_accounts_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    count: impl CstDecode<u32>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "add_next_seed_accounts",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_count = count.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::add_next_seed_accounts(api_wallet_id, api_count)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -4426,6 +4452,7 @@ impl SseDecode for crate::models::KeyGroupInfo {
         let mut var_id = <i64>::sse_decode(deserializer);
         let mut var_label = <Option<String>>::sse_decode(deserializer);
         let mut var_keyType = <crate::models::KeyTypeInfo>::sse_decode(deserializer);
+        let mut var_seedAccountIndex = <Option<u32>>::sse_decode(deserializer);
         let mut var_spendable = <bool>::sse_decode(deserializer);
         let mut var_hasSapling = <bool>::sse_decode(deserializer);
         let mut var_hasIronwood = <bool>::sse_decode(deserializer);
@@ -4435,6 +4462,7 @@ impl SseDecode for crate::models::KeyGroupInfo {
             id: var_id,
             label: var_label,
             key_type: var_keyType,
+            seed_account_index: var_seedAccountIndex,
             spendable: var_spendable,
             has_sapling: var_hasSapling,
             has_ironwood: var_hasIronwood,
@@ -4614,6 +4642,18 @@ impl SseDecode for Vec<i64> {
         let mut ans_ = vec![];
         for idx_ in 0..len_ {
             ans_.push(<i64>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<u32>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -5623,6 +5663,7 @@ impl flutter_rust_bridge::IntoDart for crate::models::KeyGroupInfo {
             self.id.into_into_dart().into_dart(),
             self.label.into_into_dart().into_dart(),
             self.key_type.into_into_dart().into_dart(),
+            self.seed_account_index.into_into_dart().into_dart(),
             self.spendable.into_into_dart().into_dart(),
             self.has_sapling.into_into_dart().into_dart(),
             self.has_ironwood.into_into_dart().into_dart(),
@@ -6430,6 +6471,7 @@ impl SseEncode for crate::models::KeyGroupInfo {
         <i64>::sse_encode(self.id, serializer);
         <Option<String>>::sse_encode(self.label, serializer);
         <crate::models::KeyTypeInfo>::sse_encode(self.key_type, serializer);
+        <Option<u32>>::sse_encode(self.seed_account_index, serializer);
         <bool>::sse_encode(self.spendable, serializer);
         <bool>::sse_encode(self.has_sapling, serializer);
         <bool>::sse_encode(self.has_ironwood, serializer);
@@ -6575,6 +6617,16 @@ impl SseEncode for Vec<i64> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <i64>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <u32>::sse_encode(item, serializer);
         }
     }
 }
@@ -7380,6 +7432,7 @@ mod io {
                 id: self.id.cst_decode(),
                 label: self.label.cst_decode(),
                 key_type: self.key_type.cst_decode(),
+                seed_account_index: self.seed_account_index.cst_decode(),
                 spendable: self.spendable.cst_decode(),
                 has_sapling: self.has_sapling.cst_decode(),
                 has_ironwood: self.has_ironwood.cst_decode(),
@@ -7510,6 +7563,15 @@ mod io {
     impl CstDecode<Vec<i64>> for *mut wire_cst_list_prim_i_64_strict {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> Vec<i64> {
+            unsafe {
+                let wrap = flutter_rust_bridge::for_generated::box_from_leak_ptr(self);
+                flutter_rust_bridge::for_generated::vec_from_leak_ptr(wrap.ptr, wrap.len)
+            }
+        }
+    }
+    impl CstDecode<Vec<u32>> for *mut wire_cst_list_prim_u_32_strict {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<u32> {
             unsafe {
                 let wrap = flutter_rust_bridge::for_generated::box_from_leak_ptr(self);
                 flutter_rust_bridge::for_generated::vec_from_leak_ptr(wrap.ptr, wrap.len)
@@ -8024,6 +8086,7 @@ mod io {
                 id: Default::default(),
                 label: core::ptr::null_mut(),
                 key_type: Default::default(),
+                seed_account_index: core::ptr::null_mut(),
                 spendable: Default::default(),
                 has_sapling: Default::default(),
                 has_ironwood: Default::default(),
@@ -8425,6 +8488,15 @@ mod io {
         wire__crate__api__add_address_book_entry_impl(
             port_, wallet_id, address, label, notes, color_tag,
         )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__add_next_seed_accounts(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        count: u32,
+    ) {
+        wire__crate__api__add_next_seed_accounts_impl(port_, wallet_id, count)
     }
 
     #[unsafe(no_mangle)]
@@ -10081,6 +10153,17 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_cst_new_list_prim_u_32_strict(
+        len: i32,
+    ) -> *mut wire_cst_list_prim_u_32_strict {
+        let ans = wire_cst_list_prim_u_32_strict {
+            ptr: flutter_rust_bridge::for_generated::new_leak_vec_ptr(Default::default(), len),
+            len,
+        };
+        flutter_rust_bridge::for_generated::new_leak_box_ptr(ans)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_cst_new_list_prim_u_8_strict(
         len: i32,
     ) -> *mut wire_cst_list_prim_u_8_strict {
@@ -10246,6 +10329,7 @@ mod io {
         id: i64,
         label: *mut wire_cst_list_prim_u_8_strict,
         key_type: i32,
+        seed_account_index: *mut u32,
         spendable: bool,
         has_sapling: bool,
         has_ironwood: bool,
@@ -10328,6 +10412,12 @@ mod io {
     #[derive(Clone, Copy)]
     pub struct wire_cst_list_prim_i_64_strict {
         ptr: *mut i64,
+        len: i32,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct wire_cst_list_prim_u_32_strict {
+        ptr: *mut u32,
         len: i32,
     }
     #[repr(C)]
@@ -10877,19 +10967,20 @@ mod web {
                 .unwrap();
             assert_eq!(
                 self_.length(),
-                8,
-                "Expected 8 elements, got {}",
+                9,
+                "Expected 9 elements, got {}",
                 self_.length()
             );
             crate::models::KeyGroupInfo {
                 id: self_.get(0).cst_decode(),
                 label: self_.get(1).cst_decode(),
                 key_type: self_.get(2).cst_decode(),
-                spendable: self_.get(3).cst_decode(),
-                has_sapling: self_.get(4).cst_decode(),
-                has_ironwood: self_.get(5).cst_decode(),
-                birthday_height: self_.get(6).cst_decode(),
-                created_at: self_.get(7).cst_decode(),
+                seed_account_index: self_.get(3).cst_decode(),
+                spendable: self_.get(4).cst_decode(),
+                has_sapling: self_.get(5).cst_decode(),
+                has_ironwood: self_.get(6).cst_decode(),
+                birthday_height: self_.get(7).cst_decode(),
+                created_at: self_.get(8).cst_decode(),
             }
         }
     }
@@ -11040,6 +11131,12 @@ mod web {
     impl CstDecode<Vec<i64>> for Box<[i64]> {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> Vec<i64> {
+            self.into_vec()
+        }
+    }
+    impl CstDecode<Vec<u32>> for Box<[u32]> {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<u32> {
             self.into_vec()
         }
     }
@@ -11656,6 +11753,14 @@ mod web {
             flutter_rust_bridge::for_generated::slice_from_byte_buffer(buf.to_vec()).into()
         }
     }
+    impl CstDecode<Vec<u32>> for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<u32> {
+            self.unchecked_into::<flutter_rust_bridge::for_generated::js_sys::Uint32Array>()
+                .to_vec()
+                .into()
+        }
+    }
     impl CstDecode<Vec<u8>> for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> Vec<u8> {
@@ -11738,6 +11843,15 @@ mod web {
         wire__crate__api__add_address_book_entry_impl(
             port_, wallet_id, address, label, notes, color_tag,
         )
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__add_next_seed_accounts(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        count: u32,
+    ) {
+        wire__crate__api__add_next_seed_accounts_impl(port_, wallet_id, count)
     }
 
     #[wasm_bindgen]

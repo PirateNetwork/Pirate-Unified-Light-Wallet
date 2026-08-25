@@ -62,6 +62,7 @@ pub(super) fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> 
                 id,
                 label: key.label,
                 key_type: key_type_to_info(key.key_type),
+                seed_account_index: (key.key_type == KeyType::Seed).then_some(0),
                 spendable: key.spendable,
                 has_sapling,
                 has_ironwood,

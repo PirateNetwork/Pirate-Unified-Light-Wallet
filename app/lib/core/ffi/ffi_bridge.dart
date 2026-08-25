@@ -537,6 +537,20 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  static Future<List<int>> addNextSeedAccounts({
+    required WalletId walletId,
+    required int count,
+  }) async {
+    if (kUseFrbBindings) {
+      final indices = await api.addNextSeedAccounts(
+        walletId: walletId,
+        count: count,
+      );
+      return indices.toList(growable: false);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   static Future<List<KeyAddressInfo>> listAddressesForKey(
     WalletId id,
     int keyId,

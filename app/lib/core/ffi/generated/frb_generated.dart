@@ -9,15 +9,12 @@ import 'api/diagnostics.dart';
 import 'api/endpoint.dart';
 import 'api/seed_export.dart';
 import 'api/tunnel.dart';
-
 import 'dart:async';
 import 'dart:convert';
-
 import 'frb_generated.dart';
 import 'frb_generated.io.dart'
     if (dart.library.js_interop) 'frb_generated.web.dart';
 import 'models.dart';
-
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 /// Main entrypoint of the Rust API
@@ -73,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1940509816;
+  int get rustContentHash => -1724411936;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -92,6 +89,11 @@ abstract class RustLibApi extends BaseApi {
     required String label,
     String? notes,
     required AddressBookColorTag colorTag,
+  });
+
+  Future<Uint32List> crateApiAddNextSeedAccounts({
+    required String walletId,
+    required int count,
   });
 
   Future<bool> crateApiAddressExistsInBook({
@@ -761,6 +763,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "add_address_book_entry",
         argNames: ["walletId", "address", "label", "notes", "colorTag"],
+      );
+
+  @override
+  Future<Uint32List> crateApiAddNextSeedAccounts({
+    required String walletId,
+    required int count,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(count);
+          return wire.wire__crate__api__add_next_seed_accounts(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_prim_u_32_strict,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiAddNextSeedAccountsConstMeta,
+        argValues: [walletId, count],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiAddNextSeedAccountsConstMeta =>
+      const TaskConstMeta(
+        debugName: "add_next_seed_accounts",
+        argNames: ["walletId", "count"],
       );
 
   @override
@@ -5480,17 +5515,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   KeyGroupInfo dco_decode_key_group_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 8)
-      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return KeyGroupInfo(
       id: dco_decode_i_64(arr[0]),
       label: dco_decode_opt_String(arr[1]),
       keyType: dco_decode_key_type_info(arr[2]),
-      spendable: dco_decode_bool(arr[3]),
-      hasSapling: dco_decode_bool(arr[4]),
-      hasIronwood: dco_decode_bool(arr[5]),
-      birthdayHeight: dco_decode_i_64(arr[6]),
-      createdAt: dco_decode_i_64(arr[7]),
+      seedAccountIndex: dco_decode_opt_box_autoadd_u_32(arr[3]),
+      spendable: dco_decode_bool(arr[4]),
+      hasSapling: dco_decode_bool(arr[5]),
+      hasIronwood: dco_decode_bool(arr[6]),
+      birthdayHeight: dco_decode_i_64(arr[7]),
+      createdAt: dco_decode_i_64(arr[8]),
     );
   }
 
@@ -5589,6 +5625,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Int64List dco_decode_list_prim_i_64_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeInt64List(raw);
+  }
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Uint32List;
   }
 
   @protected
@@ -6455,6 +6497,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_id = sse_decode_i_64(deserializer);
     var var_label = sse_decode_opt_String(deserializer);
     var var_keyType = sse_decode_key_type_info(deserializer);
+    var var_seedAccountIndex = sse_decode_opt_box_autoadd_u_32(deserializer);
     var var_spendable = sse_decode_bool(deserializer);
     var var_hasSapling = sse_decode_bool(deserializer);
     var var_hasIronwood = sse_decode_bool(deserializer);
@@ -6464,6 +6507,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       id: var_id,
       label: var_label,
       keyType: var_keyType,
+      seedAccountIndex: var_seedAccountIndex,
       spendable: var_spendable,
       hasSapling: var_hasSapling,
       hasIronwood: var_hasIronwood,
@@ -6642,6 +6686,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getInt64List(len_);
+  }
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
   }
 
   @protected
@@ -7687,6 +7738,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_64(self.id, serializer);
     sse_encode_opt_String(self.label, serializer);
     sse_encode_key_type_info(self.keyType, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.seedAccountIndex, serializer);
     sse_encode_bool(self.spendable, serializer);
     sse_encode_bool(self.hasSapling, serializer);
     sse_encode_bool(self.hasIronwood, serializer);
@@ -7838,6 +7890,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putInt64List(self);
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(self);
   }
 
   @protected

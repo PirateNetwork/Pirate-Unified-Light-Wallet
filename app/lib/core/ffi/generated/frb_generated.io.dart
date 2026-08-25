@@ -9,14 +9,11 @@ import 'api/diagnostics.dart';
 import 'api/endpoint.dart';
 import 'api/seed_export.dart';
 import 'api/tunnel.dart';
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
-
 import 'frb_generated.dart';
 import 'models.dart';
-
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
@@ -173,6 +170,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -498,6 +498,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -935,6 +938,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  ffi.Pointer<wire_cst_list_prim_u_32_strict> cst_encode_list_prim_u_32_strict(
+    Uint32List raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_prim_u_32_strict(raw.length);
+    ans.ref.ptr.asTypedList(raw.length).setAll(0, raw);
+    return ans;
+  }
+
+  @protected
   ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_list_prim_u_8_strict(
     Uint8List raw,
   ) {
@@ -1301,6 +1314,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     wireObj.id = cst_encode_i_64(apiObj.id);
     wireObj.label = cst_encode_opt_String(apiObj.label);
     wireObj.key_type = cst_encode_key_type_info(apiObj.keyType);
+    wireObj.seed_account_index = cst_encode_opt_box_autoadd_u_32(
+      apiObj.seedAccountIndex,
+    );
     wireObj.spendable = cst_encode_bool(apiObj.spendable);
     wireObj.has_sapling = cst_encode_bool(apiObj.hasSapling);
     wireObj.has_ironwood = cst_encode_bool(apiObj.hasIronwood);
@@ -1880,6 +1896,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
@@ -2217,6 +2239,30 @@ class RustLibWire implements BaseWire {
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               int,
             )
+          >();
+
+  void wire__crate__api__add_next_seed_accounts(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    int count,
+  ) {
+    return _wire__crate__api__add_next_seed_accounts(port_, wallet_id, count);
+  }
+
+  late final _wire__crate__api__add_next_seed_accountsPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Uint32,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__add_next_seed_accounts');
+  late final _wire__crate__api__add_next_seed_accounts =
+      _wire__crate__api__add_next_seed_accountsPtr
+          .asFunction<
+            void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, int)
           >();
 
   void wire__crate__api__address_exists_in_book(
@@ -6339,6 +6385,21 @@ class RustLibWire implements BaseWire {
   late final _cst_new_list_prim_i_64_strict = _cst_new_list_prim_i_64_strictPtr
       .asFunction<ffi.Pointer<wire_cst_list_prim_i_64_strict> Function(int)>();
 
+  ffi.Pointer<wire_cst_list_prim_u_32_strict> cst_new_list_prim_u_32_strict(
+    int len,
+  ) {
+    return _cst_new_list_prim_u_32_strict(len);
+  }
+
+  late final _cst_new_list_prim_u_32_strictPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Pointer<wire_cst_list_prim_u_32_strict> Function(ffi.Int32)
+        >
+      >('frbgen_pirate_wallet_cst_new_list_prim_u_32_strict');
+  late final _cst_new_list_prim_u_32_strict = _cst_new_list_prim_u_32_strictPtr
+      .asFunction<ffi.Pointer<wire_cst_list_prim_u_32_strict> Function(int)>();
+
   ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_new_list_prim_u_8_strict(
     int len,
   ) {
@@ -6412,14 +6473,10 @@ class RustLibWire implements BaseWire {
 
 typedef DartPort = ffi.Int64;
 typedef DartDartPort = int;
-typedef DartPostCObjectFnTypeFunction = ffi.Bool Function(
-  DartPort port_id,
-  ffi.Pointer<ffi.Void> message,
-);
-typedef DartDartPostCObjectFnTypeFunction = bool Function(
-  DartDartPort port_id,
-  ffi.Pointer<ffi.Void> message,
-);
+typedef DartPostCObjectFnTypeFunction =
+    ffi.Bool Function(DartPort port_id, ffi.Pointer<ffi.Void> message);
+typedef DartDartPostCObjectFnTypeFunction =
+    bool Function(DartDartPort port_id, ffi.Pointer<ffi.Void> message);
 typedef DartPostCObjectFnType =
     ffi.Pointer<ffi.NativeFunction<DartPostCObjectFnTypeFunction>>;
 
@@ -6707,6 +6764,8 @@ final class wire_cst_key_group_info extends ffi.Struct {
   @ffi.Int32()
   external int key_type;
 
+  external ffi.Pointer<ffi.Uint32> seed_account_index;
+
   @ffi.Bool()
   external bool spendable;
 
@@ -6757,6 +6816,13 @@ final class wire_cst_payment_disclosure extends ffi.Struct {
 
 final class wire_cst_list_payment_disclosure extends ffi.Struct {
   external ffi.Pointer<wire_cst_payment_disclosure> ptr;
+
+  @ffi.Int32()
+  external int len;
+}
+
+final class wire_cst_list_prim_u_32_strict extends ffi.Struct {
+  external ffi.Pointer<ffi.Uint32> ptr;
 
   @ffi.Int32()
   external int len;
