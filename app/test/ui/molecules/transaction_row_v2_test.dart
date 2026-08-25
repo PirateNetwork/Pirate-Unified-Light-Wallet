@@ -108,17 +108,14 @@ void main() {
       _testApp(width: 320, textScale: 1, onTap: () => taps += 1),
     );
 
-    final summary = find.bySemanticsLabel(
-      RegExp(r'Received, \+77999\.9997 ARRR, Confirmed, .*Has memo'),
-    );
+    final summary = find.byKey(TransactionRowV2.semanticsKey);
     expect(summary, findsOneWidget);
+    final semantics = tester.getSemantics(summary).getSemanticsData();
     expect(
-      tester
-          .getSemantics(summary)
-          .getSemanticsData()
-          .hasAction(ui.SemanticsAction.tap),
-      isTrue,
+      semantics.label,
+      matches(RegExp(r'Received, \+77999\.9997 ARRR, Confirmed, .*Has memo')),
     );
+    expect(semantics.hasAction(ui.SemanticsAction.tap), isTrue);
 
     await tester.tap(find.byType(TransactionRowV2));
     await tester.pump();
