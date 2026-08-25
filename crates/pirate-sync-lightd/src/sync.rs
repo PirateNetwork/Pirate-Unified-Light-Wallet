@@ -5838,6 +5838,47 @@ impl SyncEngine {
                     )));
                 }
             }
+            for (tx_index, tx) in block.transactions.iter().enumerate() {
+                if tx.hash.len() != 32 {
+                    return Err(Error::Sync(format!(
+                        "compact block {} transaction {} has invalid hash length {}",
+                        block.height,
+                        tx_index,
+                        tx.hash.len()
+                    )));
+                }
+                for spend in &tx.spends {
+                    if spend.nf.len() != 32 {
+                        return Err(Error::Sync(format!(
+                            "compact block {} transaction {} has an invalid Sapling nullifier",
+                            block.height, tx_index
+                        )));
+                    }
+                }
+                for output in &tx.outputs {
+                    if output.cmu.len() != 32
+                        || output.ephemeral_key.len() != 32
+                        || output.ciphertext.len() < 52
+                    {
+                        return Err(Error::Sync(format!(
+                            "compact block {} transaction {} has an invalid Sapling output",
+                            block.height, tx_index
+                        )));
+                    }
+                }
+                for action in &tx.actions {
+                    if action.nullifier.len() != 32
+                        || action.cmx.len() != 32
+                        || action.ephemeral_key.len() != 32
+                        || action.enc_ciphertext.len() < 52
+                    {
+                        return Err(Error::Sync(format!(
+                            "compact block {} transaction {} has an invalid Ironwood action",
+                            block.height, tx_index
+                        )));
+                    }
+                }
+            }
             previous_hash = Some(&block.hash);
         }
 
@@ -5914,7 +5955,20 @@ impl SyncEngine {
         let Some(cached_end) = cache.contiguous_end(start, end)? else {
             return Ok(None);
         };
-        let anchor = cache.load_range_for_upgrade(cached_end, cached_end)?;
+        let anchor = match cache.load_range_for_upgrade(cached_end, cached_end) {
+            Ok(anchor) => anchor,
+            Err(error) => {
+                tracing::warn!(
+                    "Could not decode cached compact block anchor at {}; invalidating {}-{}: {}",
+                    cached_end,
+                    start,
+                    cached_end,
+                    error
+                );
+                let _ = cache.delete_range(start, cached_end);
+                return Ok(None);
+            }
+        };
         if let Err(e) = Self::validate_compact_block_range(cached_end, cached_end, &anchor.blocks) {
             tracing::warn!(
                 "Invalid cached compact block anchor at {}; invalidating {}-{}: {}",
@@ -12446,6 +12500,15 @@ mod tests {
         let mut malformed = linked_compact_blocks(42, 45);
         malformed[1].hash.truncate(31);
         assert!(SyncEngine::validate_compact_block_range(42, 45, &malformed).is_err());
+    }
+
+    #[test]
+    fn compact_block_range_rejects_malformed_shielded_payloads() {
+        let mut blocks = linked_compact_blocks(42, 45);
+        blocks[1].transactions = vec![compact_tx_with_commitments(0, 0x11, 1, 11)];
+        blocks[1].transactions[0].outputs[0].cmu.truncate(31);
+
+        assert!(SyncEngine::validate_compact_block_range(42, 45, &blocks).is_err());
     }
 
     #[tokio::test]

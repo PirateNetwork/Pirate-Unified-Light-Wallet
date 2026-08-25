@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::sync::watch;
 
-const CACHE_RECORD_MAGIC: &[u8] = b"PWCB\x01";
+const CACHE_RECORD_MAGIC_V1: &[u8] = b"PWCB\x01";
+const CACHE_RECORD_MAGIC: &[u8] = b"PWCB\x02";
+const CACHE_RECORD_CHECKSUM_LEN: usize = 4;
 
 pub struct BlockCache {
     path: PathBuf,
@@ -651,16 +653,42 @@ fn cache_path_for_endpoint(endpoint: &str) -> Result<PathBuf> {
 
 fn encode_block(block: &CompactBlockData) -> Result<Vec<u8>> {
     let cached = CachedCompactBlock::from(block);
-    let mut encoded = Vec::with_capacity(CACHE_RECORD_MAGIC.len() + cached.encoded_len());
+    let payload_start = CACHE_RECORD_MAGIC.len() + CACHE_RECORD_CHECKSUM_LEN;
+    let mut encoded = Vec::with_capacity(payload_start + cached.encoded_len());
     encoded.extend_from_slice(CACHE_RECORD_MAGIC);
+    encoded.resize(payload_start, 0);
     cached
         .encode(&mut encoded)
         .map_err(|e| Error::Storage(e.to_string()))?;
+    let checksum = crc32fast::hash(&encoded[payload_start..]);
+    encoded[CACHE_RECORD_MAGIC.len()..payload_start].copy_from_slice(&checksum.to_le_bytes());
     Ok(encoded)
 }
 
 fn decode_block(bytes: &[u8]) -> Result<CompactBlockData> {
     if let Some(payload) = bytes.strip_prefix(CACHE_RECORD_MAGIC) {
+        if payload.len() < CACHE_RECORD_CHECKSUM_LEN {
+            return Err(Error::Storage(
+                "Compact-block cache record is missing its integrity checksum".to_string(),
+            ));
+        }
+        let (stored_checksum, payload) = payload.split_at(CACHE_RECORD_CHECKSUM_LEN);
+        let stored_checksum = u32::from_le_bytes(
+            stored_checksum
+                .try_into()
+                .map_err(|_| Error::Storage("Invalid cache checksum".to_string()))?,
+        );
+        if stored_checksum != crc32fast::hash(payload) {
+            return Err(Error::Storage(
+                "Compact-block cache record failed its integrity check".to_string(),
+            ));
+        }
+        return CachedCompactBlock::decode(payload)
+            .map(CompactBlockData::from)
+            .map_err(|e| Error::Storage(e.to_string()));
+    }
+
+    if let Some(payload) = bytes.strip_prefix(CACHE_RECORD_MAGIC_V1) {
         return CachedCompactBlock::decode(payload)
             .map(CompactBlockData::from)
             .map_err(|e| Error::Storage(e.to_string()));
@@ -886,6 +914,59 @@ mod tests {
     }
 
     #[test]
+    fn binary_codec_rejects_payload_corruption() {
+        let block = sample_block();
+        let mut encoded = encode_block(&block).unwrap();
+        let last = encoded.last_mut().expect("encoded compact block");
+        *last ^= 0x01;
+
+        let error = decode_block(&encoded).unwrap_err().to_string();
+        assert!(error.contains("integrity check"), "{error}");
+    }
+
+    #[test]
+    fn version_one_binary_rows_remain_readable_and_upgradeable() {
+        let block = sample_block();
+        let cached = CachedCompactBlock::from(&block);
+        let mut version_one =
+            Vec::with_capacity(CACHE_RECORD_MAGIC_V1.len() + cached.encoded_len());
+        version_one.extend_from_slice(CACHE_RECORD_MAGIC_V1);
+        cached.encode(&mut version_one).unwrap();
+        assert_same_block(&block, &decode_block(&version_one).unwrap());
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache = BlockCache::new(dir.path().join("blocks.db")).unwrap();
+        cache
+            .open_conn()
+            .unwrap()
+            .execute(
+                "INSERT INTO blocks (height, data) VALUES (?1, ?2)",
+                params![block.height as i64, version_one],
+            )
+            .unwrap();
+        let loaded = cache
+            .load_range_for_upgrade(block.height, block.height)
+            .unwrap();
+        assert_eq!(loaded.legacy_heights, vec![block.height]);
+        assert_eq!(
+            cache
+                .upgrade_legacy_rows(&loaded.blocks, &loaded.legacy_heights)
+                .unwrap(),
+            1
+        );
+        let stored: Vec<u8> = cache
+            .open_conn()
+            .unwrap()
+            .query_row(
+                "SELECT data FROM blocks WHERE height = ?1",
+                [block.height as i64],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stored.starts_with(CACHE_RECORD_MAGIC));
+    }
+
+    #[test]
     #[ignore = "manual compact-block cache segment benchmark"]
     fn benchmark_cache_segment_sizes() {
         const BLOCK_COUNT: u64 = 65_536;
@@ -942,6 +1023,57 @@ mod tests {
                 BLOCK_COUNT as f64 / elapsed.as_secs_f64()
             );
         }
+    }
+
+    #[test]
+    #[ignore = "manual compact-block integrity envelope benchmark"]
+    fn benchmark_integrity_envelope_decode() {
+        const BLOCK_COUNT: u64 = 65_536;
+        const RUNS: usize = 7;
+
+        let mut version_one = Vec::with_capacity(BLOCK_COUNT as usize);
+        let mut version_two = Vec::with_capacity(BLOCK_COUNT as usize);
+        for offset in 0..BLOCK_COUNT {
+            let mut block = sample_block();
+            block.height = 3_500_000 + offset;
+            let cached = CachedCompactBlock::from(&block);
+            let mut old = Vec::with_capacity(CACHE_RECORD_MAGIC_V1.len() + cached.encoded_len());
+            old.extend_from_slice(CACHE_RECORD_MAGIC_V1);
+            cached.encode(&mut old).unwrap();
+            version_one.push(old);
+            version_two.push(encode_block(&block).unwrap());
+        }
+
+        let measure = |records: &[Vec<u8>]| {
+            let started = std::time::Instant::now();
+            let mut height_sum = 0u64;
+            for record in records {
+                height_sum = height_sum.saturating_add(decode_block(record).unwrap().height);
+            }
+            std::hint::black_box(height_sum);
+            started.elapsed()
+        };
+        let mut old_runs = Vec::with_capacity(RUNS);
+        let mut protected_runs = Vec::with_capacity(RUNS);
+        for run in 0..RUNS {
+            if run % 2 == 0 {
+                old_runs.push(measure(&version_one));
+                protected_runs.push(measure(&version_two));
+            } else {
+                protected_runs.push(measure(&version_two));
+                old_runs.push(measure(&version_one));
+            }
+        }
+        old_runs.sort_unstable();
+        protected_runs.sort_unstable();
+        let old_median = old_runs[RUNS / 2];
+        let protected_median = protected_runs[RUNS / 2];
+        println!(
+            "cache integrity decode benchmark: blocks={BLOCK_COUNT}, v1={:.3}s, v2={:.3}s, delta={:+.2}%",
+            old_median.as_secs_f64(),
+            protected_median.as_secs_f64(),
+            (protected_median.as_secs_f64() / old_median.as_secs_f64() - 1.0) * 100.0
+        );
     }
 
     #[test]

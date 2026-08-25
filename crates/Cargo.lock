@@ -4147,6 +4147,7 @@ dependencies = [
  "chacha20",
  "chacha20poly1305",
  "chrono",
+ "crc32fast",
  "directories 5.0.1",
  "futures-util",
  "group",
