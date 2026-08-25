@@ -29,9 +29,11 @@ Parallel work produces immutable results. One owner performs every ordered datab
 
 **In plain terms:** Cached blocks are stored in the same kind of compact binary form used on the wire instead of being converted to bulky text and parsed again on every rescan.
 
-**Technical detail:** The cache uses a versioned protobuf record with an explicit magic header. Its decoder validates the envelope and all required fields before exposing a block. Legacy JSON rows remain readable and are upgraded transactionally only after their height and hash have been checked against the canonical server stream.
+**Technical detail:** The current cache format uses a versioned protobuf record with an explicit magic header and a CRC32 over the exact serialized protobuf bytes. The checksum is verified before protobuf decoding, so accidental disk corruption cannot become a plausible cached block. An unreadable or malformed cached range is discarded and fetched again. Version-one protobuf and legacy JSON rows remain readable and are upgraded transactionally only after their heights, hashes, chain links, and canonical server anchor have been validated.
 
 **Measured impact:** The protobuf codec was roughly **70 times faster** than the legacy JSON codec in the cache microbenchmark. Cache decoding was only a small part of an end-to-end sync, so this is not a claim that the whole wallet became 70 times faster. It removed a disproportionately wasteful operation from every cached rescan and reduced the cache's storage and allocation overhead at the same time.
+
+The integrity envelope was benchmarked separately in an optimized build over 65,536 blocks. Median decoding moved from 0.135 seconds for version-one records to 0.140 seconds for checksummed version-two records: about 5 milliseconds, or 3.87%, inside the decode-only component. Scaled to the representative 583,000-block cached rescan, the measured checksum cost is roughly 45 milliseconds and remains within normal end-to-end run variance.
 
 ### Constant-Time Coverage Proof
 
@@ -215,7 +217,13 @@ Performance work in a shielded wallet is acceptable only when the optimized path
 
 **In plain terms:** The wallet checks that the server is on the expected Pirate Chain rules and that new blocks really continue from the state it already saved.
 
-**Technical detail:** Consensus branch identifiers are compared as opaque protocol values at the target height. One tip snapshot bounds each run. Every range validates height order, hashes, and the persisted-to-incoming boundary before decryption results or subtree roots can be committed.
+**Technical detail:** Consensus branch identifiers are compared as opaque protocol values at the target height. One tip snapshot bounds each run. Every range validates height order, block hashes, parent-hash continuity, transaction-hash size, Sapling nullifier and output shapes, Ironwood action shapes, and the persisted-to-incoming boundary before decryption results or subtree roots can be committed.
+
+### Cache Integrity and Recovery
+
+**In plain terms:** The wallet can prove that a cached block has not changed since it was accepted. If local cache bytes are damaged, it downloads that range again instead of scanning questionable data.
+
+**Technical detail:** Version-two cache records checksum the exact protobuf payload, while range validation checks their structure, requested heights, chain links, and remote canonical end anchor. Validation failure invalidates the affected cache horizon and falls back to the normal network path. Legacy records receive the same canonical and structural checks before being rewritten into the checksummed format.
 
 ### Common-Checkpoint Reorg Recovery
 
@@ -256,17 +264,17 @@ The differential cases include a clean baseline, interruption and resume, rollba
 
 ### Test Inventory
 
-At the time this document was written, the two core sync and persistence layers contained **495 Rust test functions**:
+At the time this document was updated, the two core sync and persistence layers contained **505 Rust test functions**:
 
 | Area | Test functions |
 | --- | ---: |
-| Sync source unit and async tests | 228 |
+| Sync source unit and async tests | 235 |
 | Sync integration and benchmark tests | 54 |
-| SQLite storage source tests | 122 |
-| Storage integration and migration tests | 91 |
-| **Total** | **495** |
+| SQLite storage source tests | 124 |
+| Storage integration and migration tests | 92 |
+| **Total** | **505** |
 
-Of those, **457 are not marked ignored** and **38 are explicit manual benchmarks or live-network scenarios**. Six active scenarios directly exercise or validate the semantic differential oracle, and one manual performance benchmark is guarded by the same oracle. The suite also includes seven opt-in live interruption/recovery scenarios and eight dedicated architecture guards for witness repair.
+Of those, **466 are not marked ignored** and **39 are explicit manual benchmarks or live-network scenarios**. Six active scenarios directly exercise or validate the semantic differential oracle, and one manual performance benchmark is guarded by the same oracle. The suite also includes seven opt-in live interruption/recovery scenarios and eight dedicated architecture guards for witness repair.
 
 The raw count is not the guarantee by itself. The important part is the shape of the suite: optimized and reference paths consume identical immutable inputs; failure is injected between stages; and the comparison includes trees, witnesses, repairs, and cursors rather than stopping at the displayed balance.
 
@@ -293,6 +301,7 @@ These figures come from development profiling on a warm local compact-block cach
 | Measurement | Observed result | Scope |
 | --- | ---: | --- |
 | Protobuf versus legacy JSON cache decoding | about **70x faster** | Codec/cache microbenchmark |
+| Version-two cache integrity envelope | **+3.87%**, about **5 ms per 65,536 blocks** | Optimized decode-only microbenchmark |
 | Representative cached rescan | about **583,000 blocks in the low-20-second range** | Complete local rescan on the development Windows machine |
 | Representative end-to-end cached throughput | roughly **mid-20,000s blocks/s** | Includes scanning, trees, persistence, and verification |
 | Fast completed batches | **over 50,000 blocks/s** | Short batch peak, not whole-run throughput |
