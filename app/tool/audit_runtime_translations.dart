@@ -265,6 +265,7 @@ bool shouldTranslateUiLiteral(String path, String value) {
   }
   if (const <String>{
     '*******',
+    ', ',
     '-',
     '0',
     '0.05234 ARRR',
