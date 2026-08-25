@@ -27,6 +27,7 @@ const NOTE_SHARD_INDEX_BITS: u32 = 16;
 // Keep dynamic `IN` queries below SQLite's historical 999-variable default.
 const TRANSACTION_QUERY_CHUNK_SIZE: usize = 900;
 const SEED_KEY_SCAN_REPLAY_MARKER: &str = "seed_key_scan_replay_required";
+const LEGACY_SAPLING_ACCOUNT_DISCOVERY_MARKER: &str = "legacy_sapling_account_discovery_complete";
 
 fn refresh_account_key_viewing_material(key: &mut AccountKey) -> Result<bool> {
     let mut changed = false;
@@ -2298,6 +2299,183 @@ impl<'a> Repository<'a> {
             .conn()
             .execute("DELETE FROM account_keys WHERE id = ?1", [key_id])?;
         Ok(())
+    }
+
+    /// Return whether bounded legacy Sapling account discovery has completed.
+    pub fn legacy_sapling_account_discovery_complete(&self) -> Result<bool> {
+        let value = self
+            .db
+            .conn()
+            .query_row(
+                "SELECT value FROM migration_state WHERE key = ?1",
+                [LEGACY_SAPLING_ACCOUNT_DISCOVERY_MARKER],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        Ok(value.as_deref() == Some("1"))
+    }
+
+    /// Mark bounded legacy Sapling account discovery complete or pending.
+    pub fn set_legacy_sapling_account_discovery_complete(&self, complete: bool) -> Result<()> {
+        if complete {
+            self.db.conn().execute(
+                "INSERT INTO migration_state (key, value, updated_at) VALUES (?1, '1', ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                params![
+                    LEGACY_SAPLING_ACCOUNT_DISCOVERY_MARKER,
+                    chrono::Utc::now().to_rfc3339()
+                ],
+            )?;
+        } else {
+            self.db.conn().execute(
+                "DELETE FROM migration_state WHERE key = ?1",
+                [LEGACY_SAPLING_ACCOUNT_DISCOVERY_MARKER],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Record the ZIP-32 provenance of a seed-derived Sapling account key.
+    pub fn upsert_seed_derived_account_key(
+        &self,
+        key_id: i64,
+        account_id: i64,
+        derivation_index: u32,
+        is_discovery_candidate: bool,
+    ) -> Result<()> {
+        self.db.conn().execute(
+            "INSERT INTO seed_derived_account_keys (key_id, account_id, derivation_index, is_discovery_candidate) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(account_id, derivation_index) DO UPDATE SET key_id = excluded.key_id, is_discovery_candidate = excluded.is_discovery_candidate",
+            params![
+                key_id,
+                account_id,
+                i64::from(derivation_index),
+                i64::from(is_discovery_candidate)
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Load seed-derived Sapling account provenance in derivation order.
+    pub fn get_seed_derived_account_keys(
+        &self,
+        account_id: i64,
+    ) -> Result<Vec<SeedDerivedAccountKey>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT key_id, account_id, derivation_index, is_discovery_candidate FROM seed_derived_account_keys WHERE account_id = ?1 ORDER BY derivation_index",
+        )?;
+        let rows = stmt
+            .query_map([account_id], |row| {
+                let derivation_index = row.get::<_, i64>(2)?;
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    derivation_index,
+                    row.get::<_, i64>(3)? != 0,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        rows.into_iter()
+            .map(
+                |(key_id, account_id, derivation_index, is_discovery_candidate)| {
+                    Ok(SeedDerivedAccountKey {
+                        key_id,
+                        account_id,
+                        derivation_index: u32::try_from(derivation_index).map_err(|_| {
+                            Error::Storage(format!(
+                                "Invalid seed-derived account index {derivation_index}"
+                            ))
+                        })?,
+                        is_discovery_candidate,
+                    })
+                },
+            )
+            .collect()
+    }
+
+    /// Finalize lookahead keys after a successful scan.
+    ///
+    /// Keys that matched any historical note become durable seed-derived
+    /// accounts. Unmatched candidates are removed so they add no cost to later
+    /// incremental or cached rescans.
+    pub fn finalize_legacy_sapling_account_discovery(
+        &self,
+        account_id: i64,
+    ) -> Result<SeedAccountDiscoveryFinalization> {
+        if self.legacy_sapling_account_discovery_complete()? {
+            return Ok(SeedAccountDiscoveryFinalization::default());
+        }
+        let metadata = self.get_seed_derived_account_keys(account_id)?;
+        // An absent marker on an existing wallet means discovery has never
+        // been prepared. A tip-only sync must not convert that into a claim
+        // that historical accounts were scanned.
+        if metadata.is_empty() {
+            return Ok(SeedAccountDiscoveryFinalization::default());
+        }
+        let candidates = metadata
+            .into_iter()
+            .filter(|metadata| metadata.is_discovery_candidate)
+            .collect::<Vec<_>>();
+        if candidates.is_empty() {
+            self.set_legacy_sapling_account_discovery_complete(true)?;
+            return Ok(SeedAccountDiscoveryFinalization::default());
+        }
+
+        let used_key_ids = self
+            .get_account_notes(account_id)?
+            .into_iter()
+            .filter_map(|note| note.key_id)
+            .collect::<HashSet<_>>();
+        let conn = self.db.conn();
+        let owns_transaction = conn.is_autocommit();
+        if owns_transaction {
+            conn.execute_batch("BEGIN IMMEDIATE")?;
+        }
+
+        let result = (|| -> Result<SeedAccountDiscoveryFinalization> {
+            let mut outcome = SeedAccountDiscoveryFinalization::default();
+            for candidate in candidates {
+                if used_key_ids.contains(&candidate.key_id) {
+                    conn.execute(
+                        "UPDATE seed_derived_account_keys SET is_discovery_candidate = 0 WHERE key_id = ?1",
+                        [candidate.key_id],
+                    )?;
+                    outcome.retained += 1;
+                    outcome.highest_used_index = Some(
+                        outcome
+                            .highest_used_index
+                            .map_or(candidate.derivation_index, |current| {
+                                current.max(candidate.derivation_index)
+                            }),
+                    );
+                } else {
+                    conn.execute(
+                        "DELETE FROM seed_derived_account_keys WHERE key_id = ?1",
+                        [candidate.key_id],
+                    )?;
+                    conn.execute("DELETE FROM account_keys WHERE id = ?1", [candidate.key_id])?;
+                    outcome.retired += 1;
+                }
+            }
+            self.set_legacy_sapling_account_discovery_complete(true)?;
+            Ok(outcome)
+        })();
+
+        match result {
+            Ok(outcome) if owns_transaction => {
+                if let Err(error) = conn.execute_batch("COMMIT") {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    return Err(error.into());
+                }
+                Ok(outcome)
+            }
+            Ok(outcome) => Ok(outcome),
+            Err(error) => {
+                if owns_transaction {
+                    let _ = conn.execute_batch("ROLLBACK");
+                }
+                Err(error)
+            }
+        }
     }
 
     /// Get unspent notes as `SelectableNote` (for transaction building).
@@ -5589,6 +5767,66 @@ mod tests {
         let raw = hex::decode(txid).expect("hex decode");
         let display = txid_hex_from_bytes(&raw.iter().rev().copied().collect::<Vec<u8>>());
         assert_eq!(display, txid);
+    }
+
+    #[test]
+    fn seed_account_discovery_keeps_used_keys_and_retires_unused_lookahead() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Legacy discovery".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let used_key_id = insert_spendable_account_key(&repo, account_id, 1);
+        let unused_key_id = insert_spendable_account_key(&repo, account_id, 1);
+        repo.upsert_seed_derived_account_key(used_key_id, account_id, 1, true)
+            .unwrap();
+        repo.upsert_seed_derived_account_key(unused_key_id, account_id, 2, true)
+            .unwrap();
+
+        repo.insert_note(&NoteRecord {
+            id: None,
+            account_id,
+            key_id: Some(used_key_id),
+            note_type: NoteType::Sapling,
+            value: 50,
+            nullifier: vec![0x31; 32],
+            commitment: vec![0x32; 32],
+            spent: true,
+            height: 100,
+            txid: vec![0x33; 32],
+            output_index: 0,
+            address_id: None,
+            spent_txid: Some(vec![0x34; 32]),
+            diversifier: None,
+            note: None,
+            position: Some(0),
+            memo: None,
+        })
+        .unwrap();
+
+        let outcome = repo
+            .finalize_legacy_sapling_account_discovery(account_id)
+            .unwrap();
+
+        assert_eq!(outcome.retained, 1);
+        assert_eq!(outcome.retired, 1);
+        assert_eq!(outcome.highest_used_index, Some(1));
+        assert!(repo.get_account_key_by_id(used_key_id).unwrap().is_some());
+        assert!(repo.get_account_key_by_id(unused_key_id).unwrap().is_none());
+        assert_eq!(
+            repo.get_seed_derived_account_keys(account_id).unwrap(),
+            vec![SeedDerivedAccountKey {
+                key_id: used_key_id,
+                account_id,
+                derivation_index: 1,
+                is_discovery_candidate: false,
+            }]
+        );
+        assert!(repo.legacy_sapling_account_discovery_complete().unwrap());
     }
 
     #[test]

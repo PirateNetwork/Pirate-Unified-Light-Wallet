@@ -191,6 +191,30 @@ pub struct AccountKey {
     pub encrypted_mnemonic: Option<Vec<u8>>,
 }
 
+/// Provenance for a Sapling account key derived from a restored seed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedDerivedAccountKey {
+    /// Account-key row containing the encrypted spending and viewing material.
+    pub key_id: i64,
+    /// Wallet account that owns the derived key.
+    pub account_id: i64,
+    /// Hardened ZIP-32 account component used to derive the key.
+    pub derivation_index: u32,
+    /// Whether the key is temporary lookahead awaiting a successful scan.
+    pub is_discovery_candidate: bool,
+}
+
+/// Outcome of finalizing a successful legacy Sapling account discovery scan.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedAccountDiscoveryFinalization {
+    /// Candidate keys retained because at least one historical note matched.
+    pub retained: usize,
+    /// Candidate keys removed because no historical note matched.
+    pub retired: usize,
+    /// Highest retained ZIP-32 account index, if any.
+    pub highest_used_index: Option<u32>,
+}
+
 /// Wallet secret (encrypted spending key or IVK for watch-only)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletSecret {

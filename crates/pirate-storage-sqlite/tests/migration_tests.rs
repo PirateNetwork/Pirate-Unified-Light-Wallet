@@ -102,7 +102,7 @@ fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
         )
         .unwrap();
 
-    assert_eq!(version, 35);
+    assert_eq!(version, 36);
     assert_eq!(sapling_checkpoint, 12345);
     assert_eq!(orchard_checkpoint, 67890);
     assert_eq!(retained_tables, 2);
@@ -137,7 +137,7 @@ fn test_v33_adds_durable_outgoing_transaction_intents() {
         )
         .unwrap();
 
-    assert_eq!(version, 35);
+    assert_eq!(version, 36);
     assert_eq!(table_count, 1);
 }
 
@@ -189,7 +189,7 @@ fn test_v34_adds_ironwood_activation_height_to_sync_state() {
         )
         .unwrap();
 
-    assert_eq!(version, 35);
+    assert_eq!(version, 36);
     assert_eq!(activation_height, None);
     assert_eq!(migration_marker, "completed");
 }
@@ -237,6 +237,33 @@ fn test_v35_adds_address_display_preferences_without_changing_addresses() {
 
     assert_eq!(address_count, 1);
     assert_eq!(preferences, (1, 0));
+}
+
+#[test]
+fn test_v36_adds_seed_derived_account_provenance() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+    migrations::run_migrations(&conn).unwrap();
+
+    let table_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'table' AND name = 'seed_derived_account_keys'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let marker: String = conn
+        .query_row(
+            "SELECT value FROM migration_state
+             WHERE key = 'v36_seed_derived_account_keys'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(table_count, 1);
+    assert_eq!(marker, "completed");
 }
 
 #[test]

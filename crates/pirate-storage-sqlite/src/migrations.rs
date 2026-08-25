@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 35;
+const SCHEMA_VERSION: i32 = 36;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -134,6 +134,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 35 {
         migrate_v35(conn)?;
+    }
+    if current_version < 36 {
+        migrate_v36(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -721,6 +724,45 @@ fn migrate_v35(conn: &Connection) -> Result<()> {
 
         INSERT INTO migration_state (key, value, updated_at)
         VALUES ('v35_address_display_preferences', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#,
+    )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v36(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        BEGIN IMMEDIATE;
+
+        -- Preserve the ZIP-32 account index and discovery lifecycle for
+        -- Sapling keys derived from a restored seed. Keeping this separate
+        -- from account_keys maintains compatibility with the existing key
+        -- type contract while allowing callers to distinguish these keys
+        -- from explicit imports.
+        CREATE TABLE IF NOT EXISTS seed_derived_account_keys (
+            key_id INTEGER PRIMARY KEY,
+            account_id INTEGER NOT NULL,
+            derivation_index INTEGER NOT NULL CHECK (derivation_index > 0),
+            is_discovery_candidate INTEGER NOT NULL DEFAULT 1
+                CHECK (is_discovery_candidate IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(account_id, derivation_index),
+            FOREIGN KEY(key_id) REFERENCES account_keys(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_seed_derived_account_keys_account
+            ON seed_derived_account_keys(account_id, derivation_index);
+        CREATE INDEX IF NOT EXISTS idx_seed_derived_account_keys_candidate
+            ON seed_derived_account_keys(account_id, is_discovery_candidate);
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v36_seed_derived_account_keys', 'completed', datetime('now'))
         ON CONFLICT(key) DO UPDATE SET
             value = excluded.value,
             updated_at = excluded.updated_at;
