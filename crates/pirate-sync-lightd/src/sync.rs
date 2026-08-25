@@ -11247,7 +11247,7 @@ impl TrialDecryptKeys {
             // The legacy wallet used each ZIP-32 account's external address
             // directly (including for change), so preparing an internal IVK
             // would double discovery work without adding historical coverage.
-            if key.seed_derivation_index.is_none() {
+            if key.seed_derivation_index.is_none() || !key.discovery_candidate {
                 if let Some(dfvk) = key.sapling_dfvk.as_ref() {
                     let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
                     if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes))
@@ -12080,7 +12080,8 @@ mod tests {
             .expect("seed-derived key group");
         let groups = vec![group];
         let prepared = TrialDecryptKeys::from_key_groups(&groups);
-        let inventory = SyncKeyInventory::from_sources(&[key], &groups, &prepared);
+        let inventory =
+            SyncKeyInventory::from_sources(std::slice::from_ref(&key), &groups, &prepared);
 
         assert_eq!(prepared.sapling_ivks.len(), 1);
         assert_eq!(prepared.sapling_scopes, vec![AddressScope::External]);
@@ -12088,6 +12089,16 @@ mod tests {
         assert_eq!(inventory.seed_discovery_candidate_count, 1);
         assert_eq!(inventory.imported_spending_count, 0);
         assert_eq!(inventory.sapling_imported_spending_ivk_count, 0);
+
+        let durable_group = build_key_group_from_account_key(&key, Some((1, false)))
+            .unwrap()
+            .expect("durable seed-derived key group");
+        let durable = TrialDecryptKeys::from_key_groups(&[durable_group]);
+        assert_eq!(durable.sapling_ivks.len(), 2);
+        assert_eq!(
+            durable.sapling_scopes,
+            vec![AddressScope::External, AddressScope::Internal]
+        );
     }
 
     #[test]
