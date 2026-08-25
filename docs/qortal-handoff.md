@@ -203,9 +203,10 @@ spendability reports that the rescan has completed. An exact delayed retry is a
 true no-op: it preserves a completed rescan and returns the wallet's current
 `rescan_required` state instead of disabling spending again.
 
-Valid all-uppercase Bech32 addresses are accepted and returned in canonical
-lowercase form; mixed-case and wrong-network encodings are rejected. Callers do
-not need to normalize address casing before invoking this request.
+Valid all-uppercase Bech32 spending keys and addresses are accepted. Address
+storage and responses use canonical lowercase; mixed-case and wrong-network
+encodings are rejected. Callers do not need to normalize Bech32 casing before
+invoking this request.
 
 Starting the full birthday rescan deliberately clears any narrower queued
 witness-repair range because the historical replay supersedes it. The storage

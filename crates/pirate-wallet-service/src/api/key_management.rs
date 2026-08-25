@@ -513,7 +513,7 @@ struct VerifiedSpendingKeyMaterial {
     orchard_fvk: Option<Vec<u8>>,
 }
 
-fn normalized_bech32_decode_input(value: &str) -> String {
+fn normalized_bech32_input(value: &str) -> String {
     let has_lowercase = value.bytes().any(|byte| byte.is_ascii_lowercase());
     let has_uppercase = value.bytes().any(|byte| byte.is_ascii_uppercase());
     if has_uppercase && !has_lowercase {
@@ -533,10 +533,11 @@ fn verify_spending_key_address(
     if address_index > MAX_VERIFIED_IMPORT_ADDRESS_INDEX {
         return Err(anyhow!("Address index exceeds the recovery limit"));
     }
-    let address_for_decode = normalized_bech32_decode_input(expected_address);
+    let key_for_decode = normalized_bech32_input(spending_key);
+    let address_for_decode = normalized_bech32_input(expected_address);
     match pool {
         VerifiedSpendingKeyPool::Sapling => {
-            let (extsk, network) = ExtendedSpendingKey::from_bech32_any(spending_key)
+            let (extsk, network) = ExtendedSpendingKey::from_bech32_any(&key_for_decode)
                 .map_err(|_| anyhow!("Invalid Sapling spending key"))?;
             if network != wallet_network {
                 return Err(anyhow!(
@@ -564,7 +565,7 @@ fn verify_spending_key_address(
             })
         }
         VerifiedSpendingKeyPool::Ironwood => {
-            let (extsk, network) = IronwoodExtendedSpendingKey::from_bech32_any(spending_key)
+            let (extsk, network) = IronwoodExtendedSpendingKey::from_bech32_any(&key_for_decode)
                 .map_err(|_| anyhow!("Invalid Ironwood spending key"))?;
             if network != wallet_network {
                 return Err(anyhow!(
@@ -861,11 +862,11 @@ mod verified_import_tests {
     }
 
     #[test]
-    fn accepts_uppercase_addresses_and_returns_canonical_lowercase() {
+    fn accepts_uppercase_keys_and_addresses_and_returns_canonical_address() {
         let (sapling_key, sapling_address) = sapling_key_and_address(NetworkType::Mainnet, 4);
         let sapling = verify_spending_key_address(
             VerifiedSpendingKeyPool::Sapling,
-            &sapling_key,
+            &sapling_key.to_ascii_uppercase(),
             &sapling_address.to_ascii_uppercase(),
             4,
             NetworkType::Mainnet,
@@ -876,7 +877,7 @@ mod verified_import_tests {
         let (ironwood_key, ironwood_address) = ironwood_key_and_address(NetworkType::Mainnet, 4);
         let ironwood = verify_spending_key_address(
             VerifiedSpendingKeyPool::Ironwood,
-            &ironwood_key,
+            &ironwood_key.to_ascii_uppercase(),
             &ironwood_address.to_ascii_uppercase(),
             4,
             NetworkType::Mainnet,
@@ -903,11 +904,21 @@ mod verified_import_tests {
         )
         .is_err());
 
-        let mixed_case = format!("Z{}", &sapling_address[1..]);
+        let mixed_case_address = format!("Z{}", &sapling_address[1..]);
         assert!(verify_spending_key_address(
             VerifiedSpendingKeyPool::Sapling,
             &sapling_key,
-            &mixed_case,
+            &mixed_case_address,
+            4,
+            NetworkType::Mainnet,
+        )
+        .is_err());
+
+        let mixed_case_key = format!("S{}", &sapling_key[1..]);
+        assert!(verify_spending_key_address(
+            VerifiedSpendingKeyPool::Sapling,
+            &mixed_case_key,
+            &sapling_address,
             4,
             NetworkType::Mainnet,
         )
@@ -956,7 +967,7 @@ mod verified_import_tests {
         let (testnet_key, testnet_address) = sapling_key_and_address(NetworkType::Testnet, 2);
         assert!(verify_spending_key_address(
             VerifiedSpendingKeyPool::Sapling,
-            &testnet_key,
+            &testnet_key.to_ascii_uppercase(),
             &testnet_address,
             2,
             NetworkType::Mainnet,
