@@ -29,6 +29,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   WalletId? _walletId;
   Future<List<KeyGroupInfo>>? _loadFuture;
   bool _isDecoy = false;
+  bool _isAddingSeedAccounts = false;
 
   @override
   void didChangeDependencies() {
@@ -251,6 +252,344 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     }
   }
 
+  int _nextSeedAccountIndex(List<KeyGroupInfo> keys) {
+    final indices = keys.map((key) => key.seedAccountIndex).whereType<int>();
+    return indices.fold<int>(
+          0,
+          (highest, index) => index > highest ? index : highest,
+        ) +
+        1;
+  }
+
+  int _seedBirthdayHeight(List<KeyGroupInfo> keys) {
+    final seedKeys = keys.where((key) => key.seedAccountIndex != null);
+    return seedKeys.map((key) => key.birthdayHeight).fold<int?>(null, (
+          lowest,
+          height,
+        ) {
+          if (height <= 0) return lowest;
+          return lowest == null || height < lowest ? height : lowest;
+        }) ??
+        1;
+  }
+
+  Future<bool> _confirmSeedAccountAddition({
+    required int count,
+    required int firstIndex,
+    required int birthdayHeight,
+  }) async {
+    final lastIndex = firstIndex + count - 1;
+    final title = count == 1
+        ? 'Add seed account #{index}?'.trArgs({'index': firstIndex})
+        : 'Add 5 seed accounts?'.tr;
+    final range = count == 1
+        ? 'Account #{index}'.trArgs({'index': firstIndex})
+        : 'Accounts #{first}–#{last}'.trArgs({
+            'first': firstIndex,
+            'last': lastIndex,
+          });
+
+    return await showDialog<bool>(
+          context: context,
+          barrierColor: AppColors.backgroundOverlay,
+          builder: (dialogContext) => Dialog(
+            backgroundColor: AppColors.backgroundElevated,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(PSpacing.radiusXL),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Padding(
+                padding: EdgeInsets.all(PSpacing.dialogPadding),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppColors.accentPrimary.withValues(
+                              alpha: 0.12,
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              PSpacing.radiusMD,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.account_tree_outlined,
+                            color: AppColors.accentPrimary,
+                          ),
+                        ),
+                        SizedBox(width: PSpacing.sm),
+                        Expanded(
+                          child: Text(title, style: PTypography.heading4()),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: PSpacing.md),
+                    Text(
+                      "{range} will be derived from this wallet's existing seed phrase. This does not create a new seed."
+                          .trArgs({'range': range}),
+                      style: PTypography.bodyMedium(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    SizedBox(height: PSpacing.sm),
+                    Text(
+                      'The wallet will then rescan from birthday block {height} using verified cached blocks when available.'
+                          .trArgs({'height': birthdayHeight}),
+                      style: PTypography.bodySmall(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                    SizedBox(height: PSpacing.lg),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: PSpacing.sm,
+                      runSpacing: PSpacing.sm,
+                      children: [
+                        PButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          variant: PButtonVariant.ghost,
+                          child: Text('Cancel'.tr),
+                        ),
+                        PButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          child: Text('Add and rescan'.tr),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _addSeedAccounts(List<KeyGroupInfo> keys, int count) async {
+    final walletId = _walletId;
+    if (walletId == null || _isDecoy || _isAddingSeedAccounts) return;
+    final firstIndex = _nextSeedAccountIndex(keys);
+    final birthdayHeight = _seedBirthdayHeight(keys);
+    final confirmed = await _confirmSeedAccountAddition(
+      count: count,
+      firstIndex: firstIndex,
+      birthdayHeight: birthdayHeight,
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isAddingSeedAccounts = true);
+    List<int>? added;
+    try {
+      added = await FfiBridge.addNextSeedAccounts(
+        walletId: walletId,
+        count: count,
+      );
+      _refresh();
+      await ref.read(rescanProvider)(birthdayHeight);
+      if (!mounted) return;
+      final addedLabel = added.length == 1
+          ? '#${added.first}'
+          : '#${added.first}–#${added.last}';
+      _showSnack(
+        'Seed account(s) {accounts} added. Historical rescan started.'.trArgs({
+          'accounts': addedLabel,
+        }),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      if (added != null) {
+        _showSnack(
+          'The accounts were added, but the rescan could not start: {error}'
+              .trArgs({'error': error}),
+          color: AppColors.warning,
+        );
+      } else {
+        _showSnack(
+          'Could not add seed accounts: {error}'.trArgs({'error': error}),
+          color: AppColors.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isAddingSeedAccounts = false);
+    }
+  }
+
+  Widget _buildSeedAccountsCard({
+    required List<KeyGroupInfo> keys,
+    required bool isDecoy,
+  }) {
+    final nextIndex = _nextSeedAccountIndex(keys);
+    final busy = _isAddingSeedAccounts;
+    const addOneTooltip =
+        'Adds the next numbered account from your current seed, then rescans for its funds. The account stays even if it is empty.';
+    const addFiveTooltip =
+        'Adds five numbered accounts in order. It does not stop at empty accounts, so you can repeat this to reach a higher account number.';
+
+    Widget action({
+      required String label,
+      required String tooltip,
+      required IconData icon,
+      required int count,
+    }) {
+      final enabled = !isDecoy && !busy;
+      return Tooltip(
+        message: tooltip.tr,
+        waitDuration: const Duration(milliseconds: 350),
+        showDuration: const Duration(seconds: 8),
+        child: Semantics(
+          button: true,
+          enabled: enabled,
+          label: label.tr,
+          hint: tooltip.tr,
+          child: PButton(
+            onPressed: enabled ? () => _addSeedAccounts(keys, count) : null,
+            fullWidth: true,
+            variant: count == 1
+                ? PButtonVariant.primary
+                : PButtonVariant.secondary,
+            icon: Icon(icon),
+            child: Text(label.tr),
+          ),
+        ),
+      );
+    }
+
+    return Semantics(
+      container: true,
+      label: 'Seed account management'.tr,
+      child: PCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.accentPrimary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+                  ),
+                  child: Icon(
+                    Icons.account_tree_outlined,
+                    color: AppColors.accentPrimary,
+                  ),
+                ),
+                SizedBox(width: PSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Seed accounts'.tr, style: PTypography.heading4()),
+                      SizedBox(height: PSpacing.xxs),
+                      Text(
+                        'A seed can hold funds in separate numbered accounts. Add them in order if another wallet used more than the default account.'
+                            .tr,
+                        style: PTypography.bodySmall(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: PSpacing.sm),
+                Semantics(
+                  label: 'Next seed account is {index}'.trArgs({
+                    'index': nextIndex,
+                  }),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: PSpacing.sm,
+                      vertical: PSpacing.xs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundElevated,
+                      borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+                      border: Border.all(color: AppColors.borderSubtle),
+                    ),
+                    child: Text(
+                      'Next #{index}'.trArgs({'index': nextIndex}),
+                      style: PTypography.labelSmall(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: PSpacing.md),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final addOne = action(
+                  label: 'Add next account',
+                  tooltip: addOneTooltip,
+                  icon: Icons.add_circle_outline,
+                  count: 1,
+                );
+                final addFive = action(
+                  label: 'Add 5 accounts',
+                  tooltip: addFiveTooltip,
+                  icon: Icons.playlist_add,
+                  count: 5,
+                );
+                if (constraints.maxWidth < 520) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      addOne,
+                      SizedBox(height: PSpacing.sm),
+                      addFive,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: addOne),
+                    SizedBox(width: PSpacing.sm),
+                    Expanded(child: addFive),
+                  ],
+                );
+              },
+            ),
+            if (busy) ...[
+              SizedBox(height: PSpacing.md),
+              Semantics(
+                liveRegion: true,
+                label: 'Adding seed accounts and preparing rescan'.tr,
+                child: Row(
+                  children: [
+                    const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: PSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Adding accounts and preparing a historical rescan…'.tr,
+                        style: PTypography.bodySmall(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildViewingKeyCard({required bool isDecoy}) {
     return PCard(
       child: Column(
@@ -322,6 +661,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                   );
                 }
                 final keys = snapshot.data ?? [];
+                final hasSeed = keys.any((key) => key.seedAccountIndex == 0);
                 return RefreshIndicator(
                   onRefresh: () async => _refresh(),
                   child: ListView(
@@ -329,6 +669,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                       MediaQuery.of(context).size.width,
                     ),
                     children: [
+                      if (hasSeed) ...[
+                        _buildSeedAccountsCard(keys: keys, isDecoy: isDecoy),
+                        SizedBox(height: PSpacing.lg),
+                      ],
                       _buildViewingKeyCard(isDecoy: isDecoy),
                       if (keys.isEmpty) ...[
                         SizedBox(height: PSpacing.lg),
@@ -457,6 +801,12 @@ class _KeyCard extends StatelessWidget {
             spacing: PSpacing.xs,
             runSpacing: PSpacing.xs,
             children: [
+              if (keyInfo.seedAccountIndex case final accountIndex?)
+                _chip(
+                  'Account #{index}'.trArgs({'index': accountIndex}),
+                  AppColors.accentPrimary.withValues(alpha: 0.12),
+                  AppColors.accentPrimary,
+                ),
               if (keyInfo.hasSapling)
                 _chip('Sapling', AppColors.infoBackground, AppColors.info),
               if (keyInfo.hasIronwood)
@@ -480,6 +830,10 @@ class _KeyCard extends StatelessWidget {
 
   String _displayKeyLabel(KeyGroupInfo key) {
     if (key.keyType == KeyTypeInfo.seed) {
+      final accountIndex = key.seedAccountIndex;
+      if (accountIndex != null && accountIndex > 0) {
+        return 'Seed account {index}'.trArgs({'index': accountIndex});
+      }
       final label = key.label?.trim();
       if (label == null || label.isEmpty || label == 'Seed') {
         return 'Default wallet keys'.tr;
@@ -500,6 +854,13 @@ class _KeyCard extends StatelessWidget {
   }
 
   String _keyTypeLabel(KeyGroupInfo key) {
+    final accountIndex = key.seedAccountIndex;
+    if (key.keyType == KeyTypeInfo.seed && accountIndex != null) {
+      return '{type} | Birthday {height}'.trArgs({
+        'type': 'Seed phrase account #{index}'.trArgs({'index': accountIndex}),
+        'height': key.birthdayHeight,
+      });
+    }
     final type = switch (key.keyType) {
       KeyTypeInfo.seed => 'Seed phrase keys'.tr,
       KeyTypeInfo.importedSpending => 'Imported spending key'.tr,

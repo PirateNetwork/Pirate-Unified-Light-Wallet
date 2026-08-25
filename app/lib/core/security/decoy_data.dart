@@ -394,6 +394,7 @@ class DecoyData {
         id: 1,
         label: 'Default wallet keys'.tr,
         keyType: KeyTypeInfo.seed,
+        seedAccountIndex: 0,
         spendable: true,
         hasSapling: true,
         hasIronwood: true,
