@@ -173,6 +173,9 @@ pub(super) fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> 
                 } else {
                     key_type_to_info(key.key_type)
                 },
+                seed_account_index: seed_derivation
+                    .map(|metadata| metadata.derivation_index)
+                    .or((key.key_type == KeyType::Seed).then_some(0)),
                 spendable: key.spendable,
                 has_sapling,
                 has_ironwood,
@@ -182,7 +185,12 @@ pub(super) fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> 
         })
         .collect();
 
-    items.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    items.sort_by(|a, b| match (a.seed_account_index, b.seed_account_index) {
+        (Some(a_index), Some(b_index)) => a_index.cmp(&b_index),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.created_at.cmp(&b.created_at),
+    });
     Ok(items)
 }
 
