@@ -505,13 +505,18 @@ class _HomeTransactionsSection extends ConsumerWidget {
         delegate: SliverChildBuilderDelegate((context, index) {
           if (index >= itemCount) return null;
           final tx = transactions[index];
-          return _TransactionItemWithLabel(
-            key: ValueKey(tx.txid),
-            tx: tx,
-            isConfirmed: _isConfirmedTx(tx, currentHeight),
-            onTap: () => context.push(
-              '/transaction/${tx.txid}?amount=${tx.amount}',
-              extra: tx,
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: index == itemCount - 1 ? 0 : PSpacing.sm,
+            ),
+            child: _TransactionItemWithLabel(
+              key: ValueKey(tx.txid),
+              tx: tx,
+              isConfirmed: _isConfirmedTx(tx, currentHeight),
+              onTap: () => context.push(
+                '/transaction/${tx.txid}?amount=${tx.amount}',
+                extra: tx,
+              ),
             ),
           );
         }, childCount: itemCount),
