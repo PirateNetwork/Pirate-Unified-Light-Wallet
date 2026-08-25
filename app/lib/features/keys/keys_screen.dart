@@ -428,10 +428,6 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   }) {
     final nextIndex = _nextSeedAccountIndex(keys);
     final busy = _isAddingSeedAccounts;
-    const addOneTooltip =
-        'Adds the next numbered account from your current seed, then rescans for its funds. The account stays even if it is empty.';
-    const addFiveTooltip =
-        'Adds five numbered accounts in order. It does not stop at empty accounts, so you can repeat this to reach a higher account number.';
 
     Widget action({
       required String label,
@@ -441,14 +437,14 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     }) {
       final enabled = !isDecoy && !busy;
       return Tooltip(
-        message: tooltip.tr,
+        message: tooltip,
         waitDuration: const Duration(milliseconds: 350),
         showDuration: const Duration(seconds: 8),
         child: Semantics(
           button: true,
           enabled: enabled,
-          label: label.tr,
-          hint: tooltip.tr,
+          label: label,
+          hint: tooltip,
           child: PButton(
             onPressed: enabled ? () => _addSeedAccounts(keys, count) : null,
             fullWidth: true,
@@ -456,7 +452,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 ? PButtonVariant.primary
                 : PButtonVariant.secondary,
             icon: Icon(icon),
-            child: Text(label.tr),
+            child: Text(label),
           ),
         ),
       );
@@ -530,14 +526,18 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final addOne = action(
-                  label: 'Add next account',
-                  tooltip: addOneTooltip,
+                  label: 'Add next account'.tr,
+                  tooltip:
+                      'Adds the next numbered account from your current seed, then rescans for its funds. The account stays even if it is empty.'
+                          .tr,
                   icon: Icons.add_circle_outline,
                   count: 1,
                 );
                 final addFive = action(
-                  label: 'Add 5 accounts',
-                  tooltip: addFiveTooltip,
+                  label: 'Add 5 accounts'.tr,
+                  tooltip:
+                      'Adds five numbered accounts in order. It does not stop at empty accounts, so you can repeat this to reach a higher account number.'
+                          .tr,
                   icon: Icons.playlist_add,
                   count: 5,
                 );
