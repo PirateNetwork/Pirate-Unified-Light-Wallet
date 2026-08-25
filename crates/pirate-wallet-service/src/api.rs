@@ -79,6 +79,7 @@ pub(crate) mod payment_disclosure;
 pub(crate) mod provisioning;
 pub(crate) mod qortal;
 pub(crate) mod qortal_p2sh;
+pub(crate) mod seed_account_discovery;
 pub(crate) mod seed_export;
 pub(crate) mod sync_control;
 pub(crate) mod tunnel;

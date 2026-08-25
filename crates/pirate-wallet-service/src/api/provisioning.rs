@@ -41,6 +41,7 @@ fn persist_wallet_account_secret(
     account_name: String,
     mut secret: WalletSecret,
     birthday_height: u32,
+    discover_legacy_sapling_accounts: bool,
 ) -> Result<()> {
     let passphrase = app_passphrase()?;
     let (db, _key, _master_key) = open_wallet_db_with_passphrase(wallet_id, &passphrase)?;
@@ -60,6 +61,15 @@ fn persist_wallet_account_secret(
         let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
         repo.upsert_wallet_secret(&encrypted_secret)?;
         let _ = ensure_primary_account_key_at_birthday(&repo, &secret, birthday_height)?;
+        if discover_legacy_sapling_accounts {
+            super::seed_account_discovery::prepare_legacy_sapling_account_discovery(
+                &repo,
+                &secret,
+                birthday_height,
+            )?;
+        } else {
+            super::seed_account_discovery::mark_legacy_sapling_discovery_not_required(&repo)?;
+        }
         Ok(())
     })();
 
@@ -100,9 +110,18 @@ fn provision_seed_wallet(
     meta: &WalletMeta,
     account_name: String,
     secret: WalletSecret,
+    discover_legacy_sapling_accounts: bool,
 ) -> Result<()> {
     run_provisioning_steps(
-        || persist_wallet_account_secret(&meta.id, account_name, secret, meta.birthday_height),
+        || {
+            persist_wallet_account_secret(
+                &meta.id,
+                account_name,
+                secret,
+                meta.birthday_height,
+                discover_legacy_sapling_accounts,
+            )
+        },
         || register_wallet(meta),
         || encrypted_db::remove_wallet_storage_artifacts(&meta.id),
     )
@@ -163,7 +182,7 @@ pub(super) fn create_wallet(
         mnemonic_language: Some(mnemonic_language.as_key().to_string()),
         created_at: chrono::Utc::now().timestamp(),
     };
-    provision_seed_wallet(&meta, name_for_account, secret)?;
+    provision_seed_wallet(&meta, name_for_account, secret, false)?;
     tracing::info!(
         "Persisted wallet secret (Sapling + Ironwood) for wallet {}",
         wallet_id
@@ -227,7 +246,7 @@ pub(super) fn restore_wallet(
         mnemonic_language: Some(mnemonic_language.as_key().to_string()),
         created_at: chrono::Utc::now().timestamp(),
     };
-    provision_seed_wallet(&meta, name_for_account, secret)?;
+    provision_seed_wallet(&meta, name_for_account, secret, true)?;
     tracing::info!("Persisted encrypted wallet secret for wallet {}", wallet_id);
 
     Ok(wallet_id)

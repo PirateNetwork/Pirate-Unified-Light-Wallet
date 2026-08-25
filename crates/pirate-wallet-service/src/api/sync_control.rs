@@ -714,6 +714,26 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
 
     let wallet = get_wallet_meta(&wallet_id)?;
     let birthday_height = wallet.birthday_height;
+    // Wallets restored by older releases may not yet have a discovery marker.
+    // Only prepare lookahead automatically while their scan state is empty;
+    // an already-synced wallet needs an explicit rescan so historical coverage
+    // is not falsely inferred from a tip-only update.
+    {
+        let (db, repo) = open_wallet_db_for(&wallet_id)?;
+        let local_height = pirate_storage_sqlite::SyncStateStorage::new(&db)
+            .load_sync_state()?
+            .local_height;
+        if local_height == 0 {
+            let secret = repo
+                .get_wallet_secret(&wallet_id)?
+                .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+            super::seed_account_discovery::prepare_legacy_sapling_account_discovery(
+                &repo,
+                &secret,
+                birthday_height,
+            )?;
+        }
+    }
     let start_height = {
         let resume_height_opt = open_wallet_db_for(&wallet_id).ok().and_then(|(db, _repo)| {
             let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
@@ -1028,6 +1048,17 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         match &result {
             Ok(()) => {
                 tracing::info!("Sync task exited for wallet {}", wallet_id_for_task);
+                if let Err(error) =
+                    super::seed_account_discovery::finalize_legacy_sapling_account_discovery(
+                        &wallet_id_for_task,
+                    )
+                {
+                    tracing::warn!(
+                        "Could not finalize seed account discovery for {}: {}",
+                        wallet_id_for_task,
+                        error
+                    );
+                }
                 if let Ok(registry_db) = open_wallet_registry() {
                     if let Err(e) = touch_wallet_last_synced(&registry_db, &wallet_id_for_task) {
                         tracing::warn!(
@@ -1856,6 +1887,13 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
             })?;
         let repo = Repository::new(&db);
         if let Ok(Some(secret)) = repo.get_wallet_secret(&wallet_id) {
+            super::seed_account_discovery::prepare_legacy_sapling_account_discovery(
+                &repo,
+                &secret,
+                get_wallet_meta(&wallet_id)
+                    .map(|wallet| wallet.birthday_height)
+                    .unwrap_or(effective_from_height),
+            )?;
             match repo.get_historical_note_positions(secret.account_id) {
                 Ok(positions) => {
                     for (note_type, position) in positions {
@@ -2271,6 +2309,17 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
             match &result {
                 Ok(()) => {
                     tracing::info!("Rescan completed for wallet {}", wallet_id_for_task);
+                    if let Err(error) =
+                        super::seed_account_discovery::finalize_legacy_sapling_account_discovery(
+                            &wallet_id_for_task,
+                        )
+                    {
+                        tracing::warn!(
+                            "Could not finalize seed account discovery for {}: {}",
+                            wallet_id_for_task,
+                            error
+                        );
+                    }
                     pirate_core::debug_log::with_locked_file(|file| {
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
