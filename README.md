@@ -162,6 +162,8 @@ Platform-specific requirements:
   - `flatpak-builder` for Flatpak output
   - `dpkg-deb` and `dpkg-scanpackages` for Debian and APT output
   - `appimagetool` or pinned `APPIMAGETOOL_URL` and `APPIMAGETOOL_SHA256`
+  - pinned `APPIMAGE_RUNTIME_URL` and `APPIMAGE_RUNTIME_SHA256` values for
+    AppImage output
 - macOS:
   - Xcode and CocoaPods
   - Apple signing and notarization credentials for signed distribution

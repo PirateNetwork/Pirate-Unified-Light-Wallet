@@ -118,6 +118,15 @@ I2P executables, and fails packaging if any ELF exceeds that ABI ceiling. Do not
 replace the pinned Linux runner with a floating image without providing an
 equivalent Ubuntu 22.04 sysroot or build container.
 
+The AppImage embeds a checksum-pinned, statically linked type-2 runtime. The
+packager rejects runtimes with shared-library dependencies or the legacy
+`libfuse.so.2` loader marker, then verifies that the approved runtime is the
+exact byte prefix of the finished artifact. This lets the AppImage launch on
+modern FUSE installations without requiring the separately packaged legacy
+`libfuse2` library. A host that has no usable FUSE kernel interface at all must
+use the Debian/Flatpak package or AppImage's explicit extract-and-run fallback;
+that host limitation cannot be removed by an AppImage payload.
+
 macOS:
 
 ```bash
