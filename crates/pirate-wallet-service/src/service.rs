@@ -10,7 +10,8 @@ pub use crate::{
     QortalP2shRedeemRequest, QortalP2shSendRequest, QortalSendRequest, SeedExportWarnings,
     ShieldedPoolBalances, SignedTx, SpendabilityStatus, SyncLogEntryFfi, SyncMode, SyncStatus,
     TransactionCursor, TransactionDetails, TransactionPage, TransactionRecipient, TunnelMode,
-    TxInfo, WalletId, WalletMeta, WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
+    TxInfo, VerifiedSpendingKeyImport, VerifiedSpendingKeyPool, WalletId, WalletMeta,
+    WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
 };
 pub use pirate_core::{MnemonicInspection, MnemonicLanguage};
 
@@ -121,6 +122,15 @@ pub enum WalletServiceRequest {
         wallet_id: WalletId,
         sapling_key: Option<String>,
         ironwood_key: Option<String>,
+        label: Option<String>,
+        birthday_height: u32,
+    },
+    ImportSpendingKeyVerified {
+        wallet_id: WalletId,
+        pool: VerifiedSpendingKeyPool,
+        spending_key: String,
+        expected_address: String,
+        address_index: u32,
         label: Option<String>,
         birthday_height: u32,
     },
@@ -621,6 +631,26 @@ impl WalletService {
                 label,
                 birthday_height,
             )?),
+            WalletServiceRequest::ImportSpendingKeyVerified {
+                wallet_id,
+                pool,
+                spending_key,
+                expected_address,
+                address_index,
+                label,
+                birthday_height,
+            } => serialize(
+                ffi::import_spending_key_verified(
+                    wallet_id,
+                    pool,
+                    spending_key,
+                    expected_address,
+                    address_index,
+                    label,
+                    birthday_height,
+                )
+                .await?,
+            ),
             WalletServiceRequest::ExportSeedRaw {
                 wallet_id,
                 mnemonic_language,
@@ -1081,6 +1111,60 @@ mod tests {
                 limit: Some(25)
             } if wallet_id == "merchant-wallet"
         ));
+    }
+
+    #[test]
+    fn verified_spending_key_import_request_uses_explicit_non_heuristic_fields() {
+        let request = serde_json::from_value::<WalletServiceRequest>(json!({
+            "method": "import_spending_key_verified",
+            "wallet_id": "recovery-wallet",
+            "pool": "sapling",
+            "spending_key": "secret-extended-key-main1redacted",
+            "expected_address": "zs1expected",
+            "address_index": 7,
+            "label": "Recovered wallet",
+            "birthday_height": 123
+        }))
+        .unwrap();
+
+        assert!(matches!(
+            request,
+            WalletServiceRequest::ImportSpendingKeyVerified {
+                wallet_id,
+                pool: VerifiedSpendingKeyPool::Sapling,
+                spending_key,
+                expected_address,
+                address_index: 7,
+                label: Some(label),
+                birthday_height: 123,
+            } if wallet_id == "recovery-wallet"
+                && spending_key == "secret-extended-key-main1redacted"
+                && expected_address == "zs1expected"
+                && label == "Recovered wallet"
+        ));
+    }
+
+    #[test]
+    fn verified_spending_key_import_result_contains_no_key_material() {
+        let value = serialize(VerifiedSpendingKeyImport {
+            key_id: 42,
+            pool: VerifiedSpendingKeyPool::Ironwood,
+            address: "pirate1verified".to_string(),
+            address_index: 3,
+            birthday_height: 100,
+            already_imported: false,
+            rescan_required: true,
+            required_rescan_from_height: Some(90),
+        })
+        .unwrap();
+
+        assert_eq!(value["key_id"], 42);
+        assert_eq!(value["pool"], "ironwood");
+        assert_eq!(value["address"], "pirate1verified");
+        assert_eq!(value["required_rescan_from_height"], 90);
+        assert!(value.get("spending_key").is_none());
+        assert!(value.get("sapling_key").is_none());
+        assert!(value.get("ironwood_key").is_none());
     }
 
     #[test]

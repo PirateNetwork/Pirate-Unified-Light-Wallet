@@ -164,3 +164,65 @@ cargo test -p pirate-core qortal_p2sh --locked -- --nocapture
 The JNI library also exports `invokeJson(requestJson, pretty)`, which exposes
 the typed `WalletServiceRequest` contract directly for future Qortal code that
 no longer needs command-string compatibility.
+
+## Verified spending-key recovery
+
+Qortal recovery code should use `import_spending_key_verified`, not the older
+`import_spending_key` request. The verified request imports exactly one pool at
+a time and requires the caller to provide the receive address and its
+sequential address index:
+
+```json
+{
+  "method": "import_spending_key_verified",
+  "wallet_id": "<wallet UUID>",
+  "pool": "sapling",
+  "spending_key": "<encoded spending key>",
+  "expected_address": "<wallet receive address>",
+  "address_index": 0,
+  "label": "Recovered wallet",
+  "birthday_height": 123456
+}
+```
+
+Before modifying SQLite, the wallet service decodes the key and address for the
+active wallet network and derives the address at `address_index`. The index is
+bounded to 4096 so untrusted input cannot force an unbounded Sapling diversifier
+search. The wallet must already have a nonzero known chain tip, and the birthday
+must not exceed that tip. A mismatch is rejected without writing the key. A
+successful request atomically stores the encrypted key, verified address, and
+durable rescan-required state. Repeating the same request returns the existing
+key group instead of inserting a duplicate, and an earlier repeated birthday
+lowers the retained scan start.
+
+The response contains only `key_id`, `pool`, `address`, `address_index`,
+`birthday_height`, `already_imported`, `rescan_required`, and
+`required_rescan_from_height`; it never returns the spending key. When
+`required_rescan_from_height` is non-null, the caller must invoke `rescan` from
+that height and keep sending disabled until spendability reports that the
+rescan has completed. This field is the durable minimum across all pending
+verified-key imports, so callers must not substitute the most recent key's
+`birthday_height`. The native rescan path also clamps later caller requests to
+this floor after a restart. A null value means no verified-key replay is
+pending; `rescan_required` can still be true for a different wallet-wide
+reason. An exact delayed retry is a true no-op: it preserves a completed rescan
+and returns the wallet's current `rescan_required` state instead of disabling
+spending again.
+
+Valid all-uppercase Bech32 spending keys and addresses are accepted. Address
+storage and responses use canonical lowercase; mixed-case and wrong-network
+encodings are rejected. Callers do not need to normalize Bech32 casing before
+invoking this request.
+
+Starting the full birthday rescan deliberately clears any narrower queued
+witness-repair range because the historical replay supersedes it. The storage
+operation normally owns its immediate transaction. If a future native caller
+invokes it inside an existing transaction, that outer caller owns rollback on
+error. Before the transaction starts, the service serializes the import with
+sync lifecycle operations and stops any active engine so the next engine loads
+the updated account-key inventory.
+
+This operation is the native prerequisite for importing external Pirate wallet
+exports into Qortal's encrypted SQLite wallet. File parsing and user-facing
+format selection remain Qortal-side follow-up work. Viewing-key recovery is not
+covered by this request.

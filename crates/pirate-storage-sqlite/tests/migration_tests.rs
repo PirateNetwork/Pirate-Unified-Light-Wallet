@@ -102,7 +102,7 @@ fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
         )
         .unwrap();
 
-    assert_eq!(version, 36);
+    assert_eq!(version, 37);
     assert_eq!(sapling_checkpoint, 12345);
     assert_eq!(orchard_checkpoint, 67890);
     assert_eq!(retained_tables, 2);
@@ -137,7 +137,7 @@ fn test_v33_adds_durable_outgoing_transaction_intents() {
         )
         .unwrap();
 
-    assert_eq!(version, 36);
+    assert_eq!(version, 37);
     assert_eq!(table_count, 1);
 }
 
@@ -161,6 +161,20 @@ fn test_v34_adds_ironwood_activation_height_to_sync_state() {
              last_checkpoint_height INTEGER NOT NULL DEFAULT 0,
              updated_at TEXT NOT NULL
          );
+         CREATE TABLE spendability_state (
+             id INTEGER PRIMARY KEY CHECK (id = 1),
+             spendable INTEGER NOT NULL DEFAULT 0,
+             rescan_required INTEGER NOT NULL DEFAULT 1,
+             target_height INTEGER NOT NULL DEFAULT 0,
+             anchor_height INTEGER NOT NULL DEFAULT 0,
+             validated_anchor_height INTEGER NOT NULL DEFAULT 0,
+             repair_queued INTEGER NOT NULL DEFAULT 0,
+             repair_from_height INTEGER NOT NULL DEFAULT 0,
+             reason_code TEXT NOT NULL DEFAULT 'ERR_RESCAN_REQUIRED',
+             updated_at TEXT NOT NULL
+         );
+         INSERT INTO spendability_state (id, updated_at)
+         VALUES (1, datetime('now'));
          INSERT INTO sync_state (
              id, local_height, target_height, last_checkpoint_height, updated_at
          ) VALUES (1, 100, 200, 90, datetime('now'));",
@@ -189,7 +203,7 @@ fn test_v34_adds_ironwood_activation_height_to_sync_state() {
         )
         .unwrap();
 
-    assert_eq!(version, 36);
+    assert_eq!(version, 37);
     assert_eq!(activation_height, None);
     assert_eq!(migration_marker, "completed");
 }
@@ -263,6 +277,40 @@ fn test_v36_adds_seed_derived_account_provenance() {
         .unwrap();
 
     assert_eq!(table_count, 1);
+    assert_eq!(marker, "completed");
+}
+
+#[test]
+fn test_v37_adds_durable_verified_key_rescan_requirement() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+    migrations::run_migrations(&conn).unwrap();
+
+    conn.execute(
+        "UPDATE spendability_state SET required_rescan_from_height = 123, key_import_generation = 7 WHERE id = 1",
+        [],
+    )
+    .unwrap();
+
+    // A restart/idempotent migration pass must preserve the pending replay.
+    migrations::run_migrations(&conn).unwrap();
+
+    let state: (i64, i64) = conn
+        .query_row(
+            "SELECT required_rescan_from_height, key_import_generation FROM spendability_state WHERE id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    let marker: String = conn
+        .query_row(
+            "SELECT value FROM migration_state WHERE key = 'v37_verified_key_rescan_requirement'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(state, (123, 7));
     assert_eq!(marker, "completed");
 }
 
