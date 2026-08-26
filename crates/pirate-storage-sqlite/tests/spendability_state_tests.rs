@@ -300,6 +300,78 @@ fn test_mark_sync_finalizing_clears_stale_repair_flags() {
 }
 
 #[test]
+fn verified_key_rescan_gate_survives_ordinary_sync_transitions() {
+    let db = test_db();
+    let spendability = SpendabilityStateStorage::new(&db);
+    db.conn()
+        .execute(
+            "UPDATE spendability_state SET rescan_required = 1, required_rescan_from_height = 250, key_import_generation = 3, reason_code = 'ERR_RESCAN_REQUIRED' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+
+    spendability.mark_sync_finalizing(1_000, 990).unwrap();
+    spendability.mark_validated(1_000, 990).unwrap();
+
+    let state = spendability.load_state().unwrap();
+    assert!(!state.spendable);
+    assert!(state.rescan_required);
+    assert_eq!(state.required_rescan_from_height, 250);
+    assert_eq!(state.key_import_generation, 3);
+    assert_eq!(state.validated_anchor_height, 990);
+    assert_eq!(state.reason_code, "ERR_RESCAN_REQUIRED");
+}
+
+#[test]
+fn verified_key_rescan_gate_only_completes_for_matching_qualifying_replay() {
+    let db = test_db();
+    let spendability = SpendabilityStateStorage::new(&db);
+    db.conn()
+        .execute(
+            "UPDATE spendability_state SET rescan_required = 1, required_rescan_from_height = 250, key_import_generation = 3, reason_code = 'ERR_RESCAN_REQUIRED' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+    spendability.mark_validated(1_000, 990).unwrap();
+
+    assert!(!spendability.complete_required_rescan(2, 200).unwrap());
+    assert!(!spendability.complete_required_rescan(3, 251).unwrap());
+    let pending = spendability.load_state().unwrap();
+    assert!(pending.rescan_required);
+    assert_eq!(pending.required_rescan_from_height, 250);
+
+    assert!(spendability.complete_required_rescan(3, 250).unwrap());
+    let complete = spendability.load_state().unwrap();
+    assert!(complete.spendable);
+    assert!(!complete.rescan_required);
+    assert_eq!(complete.required_rescan_from_height, 0);
+    assert_eq!(complete.reason_code, "OK");
+}
+
+#[test]
+fn witness_repair_can_remain_pending_after_verified_key_replay() {
+    let db = test_db();
+    let spendability = SpendabilityStateStorage::new(&db);
+    db.conn()
+        .execute(
+            "UPDATE spendability_state SET rescan_required = 1, required_rescan_from_height = 250, key_import_generation = 3, reason_code = 'ERR_RESCAN_REQUIRED' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+    spendability
+        .mark_repair_pending_without_enqueue(300, "ERR_WITNESS_REPAIR_QUEUED")
+        .unwrap();
+
+    assert!(spendability.complete_required_rescan(3, 250).unwrap());
+    let state = spendability.load_state().unwrap();
+    assert!(!state.spendable);
+    assert!(!state.rescan_required);
+    assert!(state.repair_queued);
+    assert_eq!(state.repair_from_height, 300);
+    assert_eq!(state.reason_code, "ERR_WITNESS_REPAIR_QUEUED");
+}
+
+#[test]
 fn test_mark_found_note_done_through_only_retires_in_progress_rows_when_complete() {
     let db = test_db();
     let queue = ScanQueueStorage::new(&db);
