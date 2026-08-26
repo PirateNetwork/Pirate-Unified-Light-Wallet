@@ -75,6 +75,29 @@ class LinuxPackagingPolicyTest(unittest.TestCase):
         self.assertIn("Verify Linux Qortal JNI compatibility", self.workflow)
         self.assertIn("Verify Linux native FFI compatibility", self.workflow)
 
+    def test_appimage_embeds_the_pinned_static_runtime(self) -> None:
+        self.assertIn(
+            'APPIMAGETOOL_URL: "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"',
+            self.workflow,
+        )
+        self.assertIn(
+            'APPIMAGETOOL_SHA256: "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"',
+            self.workflow,
+        )
+        self.assertIn(
+            'APPIMAGE_RUNTIME_URL: "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"',
+            self.workflow,
+        )
+        self.assertIn(
+            'APPIMAGE_RUNTIME_SHA256: "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"',
+            self.workflow,
+        )
+        self.assertNotIn("obsolete-appimagetool", self.workflow)
+        self.assertIn('--runtime-file "$appimage_runtime"', self.linux_build)
+        self.assertIn("verify_static_appimage_runtime", self.linux_build)
+        self.assertIn("verify_embedded_appimage_runtime", self.linux_build)
+        self.assertIn("grep -aFq 'libfuse.so.2'", self.linux_build)
+
 
 if __name__ == "__main__":
     unittest.main()
