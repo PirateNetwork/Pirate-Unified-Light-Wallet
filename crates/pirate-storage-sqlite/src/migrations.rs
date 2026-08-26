@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 36;
+const SCHEMA_VERSION: i32 = 37;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -137,6 +137,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 36 {
         migrate_v36(conn)?;
+    }
+    if current_version < 37 {
+        migrate_v37(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -770,6 +773,51 @@ fn migrate_v36(conn: &Connection) -> Result<()> {
         COMMIT;
         "#,
     )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v37(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(spendability_state)")?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    let add_rescan_floor = if columns
+        .iter()
+        .any(|column| column == "required_rescan_from_height")
+    {
+        ""
+    } else {
+        "ALTER TABLE spendability_state ADD COLUMN required_rescan_from_height INTEGER NOT NULL DEFAULT 0 CHECK (required_rescan_from_height >= 0);"
+    };
+    let add_import_generation = if columns
+        .iter()
+        .any(|column| column == "key_import_generation")
+    {
+        ""
+    } else {
+        "ALTER TABLE spendability_state ADD COLUMN key_import_generation INTEGER NOT NULL DEFAULT 0 CHECK (key_import_generation >= 0);"
+    };
+
+    conn.execute_batch(&format!(
+        r#"
+        BEGIN IMMEDIATE;
+
+        {add_rescan_floor}
+        {add_import_generation}
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v37_verified_key_rescan_requirement', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#
+    ))
     .map_err(|e| Error::Migration(e.to_string()))?;
 
     Ok(())

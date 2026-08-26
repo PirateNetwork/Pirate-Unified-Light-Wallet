@@ -15,6 +15,12 @@ pub struct SpendabilityStateRow {
     pub spendable: bool,
     /// Whether a full rescan is required before spending.
     pub rescan_required: bool,
+    /// Earliest height a verified imported key still requires replay from.
+    ///
+    /// Zero means there is no imported-key replay obligation.
+    pub required_rescan_from_height: u64,
+    /// Monotonic generation for verified spending-key imports.
+    pub key_import_generation: u64,
     /// Latest target height known to the wallet when state was saved.
     pub target_height: u64,
     /// Latest anchor height observed by sync.
@@ -49,6 +55,8 @@ impl Default for SpendabilityStateRow {
         Self {
             spendable: false,
             rescan_required: true,
+            required_rescan_from_height: 0,
+            key_import_generation: 0,
             target_height: 0,
             anchor_height: 0,
             validated_anchor_height: 0,
@@ -98,6 +106,8 @@ impl<'a> SpendabilityStateStorage<'a> {
                 SELECT
                     spendable,
                     rescan_required,
+                    required_rescan_from_height,
+                    key_import_generation,
                     target_height,
                     anchor_height,
                     validated_anchor_height,
@@ -110,32 +120,49 @@ impl<'a> SpendabilityStateStorage<'a> {
                 "#,
                 [],
                 |row| {
-                    let target_height_i64: i64 = row.get(2)?;
-                    let anchor_height_i64: i64 = row.get(3)?;
-                    let validated_anchor_height_i64: i64 = row.get(4)?;
-                    let repair_from_height_i64: i64 = row.get(6)?;
+                    let required_rescan_from_height_i64: i64 = row.get(2)?;
+                    let key_import_generation_i64: i64 = row.get(3)?;
+                    let target_height_i64: i64 = row.get(4)?;
+                    let anchor_height_i64: i64 = row.get(5)?;
+                    let validated_anchor_height_i64: i64 = row.get(6)?;
+                    let repair_from_height_i64: i64 = row.get(8)?;
                     Ok(SpendabilityStateRow {
                         spendable: row.get::<_, i64>(0)? != 0,
                         rescan_required: row.get::<_, i64>(1)? != 0,
+                        required_rescan_from_height: u64::try_from(required_rescan_from_height_i64)
+                            .map_err(|_| {
+                                rusqlite::Error::IntegralValueOutOfRange(
+                                    2,
+                                    required_rescan_from_height_i64,
+                                )
+                            })?,
+                        key_import_generation: u64::try_from(key_import_generation_i64).map_err(
+                            |_| {
+                                rusqlite::Error::IntegralValueOutOfRange(
+                                    3,
+                                    key_import_generation_i64,
+                                )
+                            },
+                        )?,
                         target_height: u64::try_from(target_height_i64).map_err(|_| {
-                            rusqlite::Error::IntegralValueOutOfRange(2, target_height_i64)
+                            rusqlite::Error::IntegralValueOutOfRange(4, target_height_i64)
                         })?,
                         anchor_height: u64::try_from(anchor_height_i64).map_err(|_| {
-                            rusqlite::Error::IntegralValueOutOfRange(3, anchor_height_i64)
+                            rusqlite::Error::IntegralValueOutOfRange(5, anchor_height_i64)
                         })?,
                         validated_anchor_height: u64::try_from(validated_anchor_height_i64)
                             .map_err(|_| {
                                 rusqlite::Error::IntegralValueOutOfRange(
-                                    4,
+                                    6,
                                     validated_anchor_height_i64,
                                 )
                             })?,
-                        repair_queued: row.get::<_, i64>(5)? != 0,
+                        repair_queued: row.get::<_, i64>(7)? != 0,
                         repair_from_height: u64::try_from(repair_from_height_i64).map_err(
-                            |_| rusqlite::Error::IntegralValueOutOfRange(6, repair_from_height_i64),
+                            |_| rusqlite::Error::IntegralValueOutOfRange(8, repair_from_height_i64),
                         )?,
-                        reason_code: row.get(7)?,
-                        updated_at: row.get(8)?,
+                        reason_code: row.get(9)?,
+                        updated_at: row.get(10)?,
                     })
                 },
             )
@@ -337,23 +364,29 @@ impl<'a> SpendabilityStateStorage<'a> {
         let anchor_height = to_sql_i64(state.anchor_height)?;
         let validated_anchor_height = to_sql_i64(state.validated_anchor_height)?;
         let repair_from_height = to_sql_i64(state.repair_from_height)?;
+        let required_rescan_from_height = to_sql_i64(state.required_rescan_from_height)?;
+        let key_import_generation = to_sql_i64(state.key_import_generation)?;
         self.db.conn().execute(
             r#"
             UPDATE spendability_state SET
                 spendable = ?1,
                 rescan_required = ?2,
-                target_height = ?3,
-                anchor_height = ?4,
-                validated_anchor_height = ?5,
-                repair_queued = ?6,
-                repair_from_height = ?7,
-                reason_code = ?8,
-                updated_at = ?9
+                required_rescan_from_height = ?3,
+                key_import_generation = ?4,
+                target_height = ?5,
+                anchor_height = ?6,
+                validated_anchor_height = ?7,
+                repair_queued = ?8,
+                repair_from_height = ?9,
+                reason_code = ?10,
+                updated_at = ?11
             WHERE id = 1
             "#,
             params![
                 bool_to_int(state.spendable),
                 bool_to_int(state.rescan_required),
+                required_rescan_from_height,
+                key_import_generation,
                 target_height,
                 anchor_height,
                 validated_anchor_height,
@@ -384,7 +417,55 @@ impl<'a> SpendabilityStateStorage<'a> {
         Ok(())
     }
 
-    /// Mark state as sync-finalizing (not spendable yet, but no mandatory full rescan).
+    /// Complete a verified-key replay when it covered the durable floor for the
+    /// same import generation.
+    ///
+    /// Returns `false` without changing the gate when a newer import arrived or
+    /// the replay began above the required height.
+    pub fn complete_required_rescan(
+        &self,
+        expected_generation: u64,
+        replayed_from_height: u64,
+    ) -> Result<bool> {
+        let expected_generation = to_sql_i64(expected_generation)?;
+        let replayed_from_height = to_sql_i64(replayed_from_height)?;
+        let changed = self.db.conn().execute(
+            r#"
+            UPDATE spendability_state SET
+                spendable = CASE
+                    WHEN repair_queued = 0
+                         AND anchor_height > 0
+                         AND validated_anchor_height >= anchor_height
+                    THEN 1
+                    ELSE 0
+                END,
+                rescan_required = 0,
+                required_rescan_from_height = 0,
+                reason_code = CASE
+                    WHEN repair_queued != 0 THEN 'ERR_WITNESS_REPAIR_QUEUED'
+                    WHEN anchor_height > 0 AND validated_anchor_height >= anchor_height THEN 'OK'
+                    ELSE 'ERR_SYNC_FINALIZING'
+                END,
+                updated_at = ?3
+            WHERE id = 1
+              AND rescan_required != 0
+              AND required_rescan_from_height > 0
+              AND key_import_generation = ?1
+              AND ?2 <= required_rescan_from_height
+            "#,
+            params![
+                expected_generation,
+                replayed_from_height,
+                chrono::Utc::now().to_rfc3339()
+            ],
+        )?;
+        Ok(changed == 1)
+    }
+
+    /// Mark state as sync-finalizing.
+    ///
+    /// A verified-key replay obligation is stronger than this ordinary sync
+    /// transition and remains gated until an eligible rescan completes it.
     pub fn mark_sync_finalizing(&self, target_height: u64, anchor_height: u64) -> Result<()> {
         let target_height = to_sql_i64(target_height)?;
         let anchor_height = to_sql_i64(anchor_height)?;
@@ -392,12 +473,18 @@ impl<'a> SpendabilityStateStorage<'a> {
             r#"
             UPDATE spendability_state SET
                 spendable = 0,
-                rescan_required = 0,
+                rescan_required = CASE
+                    WHEN required_rescan_from_height > 0 THEN 1
+                    ELSE 0
+                END,
                 target_height = ?1,
                 anchor_height = ?2,
                 repair_queued = 0,
                 repair_from_height = 0,
-                reason_code = 'ERR_SYNC_FINALIZING',
+                reason_code = CASE
+                    WHEN required_rescan_from_height > 0 THEN reason_code
+                    ELSE 'ERR_SYNC_FINALIZING'
+                END,
                 updated_at = ?3
             WHERE id = 1
             "#,
@@ -410,21 +497,31 @@ impl<'a> SpendabilityStateStorage<'a> {
         Ok(())
     }
 
-    /// Mark state as validated/spendable.
+    /// Record a validated anchor and mark the wallet spendable unless a
+    /// verified-key historical replay is still required.
     pub fn mark_validated(&self, target_height: u64, anchor_height: u64) -> Result<()> {
         let target_height = to_sql_i64(target_height)?;
         let anchor_height = to_sql_i64(anchor_height)?;
         self.db.conn().execute(
             r#"
             UPDATE spendability_state SET
-                spendable = 1,
-                rescan_required = 0,
+                spendable = CASE
+                    WHEN required_rescan_from_height > 0 THEN 0
+                    ELSE 1
+                END,
+                rescan_required = CASE
+                    WHEN required_rescan_from_height > 0 THEN 1
+                    ELSE 0
+                END,
                 target_height = ?1,
                 anchor_height = ?2,
                 validated_anchor_height = ?2,
                 repair_queued = 0,
                 repair_from_height = 0,
-                reason_code = 'OK',
+                reason_code = CASE
+                    WHEN required_rescan_from_height > 0 THEN reason_code
+                    ELSE 'OK'
+                END,
                 updated_at = ?3
             WHERE id = 1
             "#,
@@ -470,13 +567,19 @@ impl<'a> SpendabilityStateStorage<'a> {
             r#"
             UPDATE spendability_state SET
                 spendable = 0,
-                rescan_required = 0,
+                rescan_required = CASE
+                    WHEN required_rescan_from_height > 0 THEN 1
+                    ELSE 0
+                END,
                 repair_queued = 1,
                 repair_from_height = CASE
                     WHEN repair_from_height > 0 AND repair_from_height < ?1 THEN repair_from_height
                     ELSE ?1
                 END,
-                reason_code = ?2,
+                reason_code = CASE
+                    WHEN required_rescan_from_height > 0 THEN reason_code
+                    ELSE ?2
+                END,
                 updated_at = ?3
             WHERE id = 1
             "#,
@@ -501,13 +604,19 @@ impl<'a> SpendabilityStateStorage<'a> {
             r#"
             UPDATE spendability_state SET
                 spendable = 0,
-                rescan_required = 0,
+                rescan_required = CASE
+                    WHEN required_rescan_from_height > 0 THEN 1
+                    ELSE 0
+                END,
                 repair_queued = 1,
                 repair_from_height = CASE
                     WHEN repair_from_height > 0 AND repair_from_height < ?1 THEN repair_from_height
                     ELSE ?1
                 END,
-                reason_code = ?2,
+                reason_code = CASE
+                    WHEN required_rescan_from_height > 0 THEN reason_code
+                    ELSE ?2
+                END,
                 updated_at = ?3
             WHERE id = 1
             "#,

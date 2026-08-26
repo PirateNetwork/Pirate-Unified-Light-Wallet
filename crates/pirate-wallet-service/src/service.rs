@@ -639,15 +639,18 @@ impl WalletService {
                 address_index,
                 label,
                 birthday_height,
-            } => serialize(ffi::import_spending_key_verified(
-                wallet_id,
-                pool,
-                spending_key,
-                expected_address,
-                address_index,
-                label,
-                birthday_height,
-            )?),
+            } => serialize(
+                ffi::import_spending_key_verified(
+                    wallet_id,
+                    pool,
+                    spending_key,
+                    expected_address,
+                    address_index,
+                    label,
+                    birthday_height,
+                )
+                .await?,
+            ),
             WalletServiceRequest::ExportSeedRaw {
                 wallet_id,
                 mnemonic_language,
@@ -1151,12 +1154,14 @@ mod tests {
             birthday_height: 100,
             already_imported: false,
             rescan_required: true,
+            required_rescan_from_height: Some(90),
         })
         .unwrap();
 
         assert_eq!(value["key_id"], 42);
         assert_eq!(value["pool"], "ironwood");
         assert_eq!(value["address"], "pirate1verified");
+        assert_eq!(value["required_rescan_from_height"], 90);
         assert!(value.get("spending_key").is_none());
         assert!(value.get("sapling_key").is_none());
         assert!(value.get("ironwood_key").is_none());

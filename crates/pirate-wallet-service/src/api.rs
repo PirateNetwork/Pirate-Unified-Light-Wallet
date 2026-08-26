@@ -1396,7 +1396,7 @@ pub fn import_spending_key(
 }
 
 /// Import one spending key only after proving a caller-supplied address.
-pub fn import_spending_key_verified(
+pub async fn import_spending_key_verified(
     wallet_id: WalletId,
     pool: VerifiedSpendingKeyPool,
     spending_key: String,
@@ -1414,6 +1414,7 @@ pub fn import_spending_key_verified(
         label,
         birthday_height,
     )
+    .await
 }
 
 /// Export mnemonic seed through the raw advanced path.

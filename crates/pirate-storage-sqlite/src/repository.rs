@@ -2310,26 +2310,47 @@ impl<'a> Repository<'a> {
                 }
             }
 
-            let rescan_required = if key_scan_changed || address_scan_changed {
+            if key_scan_changed || address_scan_changed {
                 // A full replay from the imported key's birthday supersedes any
-                // narrower witness-repair range that was already queued.
+                // narrower witness-repair range that was already queued. Merge
+                // with an earlier pending import so request order cannot raise
+                // the required replay floor.
                 let changed = conn.execute(
-                    "UPDATE spendability_state SET spendable = 0, rescan_required = 1, repair_queued = 0, repair_from_height = 0, reason_code = ?1, updated_at = ?2 WHERE id = 1",
-                    params![rescan_reason_code, chrono::Utc::now().to_rfc3339()],
+                    r#"
+                    UPDATE spendability_state SET
+                        spendable = 0,
+                        rescan_required = 1,
+                        required_rescan_from_height = CASE
+                            WHEN required_rescan_from_height > 0
+                                 AND required_rescan_from_height < ?2
+                            THEN required_rescan_from_height
+                            ELSE ?2
+                        END,
+                        key_import_generation = key_import_generation + 1,
+                        repair_queued = 0,
+                        repair_from_height = 0,
+                        reason_code = ?1,
+                        updated_at = ?3
+                    WHERE id = 1
+                    "#,
+                    params![
+                        rescan_reason_code,
+                        effective_birthday,
+                        chrono::Utc::now().to_rfc3339()
+                    ],
                 )?;
                 if changed != 1 {
                     return Err(Error::Storage(
                         "Spendability state row is unavailable".to_string(),
                     ));
                 }
-                true
-            } else {
-                conn.query_row(
-                    "SELECT rescan_required FROM spendability_state WHERE id = 1",
-                    [],
-                    |row| row.get::<_, i64>(0),
-                )? != 0
-            };
+            }
+
+            let rescan_required = conn.query_row(
+                "SELECT rescan_required FROM spendability_state WHERE id = 1",
+                [],
+                |row| Ok(row.get::<_, i64>(0)? != 0),
+            )?;
 
             Ok((
                 key_id,
@@ -6091,6 +6112,11 @@ mod tests {
         assert!(!first.1);
         assert_eq!(first.2, 500);
         assert!(first.3);
+        let first_state = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert_eq!(first_state.required_rescan_from_height, 500);
+        assert_eq!(first_state.key_import_generation, 1);
 
         let second = repo
             .import_verified_spending_key(
@@ -6103,6 +6129,11 @@ mod tests {
         assert!(second.1);
         assert_eq!(second.2, 400);
         assert!(second.3);
+        let second_state = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert_eq!(second_state.required_rescan_from_height, 400);
+        assert_eq!(second_state.key_import_generation, 2);
 
         let keys = repo.get_account_keys(account_id).unwrap();
         assert_eq!(keys.len(), 1);
@@ -6122,7 +6153,7 @@ mod tests {
 
         db.conn()
             .execute(
-                "UPDATE spendability_state SET spendable = 1, rescan_required = 0, reason_code = 'READY' WHERE id = 1",
+                "UPDATE spendability_state SET spendable = 1, rescan_required = 0, required_rescan_from_height = 0, reason_code = 'READY' WHERE id = 1",
                 [],
             )
             .unwrap();
@@ -6175,7 +6206,7 @@ mod tests {
 
         db.conn()
             .execute(
-                "UPDATE spendability_state SET spendable = 1, rescan_required = 0, reason_code = 'READY' WHERE id = 1",
+                "UPDATE spendability_state SET spendable = 1, rescan_required = 0, required_rescan_from_height = 0, reason_code = 'READY' WHERE id = 1",
                 [],
             )
             .unwrap();
@@ -6195,6 +6226,57 @@ mod tests {
             .unwrap();
         assert!(ready_state.spendable);
         assert!(!ready_state.rescan_required);
+    }
+
+    #[test]
+    fn verified_imports_merge_the_earliest_rescan_floor_across_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("verified-import-floor.db");
+        let salt = crate::security::generate_salt();
+        let key = EncryptionKey::from_passphrase("verified-import-floor", &salt).unwrap();
+        let master_key = MasterKey::generate(EncryptionAlgorithm::ChaCha20Poly1305);
+        let db = Database::open(&path, &key, master_key.clone()).unwrap();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Verified import floor".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+
+        let sapling = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x91, 400),
+                &verified_sapling_address(account_id, "zs1floor-sapling"),
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        let ironwood = repo
+            .import_verified_spending_key(
+                &verified_ironwood_import(account_id, 0x92, 700),
+                &verified_ironwood_address(account_id, "pirate1floor-ironwood"),
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+
+        assert!(sapling.3);
+        assert!(ironwood.3);
+        let pending = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert_eq!(pending.required_rescan_from_height, 400);
+        assert_eq!(pending.key_import_generation, 2);
+        drop(repo);
+        drop(db);
+
+        let reopened = Database::open_existing(&path, &key, master_key).unwrap();
+        let state = crate::SpendabilityStateStorage::new(&reopened)
+            .load_state()
+            .unwrap();
+        assert!(state.rescan_required);
+        assert_eq!(state.required_rescan_from_height, 400);
+        assert_eq!(state.key_import_generation, 2);
     }
 
     #[test]
