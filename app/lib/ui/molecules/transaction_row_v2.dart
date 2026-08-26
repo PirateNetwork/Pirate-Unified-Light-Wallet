@@ -27,6 +27,7 @@ class TransactionRowV2 extends StatelessWidget {
   final String? addressLabel;
   final VoidCallback? onTap;
 
+  static const Key semanticsKey = Key('transaction-row-semantics');
   static const Key directionKey = Key('transaction-row-direction');
   static const Key amountKey = Key('transaction-row-amount');
   static const Key metadataKey = Key('transaction-row-metadata');
@@ -50,6 +51,7 @@ class TransactionRowV2 extends StatelessWidget {
     ].join(', ');
 
     return Semantics(
+      key: semanticsKey,
       button: onTap != null,
       container: true,
       excludeSemantics: true,
