@@ -11,12 +11,12 @@ fn repo_root() -> PathBuf {
 }
 
 #[test]
-fn requires_v36_schema_target() {
+fn requires_v37_schema_target() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/migrations.rs");
     let src = fs::read_to_string(path).expect("read migrations");
     assert!(
-        src.contains("const SCHEMA_VERSION: i32 = 36;"),
-        "schema target must remain v36"
+        src.contains("const SCHEMA_VERSION: i32 = 37;"),
+        "schema target must remain v37"
     );
 }
 
