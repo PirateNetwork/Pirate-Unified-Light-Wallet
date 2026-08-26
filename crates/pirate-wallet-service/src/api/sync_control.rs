@@ -54,6 +54,16 @@ fn sync_operation_lock(wallet_id: &WalletId) -> Arc<Mutex<()>> {
         .clone()
 }
 
+/// Stop any engine that may hold a stale account-key snapshot and keep sync
+/// lifecycle operations serialized until the caller finishes its key mutation.
+pub(super) async fn acquire_exclusive_key_import(
+    wallet_id: &WalletId,
+) -> Result<tokio::sync::OwnedMutexGuard<()>> {
+    let operation_guard = sync_operation_lock(wallet_id).lock_owned().await;
+    cancel_sync_session(wallet_id.clone(), true).await?;
+    Ok(operation_guard)
+}
+
 #[derive(Clone)]
 struct SyncRuntimeHandles {
     progress: Arc<tokio::sync::RwLock<SyncProgress>>,
@@ -1583,6 +1593,44 @@ struct RescanStartPlan {
     fallback_replay_from_height: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RequiredKeyReplay {
+    from_height: u32,
+    import_generation: u64,
+}
+
+fn required_key_replay(
+    state: &pirate_storage_sqlite::SpendabilityStateRow,
+) -> Result<Option<RequiredKeyReplay>> {
+    if !state.rescan_required || state.required_rescan_from_height == 0 {
+        return Ok(None);
+    }
+
+    let from_height = u32::try_from(state.required_rescan_from_height)
+        .map_err(|_| anyhow!("Required rescan height exceeds the supported chain height"))?;
+    Ok(Some(RequiredKeyReplay {
+        from_height,
+        import_generation: state.key_import_generation,
+    }))
+}
+
+fn clamp_rescan_start(requested_from_height: u32, required: Option<RequiredKeyReplay>) -> u32 {
+    required
+        .map(|pending| requested_from_height.min(pending.from_height))
+        .unwrap_or(requested_from_height)
+}
+
+fn complete_required_key_replay(
+    wallet_id: &WalletId,
+    requirement: RequiredKeyReplay,
+    replayed_from_height: u64,
+) -> Result<bool> {
+    let (db, _repo) = open_wallet_db_for(wallet_id)?;
+    SpendabilityStateStorage::new(&db)
+        .complete_required_rescan(requirement.import_generation, replayed_from_height)
+        .map_err(Into::into)
+}
+
 fn plan_rescan_start(effective_from_height: u32, retained_tree_height: u64) -> RescanStartPlan {
     let requested_sync_from_height = u64::from(effective_from_height).max(1);
     let retained_tree_height =
@@ -1625,6 +1673,35 @@ mod rescan_start_plan_tests {
         assert_eq!(plan.requested_sync_from_height, 2_400_000);
         assert_eq!(plan.retained_tree_height, 2_399_999);
         assert_eq!(plan.fallback_replay_from_height, 2_400_000);
+    }
+
+    #[test]
+    fn verified_key_floor_clamps_a_later_rescan_request() {
+        let state = pirate_storage_sqlite::SpendabilityStateRow {
+            required_rescan_from_height: 400,
+            key_import_generation: 2,
+            ..Default::default()
+        };
+        let required = required_key_replay(&state).unwrap();
+
+        assert_eq!(
+            required,
+            Some(RequiredKeyReplay {
+                from_height: 400,
+                import_generation: 2,
+            })
+        );
+        assert_eq!(clamp_rescan_start(700, required), 400);
+        assert_eq!(clamp_rescan_start(300, required), 300);
+    }
+
+    #[test]
+    fn ordinary_rescan_state_does_not_introduce_an_import_floor() {
+        let state = pirate_storage_sqlite::SpendabilityStateRow::default();
+        let required = required_key_replay(&state).unwrap();
+
+        assert_eq!(required, None);
+        assert_eq!(clamp_rescan_start(700, required), 700);
     }
 }
 
@@ -1699,7 +1776,20 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     let operation_lock = sync_operation_lock(&wallet_id);
     let _operation_guard = operation_lock.lock().await;
     mark_spendability_rescan_required(&wallet_id, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED);
-    let mut effective_from_height = from_height;
+    let required_key_replay = {
+        let (db, _repo) = open_wallet_db_for(&wallet_id)?;
+        let state = SpendabilityStateStorage::new(&db).load_state()?;
+        required_key_replay(&state)?
+    };
+    let mut effective_from_height = clamp_rescan_start(from_height, required_key_replay);
+    if effective_from_height != from_height {
+        tracing::info!(
+            "Adjusting rescan start for wallet {} from {} to durable imported-key floor {}",
+            wallet_id,
+            from_height,
+            effective_from_height
+        );
+    }
     let truncate_height: u64;
     let rescan_start_plan: RescanStartPlan;
     let mut historical_sapling_mark_positions = Vec::new();
@@ -2305,9 +2395,37 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 session.last_status = status;
                 cache_sync_status(&wallet_id_for_task, &session.last_status);
             }
-            let rescan_ok = result.is_ok();
+            let mut rescan_ok = result.is_ok();
             match &result {
                 Ok(()) => {
+                    if let Some(requirement) = required_key_replay {
+                        match complete_required_key_replay(
+                            &wallet_id_for_task,
+                            requirement,
+                            rescan_start_plan.requested_sync_from_height,
+                        ) {
+                            Ok(true) => tracing::info!(
+                                "Completed verified-key replay requirement for wallet {} at generation {}",
+                                wallet_id_for_task,
+                                requirement.import_generation
+                            ),
+                            Ok(false) => {
+                                rescan_ok = false;
+                                tracing::warn!(
+                                    "Verified-key replay gate changed before completion for wallet {}; keeping rescan required",
+                                    wallet_id_for_task
+                                );
+                            }
+                            Err(error) => {
+                                rescan_ok = false;
+                                tracing::error!(
+                                    "Could not complete verified-key replay gate for wallet {}: {}",
+                                    wallet_id_for_task,
+                                    error
+                                );
+                            }
+                        }
+                    }
                     tracing::info!("Rescan completed for wallet {}", wallet_id_for_task);
                     if let Err(error) =
                         super::seed_account_discovery::finalize_legacy_sapling_account_discovery(
@@ -2649,5 +2767,37 @@ mod lifecycle_tests {
         let task = session.lock().await.task.take().unwrap();
         task.abort();
         SYNC_SESSIONS.write().remove(&wallet_id);
+    }
+
+    #[tokio::test]
+    async fn exclusive_key_import_joins_the_active_sync_task() {
+        let wallet_id = format!("test-key-import-stop-{}", uuid::Uuid::new_v4());
+        let session = Arc::new(Mutex::new(SyncSession::default()));
+        let cancellation = CancelToken::new();
+        let cancellation_for_task = cancellation.clone();
+        let session_for_task = Arc::clone(&session);
+        let task = tokio::spawn(async move {
+            cancellation_for_task.cancelled().await;
+            let mut state = session_for_task.lock().await;
+            state.is_running = false;
+            state.task = None;
+        });
+        {
+            let mut state = session.lock().await;
+            state.cancelled = Some(cancellation.clone());
+            state.is_running = true;
+            state.task = Some(task);
+        }
+        SYNC_SESSIONS
+            .write()
+            .insert(wallet_id.clone(), Arc::clone(&session));
+
+        let operation_guard = acquire_exclusive_key_import(&wallet_id).await.unwrap();
+
+        assert!(cancellation.is_cancelled());
+        assert!(!session.lock().await.has_active_work());
+        drop(operation_guard);
+        SYNC_SESSIONS.write().remove(&wallet_id);
+        SYNC_OPERATION_LOCKS.write().remove(&wallet_id);
     }
 }

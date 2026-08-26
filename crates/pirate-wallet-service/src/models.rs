@@ -882,8 +882,13 @@ pub struct VerifiedSpendingKeyImport {
     pub birthday_height: u32,
     /// Whether this request matched an already-imported key.
     pub already_imported: bool,
-    /// Always true until the caller completes a rescan.
+    /// Whether the wallet still requires a full rescan.
     pub rescan_required: bool,
+    /// Earliest durable replay height across all pending verified-key imports.
+    ///
+    /// `None` means no verified-key replay is pending; a different full-rescan
+    /// reason can still leave `rescan_required` set.
+    pub required_rescan_from_height: Option<u32>,
 }
 
 /// Network information

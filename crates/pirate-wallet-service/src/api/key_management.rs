@@ -615,7 +615,7 @@ fn validate_import_birthday(birthday_height: u32, known_tip: u64) -> Result<()> 
     Ok(())
 }
 
-pub(super) fn import_spending_key_verified(
+pub(super) async fn import_spending_key_verified(
     wallet_id: WalletId,
     pool: VerifiedSpendingKeyPool,
     spending_key: String,
@@ -634,6 +634,10 @@ pub(super) fn import_spending_key_verified(
         return Err(anyhow!("Import label is too long"));
     }
 
+    // SyncEngine snapshots account keys when it is constructed. Stop and join
+    // an existing engine before changing the inventory, and keep startup/rescan
+    // serialized until the atomic storage transaction commits.
+    let _sync_operation_guard = sync_control::acquire_exclusive_key_import(&wallet_id).await?;
     let (db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
@@ -686,6 +690,9 @@ pub(super) fn import_spending_key_verified(
     let (key_id, already_imported, effective_birthday, rescan_required) = repo
         .import_verified_spending_key(&key, &address, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED)
         .map_err(|error| anyhow!(error.to_string()))?;
+    let spendability_state = pirate_storage_sqlite::SpendabilityStateStorage::new(&db)
+        .load_state()
+        .map_err(|error| anyhow!(error.to_string()))?;
     sync_control::clear_wallet_data_caches(&wallet_id);
 
     Ok(VerifiedSpendingKeyImport {
@@ -697,6 +704,12 @@ pub(super) fn import_spending_key_verified(
             .map_err(|_| anyhow!("Stored birthday height is invalid"))?,
         already_imported,
         rescan_required,
+        required_rescan_from_height: (spendability_state.required_rescan_from_height > 0)
+            .then(|| {
+                u32::try_from(spendability_state.required_rescan_from_height)
+                    .map_err(|_| anyhow!("Required rescan height is invalid"))
+            })
+            .transpose()?,
     })
 }
 
