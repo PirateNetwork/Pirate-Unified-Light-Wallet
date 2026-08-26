@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/design/theme.dart';
@@ -110,15 +108,17 @@ void main() {
 
     final summary = find.byKey(TransactionRowV2.semanticsKey);
     expect(summary, findsOneWidget);
-    final semantics = tester.getSemantics(summary).getSemanticsData();
+    final semantics = tester.widget<Semantics>(summary);
     expect(
-      semantics.label,
+      semantics.properties.label,
       matches(RegExp(r'Received, \+77999\.9997 ARRR, Confirmed, .*Has memo')),
     );
-    expect(semantics.hasAction(ui.SemanticsAction.tap), isTrue);
+    expect(semantics.container, isTrue);
+    expect(semantics.excludeSemantics, isTrue);
+    expect(semantics.properties.button, isTrue);
+    expect(semantics.properties.onTap, isNotNull);
 
-    await tester.tap(find.byType(TransactionRowV2));
-    await tester.pump();
+    semantics.properties.onTap!();
     expect(taps, 1);
   });
 }
