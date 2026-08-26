@@ -18,8 +18,10 @@ env:
   NODE_VERSION: "24"
   NPM_VERSION: "12.0.2"
   COCOAPODS_VERSION: "1.17.0"
-  APPIMAGETOOL_URL: "https://github.com/AppImage/AppImageKit/releases/download/13/obsolete-appimagetool-x86_64.AppImage"
-  APPIMAGETOOL_SHA256: "df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb"
+  APPIMAGETOOL_URL: "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+  APPIMAGETOOL_SHA256: "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+  APPIMAGE_RUNTIME_URL: "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
+  APPIMAGE_RUNTIME_SHA256: "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
   ANDROID_BUILD_TOOLS_VERSION: "36.0.0"
   ANDROID_PLATFORM_VERSION: "36"
   # Match Flutter 3.47.0; NDK r26 cannot assemble OpenSSL 3.6's x86 SM3 routines.

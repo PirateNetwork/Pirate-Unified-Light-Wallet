@@ -11,6 +11,16 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+APPIMAGE_WORK_DIR=""
+
+cleanup_build_temp() {
+    if [[ -n "$APPIMAGE_WORK_DIR" && -d "$APPIMAGE_WORK_DIR" ]]; then
+        rm -rf -- "$APPIMAGE_WORK_DIR"
+    fi
+}
+
+trap cleanup_build_temp EXIT
+
 log() {
     echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
 }
@@ -110,6 +120,38 @@ sha256_check() {
     error "Missing sha256sum/shasum to verify $file"
 }
 
+verify_static_appimage_runtime() {
+    local runtime_file="$1"
+    local dynamic_section
+
+    if ! command -v readelf &> /dev/null; then
+        error "readelf is required to verify the AppImage runtime."
+    fi
+    if ! dynamic_section="$(readelf --dynamic --wide "$runtime_file" 2>&1)"; then
+        error "Unable to inspect AppImage runtime ELF metadata: $dynamic_section"
+    fi
+    if grep -Fq '(NEEDED)' <<<"$dynamic_section"; then
+        error "AppImage runtime has shared-library dependencies; refusing a non-portable artifact."
+    fi
+    if LC_ALL=C grep -aFq 'libfuse.so.2' "$runtime_file"; then
+        error "AppImage runtime still loads legacy libfuse.so.2."
+    fi
+}
+
+verify_embedded_appimage_runtime() {
+    local appimage="$1"
+    local runtime_file="$2"
+    local runtime_size
+
+    runtime_size="$(stat --format='%s' "$runtime_file")"
+    if [[ "$runtime_size" -le 0 ]]; then
+        error "Pinned AppImage runtime is empty."
+    fi
+    if ! cmp --silent --bytes="$runtime_size" "$runtime_file" "$appimage"; then
+        error "Built AppImage does not embed the verified runtime byte-for-byte."
+    fi
+}
+
 ensure_flathub_remote() {
     if ! command -v flatpak &> /dev/null; then
         return 0
@@ -204,30 +246,48 @@ mkdir -p "$OUTPUT_DIR"
 
 build_appimage() {
     log "Creating AppImage..."
-    
-    # Install appimagetool if not available
-    if ! command -v appimagetool &> /dev/null; then
+
+    APPIMAGE_WORK_DIR="$(mktemp -d)"
+    local appimage_runtime="$APPIMAGE_WORK_DIR/runtime-x86_64"
+
+    # Prefer the pinned tool when configured. A system tool remains useful for
+    # local builds, but it must support selecting the separately pinned runtime.
+    if [[ -n "${APPIMAGETOOL_URL:-}" || -n "${APPIMAGETOOL_SHA256:-}" ]]; then
         if [[ -z "${APPIMAGETOOL_URL:-}" || -z "${APPIMAGETOOL_SHA256:-}" ]]; then
-            error "appimagetool not found. Set APPIMAGETOOL_URL and APPIMAGETOOL_SHA256 for reproducible builds."
+            error "Set both APPIMAGETOOL_URL and APPIMAGETOOL_SHA256."
         fi
-        warn "appimagetool not found. Downloading pinned binary..."
-        local appimagetool_tmp="/tmp/appimagetool"
+        log "Downloading pinned appimagetool..."
+        local appimagetool_tmp="$APPIMAGE_WORK_DIR/appimagetool.AppImage"
         download_file "$APPIMAGETOOL_URL" "$appimagetool_tmp"
         sha256_check "$appimagetool_tmp" "$APPIMAGETOOL_SHA256"
         chmod +x "$appimagetool_tmp"
-        local appimagetool_extract
-        appimagetool_extract="$(mktemp -d)"
+        local appimagetool_extract="$APPIMAGE_WORK_DIR/appimagetool-extracted"
+        mkdir -p "$appimagetool_extract"
         if ! (cd "$appimagetool_extract" && "$appimagetool_tmp" --appimage-extract >/dev/null 2>&1); then
-            error "Failed to extract appimagetool AppImage (FUSE not available?)"
+            error "Failed to extract the pinned appimagetool AppImage."
         fi
         if [ ! -x "$appimagetool_extract/squashfs-root/AppRun" ]; then
             error "Extracted appimagetool AppRun not found"
         fi
         APPIMAGETOOL="$appimagetool_extract/squashfs-root/AppRun"
+    elif command -v appimagetool &> /dev/null; then
+        APPIMAGETOOL="$(command -v appimagetool)"
     else
-        APPIMAGETOOL=appimagetool
+        error "appimagetool not found. Set pinned APPIMAGETOOL_URL and APPIMAGETOOL_SHA256 values."
     fi
-    
+
+    if ! "$APPIMAGETOOL" --help 2>&1 | grep -Fq -- '--runtime-file'; then
+        error "appimagetool does not support --runtime-file; use the pinned modern release."
+    fi
+
+    if [[ -z "${APPIMAGE_RUNTIME_URL:-}" || -z "${APPIMAGE_RUNTIME_SHA256:-}" ]]; then
+        error "Set APPIMAGE_RUNTIME_URL and APPIMAGE_RUNTIME_SHA256 for a reproducible AppImage build."
+    fi
+    log "Downloading pinned static AppImage runtime..."
+    download_file "$APPIMAGE_RUNTIME_URL" "$appimage_runtime"
+    sha256_check "$appimage_runtime" "$APPIMAGE_RUNTIME_SHA256"
+    verify_static_appimage_runtime "$appimage_runtime"
+
     # Create AppDir structure
     APPDIR="$OUTPUT_DIR/AppDir"
     rm -rf "$APPDIR"
@@ -277,10 +337,16 @@ EOF
         env -u SOURCE_DATE_EPOCH \
             APPIMAGE_SQUASHFS_OPTIONS="-all-time $appimage_epoch" \
             ARCH=x86_64 \
-            "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+            "$APPIMAGETOOL" --runtime-file "$appimage_runtime" \
+            "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
     else
-        ARCH=x86_64 "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+        ARCH=x86_64 "$APPIMAGETOOL" --runtime-file "$appimage_runtime" \
+            "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
     fi
+
+    verify_embedded_appimage_runtime \
+        "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage" \
+        "$appimage_runtime"
 
     python3 "$SCRIPT_DIR/verify_linux_glibc.py" \
         --max-version 2.35 \
