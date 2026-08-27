@@ -863,16 +863,13 @@ class ExternalKomodoSwapApiNotifier extends _SecureBoolPreferenceNotifier {
   Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
 }
 
-class DebugLoggingPreferenceNotifier extends _SecureBoolPreferenceNotifier {
+class DebugLoggingPreferenceNotifier extends Notifier<bool> {
   @override
-  String get storageKey => kDebugLoggingStorageKey;
-
-  @override
-  bool get defaultValue => false;
+  bool build() => DebugLogController.isEnabled;
 
   Future<void> setEnabled({required bool enabled}) async {
     await DebugLogController.setEnabled(enabled: enabled);
-    state = enabled;
+    state = DebugLogController.isEnabled;
   }
 }
 
