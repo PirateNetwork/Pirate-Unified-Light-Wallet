@@ -5721,6 +5721,15 @@ impl<'a> Repository<'a> {
         self.get_account_notes_matching_outputs(account_id, None)
     }
 
+    /// Validate every encrypted note field for an account without mutating it.
+    ///
+    /// Destructive maintenance such as a rescan can call this before opening a
+    /// write transaction, ensuring an authentication failure is reported while
+    /// all existing chain and wallet state is still intact.
+    pub fn validate_account_encryption(&self, account_id: i64) -> Result<()> {
+        self.get_account_notes(account_id).map(|_| ())
+    }
+
     /// Return prior marked-note positions that may be used as conservative
     /// optimization hints during a rescan.
     ///
@@ -7084,6 +7093,39 @@ mod tests {
                 "Encrypted memo should be larger (includes metadata and nonce)"
             );
         }
+    }
+
+    #[test]
+    fn account_encryption_preflight_rejects_tampered_note_fields() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Preflight".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        insert_received_note(
+            &repo,
+            account_id,
+            vec![0x31; 32],
+            NoteType::Sapling,
+            0,
+            50,
+            100,
+            None,
+            None,
+            false,
+            0x41,
+        );
+        repo.validate_account_encryption(account_id).unwrap();
+
+        db.conn()
+            .execute("UPDATE notes SET height = ?1", params![vec![0x55u8; 32]])
+            .unwrap();
+
+        assert!(repo.validate_account_encryption(account_id).is_err());
     }
 
     #[test]
