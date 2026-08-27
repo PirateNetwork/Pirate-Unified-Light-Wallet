@@ -5,24 +5,30 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 typedef DebugPreferenceRead = Future<String?> Function(String key);
-typedef DebugPreferenceWrite = Future<void> Function(
-  String key,
-  String value,
-);
+typedef DebugPreferenceWrite = Future<void> Function(String key, String value);
 typedef DebugPreferenceDirectory = Future<Directory> Function();
 
 /// Persists the non-secret debug logging preference without making macOS
 /// Keychain availability a prerequisite for collecting diagnostics.
 class DebugLogPreferenceStore {
-  DebugLogPreferenceStore({
+  factory DebugLogPreferenceStore({
     required DebugPreferenceRead secureRead,
     required DebugPreferenceWrite secureWrite,
     required DebugPreferenceDirectory supportDirectory,
     required bool preferFile,
-  }) : _secureRead = secureRead,
-       _secureWrite = secureWrite,
-       _supportDirectory = supportDirectory,
-       _preferFile = preferFile;
+  }) => DebugLogPreferenceStore._(
+    secureRead,
+    secureWrite,
+    supportDirectory,
+    preferFile,
+  );
+
+  DebugLogPreferenceStore._(
+    this._secureRead,
+    this._secureWrite,
+    this._supportDirectory,
+    this._preferFile,
+  );
 
   factory DebugLogPreferenceStore.platform() {
     const storage = FlutterSecureStorage();
