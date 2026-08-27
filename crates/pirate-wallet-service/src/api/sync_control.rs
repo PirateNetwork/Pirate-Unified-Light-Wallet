@@ -1593,6 +1593,48 @@ struct RescanStartPlan {
     fallback_replay_from_height: u64,
 }
 
+fn is_wallet_data_encryption_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        matches!(
+            cause.downcast_ref::<pirate_storage_sqlite::Error>(),
+            Some(pirate_storage_sqlite::Error::Encryption(_))
+        )
+    })
+}
+
+fn rescan_storage_access_error(
+    wallet_id: &WalletId,
+    operation: &str,
+    error: anyhow::Error,
+) -> anyhow::Error {
+    tracing::error!(
+        "Rescan {} failed for wallet {} before completion: {:#}",
+        operation,
+        wallet_id,
+        error
+    );
+    if is_wallet_data_encryption_error(&error) {
+        anyhow!(concat!(
+            "ERR_WALLET_DATA_UNAVAILABLE: Wallet data could not be decrypted. ",
+            "Lock and unlock the app with your app passphrase, then retry. ",
+            "If this continues, keep the existing wallet data intact and restore ",
+            "the seed into a new wallet profile."
+        ))
+    } else {
+        anyhow!("Could not {} before rescan: {}", operation, error)
+    }
+}
+
+fn validate_rescan_storage(wallet_id: &WalletId, passphrase: &str) -> Result<()> {
+    let (db, _key, _master_key) = open_wallet_db_with_passphrase(wallet_id, passphrase)?;
+    let repo = Repository::new(&db);
+    let secret = repo
+        .get_wallet_secret(wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+    repo.validate_account_encryption(secret.account_id)?;
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RequiredKeyReplay {
     from_height: u32,
@@ -1647,6 +1689,44 @@ fn plan_rescan_start(effective_from_height: u32, retained_tree_height: u64) -> R
 #[cfg(test)]
 mod rescan_start_plan_tests {
     use super::*;
+
+    #[test]
+    fn encryption_failures_use_an_actionable_rescan_error() {
+        let cause = pirate_storage_sqlite::Error::Encryption("aead::Error".to_string());
+        let error = anyhow::Error::new(cause);
+
+        assert!(is_wallet_data_encryption_error(&error));
+
+        let mapped = rescan_storage_access_error(
+            &"test-wallet".to_string(),
+            "verify encrypted wallet data",
+            error,
+        )
+        .to_string();
+
+        assert!(mapped.starts_with("ERR_WALLET_DATA_UNAVAILABLE:"));
+        assert!(mapped.contains("Lock and unlock the app"));
+        assert!(!mapped.contains("aead::Error"));
+    }
+
+    #[test]
+    fn ordinary_rescan_storage_failures_preserve_the_operation_context() {
+        let error = anyhow!("database is busy");
+
+        assert!(!is_wallet_data_encryption_error(&error));
+
+        let mapped = rescan_storage_access_error(
+            &"test-wallet".to_string(),
+            "verify encrypted wallet data",
+            error,
+        )
+        .to_string();
+
+        assert_eq!(
+            mapped,
+            "Could not verify encrypted wallet data before rescan: database is busy"
+        );
+    }
 
     #[test]
     fn pruned_checkpoint_bootstraps_at_the_requested_rescan_height() {
@@ -1775,6 +1855,10 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     let mut rescan_guard = acquire_rescan_guard(&wallet_id)?;
     let operation_lock = sync_operation_lock(&wallet_id);
     let _operation_guard = operation_lock.lock().await;
+    let passphrase = app_passphrase()?;
+    validate_rescan_storage(&wallet_id, &passphrase).map_err(|error| {
+        rescan_storage_access_error(&wallet_id, "verify encrypted wallet data", error)
+    })?;
     mark_spendability_rescan_required(&wallet_id, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED);
     let required_key_replay = {
         let (db, _repo) = open_wallet_db_for(&wallet_id)?;
@@ -1910,37 +1994,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                     .as_millis();
                 let _ = writeln!(
                     file,
-                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3119","message":"rescan step","data":{{"wallet_id":"{}","step":"get_passphrase_start"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts, wallet_id
-                );
-            });
-        }
-        let passphrase = match app_passphrase() {
-            Ok(passphrase) => passphrase,
-            Err(e) => {
-                pirate_core::debug_log::with_locked_file(|file| {
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_rescan_passphrase_error","timestamp":{},"location":"api.rs:3070","message":"rescan passphrase error","data":{{"wallet_id":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                        ts, wallet_id, e
-                    );
-                });
-                return Err(e);
-            }
-        };
-        {
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3146","message":"rescan step","data":{{"wallet_id":"{}","step":"get_passphrase_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:rescan","message":"rescan step","data":{{"wallet_id":"{}","step":"storage_preflight_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id
                 );
             });
@@ -1973,7 +2027,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                         e
                     );
                 });
-                e
+                rescan_storage_access_error(&wallet_id, "open encrypted wallet data", e)
             })?;
         let repo = Repository::new(&db);
         if let Ok(Some(secret)) = repo.get_wallet_secret(&wallet_id) {
@@ -2091,7 +2145,11 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                             e
                         );
                     });
-                    e
+                    rescan_storage_access_error(
+                        &wallet_id,
+                        "rewind encrypted wallet state",
+                        e.into(),
+                    )
                 },
             )?;
         rescan_start_plan = plan_rescan_start(effective_from_height, tree_replay_height);
