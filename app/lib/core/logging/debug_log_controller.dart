@@ -1,17 +1,17 @@
 import 'dart:io';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'debug_log_native.dart';
 import 'debug_log_path.dart';
+import 'debug_log_preference_store.dart';
 
 const String kDebugLoggingStorageKey = 'ui_debug_logging_enabled_v1';
 
 class DebugLogController {
   DebugLogController._();
 
-  static const _storage = FlutterSecureStorage();
+  static final _preferenceStore = DebugLogPreferenceStore.platform();
   static bool _enabled = false;
 
   static bool get isEnabled => _enabled;
@@ -33,12 +33,12 @@ class DebugLogController {
   }
 
   static Future<void> setEnabled({required bool enabled}) async {
-    _enabled = enabled;
-    await _storage.write(
+    await _preferenceStore.write(
       key: kDebugLoggingStorageKey,
-      value: enabled.toString(),
+      enabled: enabled,
     );
     await setNativeDebugLoggingEnabled(enabled: enabled);
+    _enabled = enabled;
     if (!enabled) {
       await clearAllLogs();
     }
@@ -110,12 +110,7 @@ class DebugLogController {
   }
 
   static Future<bool> _readEnabled() async {
-    try {
-      final raw = await _storage.read(key: kDebugLoggingStorageKey);
-      return raw?.toLowerCase() == 'true';
-    } catch (_) {
-      return false;
-    }
+    return _preferenceStore.read(key: kDebugLoggingStorageKey);
   }
 
   static Future<Set<String>> _candidateLogPaths() async {
