@@ -1022,6 +1022,12 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             let engine = sync_for_task.clone().lock_owned().await;
             (engine.progress(), engine.perf_counters().snapshot())
         };
+        if result.is_err() {
+            progress_arc
+                .write()
+                .await
+                .set_stage(pirate_sync_lightd::progress::SyncStage::Verify);
+        }
         if result.is_ok() {
             profile_session_for_task.record_success();
         } else {
@@ -2428,6 +2434,12 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 let engine = sync.clone().lock_owned().await;
                 (engine.progress(), engine.perf_counters().snapshot())
             };
+            if result.is_err() {
+                progress_arc
+                    .write()
+                    .await
+                    .set_stage(pirate_sync_lightd::progress::SyncStage::Verify);
+            }
             let status_opt = {
                 let progress = progress_arc.read().await;
                 Some(SyncStatus {
