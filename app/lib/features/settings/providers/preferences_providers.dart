@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/security/app_secure_storage.dart';
 import '../../../core/security/biometric_auth.dart';
 import '../../../core/security/keystore_channel.dart';
 import '../../../core/security/passphrase_cache.dart';
@@ -359,7 +360,7 @@ class ThemeModeNotifier extends Notifier<AppThemeMode> {
 
   @override
   AppThemeMode build() {
-    _storage = const FlutterSecureStorage();
+    _storage = appSecureStorage;
     _load();
     return AppThemeMode.system;
   }
@@ -391,7 +392,7 @@ class CurrencyPreferenceNotifier extends Notifier<CurrencyPreference> {
 
   @override
   CurrencyPreference build() {
-    _storage = const FlutterSecureStorage();
+    _storage = appSecureStorage;
     _load();
     return CurrencyPreference.usd;
   }
@@ -428,7 +429,7 @@ class SwapInterfacePreferenceNotifier
 
   @override
   SwapInterfacePreference build() {
-    _storage = const FlutterSecureStorage();
+    _storage = appSecureStorage;
     _load();
     return SwapInterfacePreference.simple;
   }
@@ -459,7 +460,7 @@ class LocalePreferenceNotifier extends Notifier<AppLocalePreference> {
 
   @override
   AppLocalePreference build() {
-    _storage = const FlutterSecureStorage();
+    _storage = appSecureStorage;
     _load();
     return AppLocalePreference.english;
   }
@@ -507,7 +508,7 @@ class SeedPhraseLanguagePreferenceNotifier extends Notifier<MnemonicLanguage> {
 
   @override
   MnemonicLanguage build() {
-    _storage = const FlutterSecureStorage();
+    _storage = appSecureStorage;
     _load();
     return MnemonicLanguage.english;
   }
@@ -551,7 +552,7 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
 
   @override
   bool build() {
-    _storage = const FlutterSecureStorage();
+    _storage = appSecureStorage;
     _initialLoad = _load();
     return false;
   }
@@ -775,7 +776,7 @@ abstract class _SecureBoolPreferenceNotifier extends Notifier<bool> {
 
   @override
   bool build() {
-    _storage = const FlutterSecureStorage();
+    _storage = appSecureStorage;
     _load();
     return defaultValue;
   }

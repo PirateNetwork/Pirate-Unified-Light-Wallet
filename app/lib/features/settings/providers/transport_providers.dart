@@ -11,6 +11,7 @@ import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/ffi/generated/models.dart'
     show TunnelMode, TunnelMode_Tor;
 import '../../../core/providers/wallet_providers.dart';
+import '../../../core/security/app_secure_storage.dart';
 
 /// Tor status details for UI.
 class TorStatusNotifier extends Notifier<TorStatusDetails> {
@@ -347,7 +348,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
 
   @override
   TransportConfig build() {
-    _storage = const FlutterSecureStorage();
+    _storage = appSecureStorage;
     ref.listen<WalletId?>(activeWalletProvider, (previous, next) {
       if (next != null && next != previous) {
         unawaited(_applyTunnel(state));

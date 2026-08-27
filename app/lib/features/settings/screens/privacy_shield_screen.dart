@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../../core/security/app_secure_storage.dart';
 import '../../../design/compat.dart';
 import '../../../design/tokens/colors.dart';
 import '../../../ui/atoms/p_button.dart';
@@ -40,7 +40,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   final _torBridgeLinesController = TextEditingController();
   final _torTransportPathController = TextEditingController();
   final _i2pEndpointController = TextEditingController();
-  final _storage = const FlutterSecureStorage();
+  final _storage = appSecureStorage;
   static const String _i2pWarningKey = 'i2p_first_use_ack';
   bool _isTestingConnection = false;
   bool _isChangingTransport = false;
@@ -738,10 +738,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             ),
           ],
           if (_isDesktop) ...[
-            Divider(
-              height: PirateSpacing.xl,
-              color: AppColors.borderSubtle,
-            ),
+            Divider(height: PirateSpacing.xl, color: AppColors.borderSubtle),
             _buildTorAdvancedControls(context, ref),
           ],
         ],
