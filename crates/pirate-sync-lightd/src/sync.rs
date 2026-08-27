@@ -316,6 +316,18 @@ const HISTORIC_AUX_FLUSH_INTERVAL_MS: u64 = 30_000;
 const HISTORIC_SPARSE_CHECKPOINT_INTERVAL: u64 = 50_000;
 const MAX_REORG_SEARCH_DEPTH: u64 = 2_000;
 const CANONICAL_BLOCK_WINDOW: usize = MAX_REORG_SEARCH_DEPTH as usize + 1;
+
+fn resume_chain_network_timeout(transport: TransportMode) -> Duration {
+    match transport {
+        TransportMode::Direct => Duration::from_secs(30),
+        TransportMode::Tor | TransportMode::Socks5 => Duration::from_secs(90),
+        TransportMode::I2p => Duration::from_secs(180),
+    }
+}
+
+fn reorg_backoff_probe(divergent_height: u64, stop_height: u64, distance: u64) -> u64 {
+    divergent_height.saturating_sub(distance).max(stop_height)
+}
 const I2P_SERVER_INFO_TIMEOUT: Duration = Duration::from_secs(45);
 const I2P_SERVER_INFO_ATTEMPTS: usize = 2;
 #[cfg(test)]
@@ -2138,10 +2150,18 @@ impl SyncEngine {
             return Ok(requested_start_height);
         }
 
-        let remote_tip_block = self
-            .client
-            .get_block(height_to_u32(local_tip.height)?)
-            .await?;
+        let remote_tip_block = tokio::time::timeout(
+            resume_chain_network_timeout(self.client.transport_mode()),
+            self.client.get_block(height_to_u32(local_tip.height)?),
+        )
+        .await
+        .map_err(|_| {
+            Error::Network(format!(
+                "Timed out validating the local resume block at height {} over {:?}",
+                local_tip.height,
+                self.client.transport_mode()
+            ))
+        })??;
         if remote_tip_block.hash == local_tip.hash {
             let resume_height = matching_resume_height(
                 requested_start_height,
@@ -2199,6 +2219,19 @@ impl SyncEngine {
     }
 
     async fn find_common_ancestor(&self, divergent_height: u64) -> Result<Option<u64>> {
+        let timeout = resume_chain_network_timeout(self.client.transport_mode());
+        tokio::time::timeout(timeout, self.find_common_ancestor_bounded(divergent_height))
+            .await
+            .map_err(|_| {
+                Error::Network(format!(
+                    "Timed out after {:?} while locating a common chain ancestor over {:?}",
+                    timeout,
+                    self.client.transport_mode()
+                ))
+            })?
+    }
+
+    async fn find_common_ancestor_bounded(&self, divergent_height: u64) -> Result<Option<u64>> {
         let Some(sink) = self.storage.clone() else {
             return Ok(None);
         };
@@ -2207,20 +2240,77 @@ impl SyncEngine {
             .saturating_sub(MAX_REORG_SEARCH_DEPTH)
             .max(birthday_floor);
 
-        let mut height = divergent_height;
-        loop {
-            if let Some(local) = sink.load_chain_block(height)? {
-                let remote = self.client.get_block(height_to_u32(height)?).await?;
+        let local_blocks = sink.load_chain_blocks(stop_height, divergent_height)?;
+        let local_by_height = local_blocks
+            .iter()
+            .map(|block| (block.height, block))
+            .collect::<HashMap<_, _>>();
+        let expected_rows = divergent_height
+            .saturating_sub(stop_height)
+            .saturating_add(1);
+
+        // Current wallets persist a contiguous reorg window. Probe that window
+        // exponentially, then binary-search the final bracket. This reduces a
+        // worst-case 2,001-RPC linear walk to at most a few dozen small RPCs.
+        if local_blocks.len() as u64 == expected_rows {
+            let mut upper_mismatch = divergent_height;
+            let mut distance = 1u64;
+            let lower_match = loop {
+                let probe = reorg_backoff_probe(divergent_height, stop_height, distance);
+                let local = local_by_height.get(&probe).ok_or_else(|| {
+                    Error::Sync(format!(
+                        "Canonical reorg window is missing probe height {}",
+                        probe
+                    ))
+                })?;
+                let remote = self.client.get_block(height_to_u32(probe)?).await?;
                 if local.hash == remote.hash {
-                    tracing::info!("Found common chain ancestor at height {}", height);
-                    return Ok(Some(height));
+                    break Some(probe);
+                }
+                upper_mismatch = probe;
+                if probe == stop_height {
+                    break None;
+                }
+                distance = distance.saturating_mul(2);
+            };
+
+            if let Some(mut lower_match) = lower_match {
+                let mut upper_search = upper_mismatch.saturating_sub(1);
+                while lower_match < upper_search {
+                    let probe = lower_match.saturating_add(upper_search).saturating_add(1) / 2;
+                    let local = local_by_height.get(&probe).ok_or_else(|| {
+                        Error::Sync(format!(
+                            "Canonical reorg window is missing probe height {}",
+                            probe
+                        ))
+                    })?;
+                    let remote = self.client.get_block(height_to_u32(probe)?).await?;
+                    if local.hash == remote.hash {
+                        lower_match = probe;
+                    } else {
+                        upper_search = probe.saturating_sub(1);
+                    }
+                }
+                tracing::info!(
+                    "Found common chain ancestor at height {} using bounded probes",
+                    lower_match
+                );
+                return Ok(Some(lower_match));
+            }
+        } else {
+            // Legacy metadata can contain gaps. Preserve the conservative
+            // descending behavior, but keep it under the outer transport-aware
+            // deadline so a damaged window cannot hold Preparing indefinitely.
+            for local in local_blocks.iter().rev() {
+                let remote = self.client.get_block(height_to_u32(local.height)?).await?;
+                if local.hash == remote.hash {
+                    tracing::info!(
+                        "Found common chain ancestor at height {} in sparse metadata",
+                        local.height
+                    );
+                    return Ok(Some(local.height));
                 }
             }
-
-            if height == 0 || height <= stop_height {
-                break;
-            }
-            height = height.saturating_sub(1);
         }
 
         tracing::warn!(
@@ -10991,6 +11081,12 @@ impl StorageSink {
         Ok(sync_state.load_chain_block(height)?)
     }
 
+    fn load_chain_blocks(&self, start_height: u64, end_height: u64) -> Result<Vec<ChainBlockRow>> {
+        let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
+        let sync_state = SyncStateStorage::new(&db);
+        Ok(sync_state.load_chain_blocks(start_height, end_height)?)
+    }
+
     fn load_latest_chain_block(&self) -> Result<Option<ChainBlockRow>> {
         let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
         let sync_state = SyncStateStorage::new(&db);
@@ -12471,6 +12567,37 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(canonical_block_window(&blocks).len(), blocks.len());
+    }
+
+    #[test]
+    fn reorg_backoff_reaches_the_search_floor_logarithmically() {
+        let divergent = 50_000;
+        let stop = divergent - MAX_REORG_SEARCH_DEPTH;
+        let mut distance = 1u64;
+        let mut probes = Vec::new();
+        loop {
+            let probe = reorg_backoff_probe(divergent, stop, distance);
+            probes.push(probe);
+            if probe == stop {
+                break;
+            }
+            distance = distance.saturating_mul(2);
+        }
+
+        assert_eq!(probes.last(), Some(&stop));
+        assert!(probes.len() <= 12, "unexpected probe count: {probes:?}");
+    }
+
+    #[test]
+    fn resume_validation_deadlines_are_transport_aware() {
+        assert_eq!(
+            resume_chain_network_timeout(TransportMode::Direct),
+            Duration::from_secs(30)
+        );
+        assert!(
+            resume_chain_network_timeout(TransportMode::Tor)
+                < resume_chain_network_timeout(TransportMode::I2p)
+        );
     }
 
     #[test]
