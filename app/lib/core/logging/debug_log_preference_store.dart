@@ -1,8 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
+
+import '../security/app_secure_storage.dart';
 
 typedef DebugPreferenceRead = Future<String?> Function(String key);
 typedef DebugPreferenceWrite = Future<void> Function(String key, String value);
@@ -31,7 +32,7 @@ class DebugLogPreferenceStore {
   );
 
   factory DebugLogPreferenceStore.platform() {
-    const storage = FlutterSecureStorage();
+    const storage = appSecureStorage;
     return DebugLogPreferenceStore(
       secureRead: (key) => storage.read(key: key),
       secureWrite: (key, value) => storage.write(key: key, value: value),

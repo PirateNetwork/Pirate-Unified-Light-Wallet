@@ -9,6 +9,7 @@ import 'package:komodo_defi_sdk/komodo_defi_sdk.dart';
 import 'package:komodo_defi_types/komodo_defi_types.dart' as kdf_types;
 
 import '../ffi/ffi_bridge.dart';
+import '../security/app_secure_storage.dart';
 import 'kdf_orderbook_parser.dart';
 import 'kdf_swap_payloads.dart';
 import 'swap_models.dart';
@@ -24,12 +25,11 @@ class KdfSwapEngineException implements Exception {
 }
 
 typedef KdfSwapNetworkPolicyReader = KdfSwapNetworkPolicy Function();
-typedef KdfSwapStartupForTesting =
-    Future<void> Function(
-      String walletId,
-      KdfSwapNetworkPolicy policy,
-      int generation,
-    );
+typedef KdfSwapStartupForTesting = Future<void> Function(
+  String walletId,
+  KdfSwapNetworkPolicy policy,
+  int generation,
+);
 
 enum _KdfSeedMatch { canonical, legacyLocalized, mismatch }
 
@@ -100,7 +100,7 @@ class KdfSwapEngine {
     FlutterSecureStorage? storage,
     this._networkPolicyReader,
     this._startupForTesting,
-  }) : _storage = storage ?? const FlutterSecureStorage();
+  }) : _storage = storage ?? appSecureStorage;
 
   static const supportedBase = 'ARRR';
   static const supportedRel = 'LTC';

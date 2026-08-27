@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 import '../../features/settings/providers/preferences_providers.dart';
 import '../../ui/molecules/p_snack.dart';
 import '../i18n/arb_text_localizer.dart';
+import '../security/app_secure_storage.dart';
 import '../services/desktop_update_service.dart';
 
 class DesktopUpdatePromptHost extends ConsumerStatefulWidget {
@@ -30,7 +31,7 @@ class _DesktopUpdatePromptHostState
   static const Duration _initialDelay = Duration(seconds: 25);
   static const Duration _pollInterval = Duration(minutes: 30);
 
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final FlutterSecureStorage _storage = appSecureStorage;
   Timer? _initialTimer;
   Timer? _periodicTimer;
   bool _checkInProgress = false;
@@ -212,9 +213,8 @@ class _DesktopUpdatePromptHostState
       if (mounted) {
         PSnack.show(
           context: context,
-          message:
-              'Automatic update failed: {error}. Use Changelog to download manually.'
-                  .trArgs({'error': e}),
+          message: 'Automatic update failed: {error}. Use Changelog to download manually.'
+              .trArgs({'error': e}),
           variant: PSnackVariant.error,
           duration: const Duration(seconds: 6),
         );

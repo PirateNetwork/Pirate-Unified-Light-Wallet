@@ -2,12 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../security/app_secure_storage.dart';
 import 'swap_intent_store.dart';
 import 'swap_models.dart';
 
 class SecureStorageSwapIntentStore extends SwapIntentStore {
   SecureStorageSwapIntentStore({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? appSecureStorage;
 
   static const _keyPrefix = 'pirate_swap_intents_v1';
 

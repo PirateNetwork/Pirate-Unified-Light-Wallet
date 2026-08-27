@@ -7,10 +7,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'app_secure_storage.dart';
 import 'keystore_channel.dart';
 
 class PassphraseCache {
-  static const _storage = FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = appSecureStorage;
   static const _key = 'app_passphrase_wrapped_v1';
   static const _fallbackFileName = 'app_passphrase_wrapped_v1.txt';
 
