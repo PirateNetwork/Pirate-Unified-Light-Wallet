@@ -615,6 +615,9 @@ else
   adhoc_sign_app_bundle "$APP_PATH" "$ENTITLEMENTS_PATH"
 fi
 
+log "Verifying signed macOS entitlements..."
+bash "$SCRIPT_DIR/verify-macos-entitlements.sh" "$APP_PATH"
+
 # Create DMG
 log "Creating DMG..."
 

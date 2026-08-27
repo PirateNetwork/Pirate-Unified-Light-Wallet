@@ -191,4 +191,7 @@ bash "$SCRIPT_DIR/verify-macos-linkage.sh" "$APP_PATH"
 echo "[verify-macos-dmg] Verifying code signature..."
 codesign --verify --deep --strict --verbose=4 "$APP_PATH" >/dev/null
 
+echo "[verify-macos-dmg] Verifying signed entitlements..."
+bash "$SCRIPT_DIR/verify-macos-entitlements.sh" "$APP_PATH"
+
 echo "[verify-macos-dmg] OK: $APP_PATH"
