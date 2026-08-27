@@ -365,6 +365,33 @@ impl<'a> SyncStateStorage<'a> {
         })
     }
 
+    /// Load canonical block metadata for an inclusive height range.
+    pub fn load_chain_blocks(
+        &self,
+        start_height: u64,
+        end_height: u64,
+    ) -> Result<Vec<ChainBlockRow>> {
+        if start_height > end_height {
+            return Ok(Vec::new());
+        }
+        let start_height = to_sql_i64(start_height)?;
+        let end_height = to_sql_i64(end_height)?;
+        self.query_with_retry(|| {
+            let mut statement = self.db.conn().prepare(
+                r#"
+                SELECT height, hash, prev_hash, time
+                FROM chain_blocks
+                WHERE height BETWEEN ?1 AND ?2
+                ORDER BY height ASC
+                "#,
+            )?;
+            let rows =
+                statement.query_map(params![start_height, end_height], chain_block_from_row)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(Into::into)
+        })
+    }
+
     /// Load the highest canonical block metadata row.
     pub fn load_latest_chain_block(&self) -> Result<Option<ChainBlockRow>> {
         self.query_with_retry(|| {
@@ -1292,6 +1319,29 @@ mod tests {
 
         assert_eq!(storage.load_chain_block(123).unwrap(), Some(block.clone()));
         assert_eq!(storage.load_latest_chain_block().unwrap(), Some(block));
+    }
+
+    #[test]
+    fn chain_block_range_loads_once_in_height_order() {
+        let db = test_db();
+        let storage = SyncStateStorage::new(&db);
+        let blocks = (100..=110)
+            .map(|height| ChainBlockRow {
+                height,
+                hash: height.to_le_bytes().repeat(4),
+                prev_hash: height.saturating_sub(1).to_le_bytes().repeat(4),
+                time: u32::try_from(height).unwrap(),
+            })
+            .collect::<Vec<_>>();
+        storage.save_chain_blocks(&blocks).unwrap();
+
+        let loaded = storage.load_chain_blocks(103, 107).unwrap();
+
+        assert_eq!(
+            loaded.iter().map(|block| block.height).collect::<Vec<_>>(),
+            vec![103, 104, 105, 106, 107]
+        );
+        assert!(storage.load_chain_blocks(108, 107).unwrap().is_empty());
     }
 
     #[test]
