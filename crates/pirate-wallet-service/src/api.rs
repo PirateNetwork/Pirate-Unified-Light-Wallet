@@ -695,7 +695,12 @@ where
             let mut engine = sync.lock().await;
             let cancel = engine.cancel_flag();
             tokio::select! {
-                _ = cancel.cancelled() => Err(anyhow!("Sync cancelled")),
+                // Keep cancellation typed so exit handlers can distinguish an orderly
+                // stop from a sync failure instead of matching on a message string.
+                _ = cancel.cancelled() => {
+                    Err(anyhow::Error::from(pirate_sync_lightd::Error::Cancelled)
+                        .context("Sync cancelled"))
+                }
                 result = task(&mut engine) => result,
             }
         })
