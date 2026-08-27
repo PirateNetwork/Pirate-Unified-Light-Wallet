@@ -493,13 +493,18 @@ sign_nested_code_no_timestamp() {
 
 adhoc_sign_app_bundle() {
   local app_path="$1"
+  local entitlements_path="$2"
   local identity="-"
+
+  [ -f "$entitlements_path" ] || autofail "Entitlements file not found: $entitlements_path"
 
   log "Ad-hoc signing nested code..."
   sign_nested_code_no_timestamp "$app_path" "$identity"
 
   log "Ad-hoc signing app bundle..."
-  codesign --force --sign "$identity" "$app_path"
+  codesign --force --sign "$identity" \
+    --entitlements "$entitlements_path" \
+    "$app_path"
 
   log "Verifying signature..."
   codesign --verify --deep --strict --verbose=4 "$app_path"
@@ -604,8 +609,10 @@ else
   # We modify the app bundle after the Flutter/Xcode build (e.g. adding the Rust
   # framework), which can invalidate the build-time ad-hoc signature. Re-sign
   # ad-hoc so the app can launch and load embedded frameworks consistently.
+  # Re-apply the release entitlements because codesign replaces, rather than
+  # preserves, the entitlement payload on the outer app bundle.
   log "Re-signing macOS app ad-hoc..."
-  adhoc_sign_app_bundle "$APP_PATH"
+  adhoc_sign_app_bundle "$APP_PATH" "$ENTITLEMENTS_PATH"
 fi
 
 # Create DMG
