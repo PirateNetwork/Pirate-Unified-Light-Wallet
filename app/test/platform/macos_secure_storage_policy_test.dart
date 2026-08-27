@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('macOS build entitlements permit secure preference storage', () {
+  test('macOS builds do not require provisioned Keychain access groups', () {
     const entitlementFiles = [
       'macos/Runner/DebugProfile.entitlements',
       'macos/Runner/Release.entitlements',
@@ -14,8 +14,8 @@ void main() {
       final contents = File(path).readAsStringSync();
       expect(
         contents,
-        contains('<key>keychain-access-groups</key>'),
-        reason: '$path must enable Keychain Sharing for flutter_secure_storage',
+        isNot(contains('<key>keychain-access-groups</key>')),
+        reason: '$path must remain compatible with portable signing',
       );
     }
   });
