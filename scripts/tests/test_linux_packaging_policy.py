@@ -95,7 +95,13 @@ class LinuxPackagingPolicyTest(unittest.TestCase):
         self.assertNotIn("obsolete-appimagetool", self.workflow)
         self.assertIn('--runtime-file "$appimage_runtime"', self.linux_build)
         self.assertIn("verify_static_appimage_runtime", self.linux_build)
-        self.assertIn("verify_embedded_appimage_runtime", self.linux_build)
+        self.assertRegex(
+            self.linux_build,
+            r'python3 "\$SCRIPT_DIR/verify_appimage_runtime\.py" \\\s+'
+            r'"\$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64\.AppImage" \\\s+'
+            r'"\$appimage_runtime"',
+        )
+        self.assertNotIn("cmp --silent --bytes", self.linux_build)
         self.assertIn("grep -aFq 'libfuse.so.2'", self.linux_build)
 
 

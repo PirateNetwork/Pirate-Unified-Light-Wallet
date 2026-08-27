@@ -138,20 +138,6 @@ verify_static_appimage_runtime() {
     fi
 }
 
-verify_embedded_appimage_runtime() {
-    local appimage="$1"
-    local runtime_file="$2"
-    local runtime_size
-
-    runtime_size="$(stat --format='%s' "$runtime_file")"
-    if [[ "$runtime_size" -le 0 ]]; then
-        error "Pinned AppImage runtime is empty."
-    fi
-    if ! cmp --silent --bytes="$runtime_size" "$runtime_file" "$appimage"; then
-        error "Built AppImage does not embed the verified runtime byte-for-byte."
-    fi
-}
-
 ensure_flathub_remote() {
     if ! command -v flatpak &> /dev/null; then
         return 0
@@ -344,7 +330,7 @@ EOF
             "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
     fi
 
-    verify_embedded_appimage_runtime \
+    python3 "$SCRIPT_DIR/verify_appimage_runtime.py" \
         "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage" \
         "$appimage_runtime"
 
