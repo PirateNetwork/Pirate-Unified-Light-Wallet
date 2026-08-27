@@ -5721,13 +5721,18 @@ impl<'a> Repository<'a> {
         self.get_account_notes_matching_outputs(account_id, None)
     }
 
-    /// Validate every encrypted note field for an account without mutating it.
+    /// Validate encrypted notes, keys, and addresses for an account without
+    /// mutating them.
     ///
     /// Destructive maintenance such as a rescan can call this before opening a
     /// write transaction, ensuring an authentication failure is reported while
     /// all existing chain and wallet state is still intact.
     pub fn validate_account_encryption(&self, account_id: i64) -> Result<()> {
-        self.get_account_notes(account_id).map(|_| ())
+        self.get_account_notes(account_id)?;
+        self.get_account_keys(account_id)?;
+        self.get_all_addresses(account_id)?;
+        self.list_unlinked_spend_nullifiers_with_txid(account_id)?;
+        Ok(())
     }
 
     /// Return prior marked-note positions that may be used as conservative
@@ -7123,6 +7128,58 @@ mod tests {
 
         db.conn()
             .execute("UPDATE notes SET height = ?1", params![vec![0x55u8; 32]])
+            .unwrap();
+
+        assert!(repo.validate_account_encryption(account_id).is_err());
+    }
+
+    #[test]
+    fn account_encryption_preflight_rejects_tampered_key_fields() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Preflight key".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let key_id = insert_spendable_account_key(&repo, account_id, 1);
+        repo.validate_account_encryption(account_id).unwrap();
+
+        db.conn()
+            .execute(
+                "UPDATE account_keys SET sapling_extsk = ?1 WHERE id = ?2",
+                params![vec![0x55u8; 32], key_id],
+            )
+            .unwrap();
+
+        assert!(repo.validate_account_encryption(account_id).is_err());
+    }
+
+    #[test]
+    fn account_encryption_preflight_rejects_tampered_unlinked_spends() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Preflight spend".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        repo.upsert_unlinked_spend_nullifiers_with_txid(
+            account_id,
+            &[(NoteType::Sapling, [0x31; 32], [0x41; 32])],
+        )
+        .unwrap();
+        repo.validate_account_encryption(account_id).unwrap();
+
+        db.conn()
+            .execute(
+                "UPDATE unlinked_spend_nullifiers SET spending_txid = ?1",
+                params![vec![0x55u8; 32]],
+            )
             .unwrap();
 
         assert!(repo.validate_account_encryption(account_id).is_err());
