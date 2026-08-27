@@ -13,42 +13,58 @@ class SyncRestartBackoff {
   ];
 
   int _stoppedPolls = 0;
-  int _runningPolls = 0;
   int _restartAttempts = 0;
   DateTime? _lastRestartAttempt;
+  DateTime? _stoppedAfterAttemptAt;
+  bool _wasRunning = false;
 
-  bool shouldRestart({required bool isRunning, required DateTime now}) {
+  bool shouldRestart({
+    required bool isRunning,
+    required DateTime now,
+    bool madeProgress = false,
+  }) {
+    if (madeProgress) {
+      _restartAttempts = 0;
+      _lastRestartAttempt = null;
+      _stoppedAfterAttemptAt = null;
+    }
     if (isRunning) {
       _stoppedPolls = 0;
-      _runningPolls += 1;
-      if (_runningPolls >= 3) {
-        _restartAttempts = 0;
-        _lastRestartAttempt = null;
-      }
+      _wasRunning = true;
       return false;
     }
 
-    _runningPolls = 0;
+    if (_wasRunning) {
+      _wasRunning = false;
+      _stoppedPolls = 0;
+      _stoppedAfterAttemptAt = now;
+    }
     _stoppedPolls += 1;
     if (_stoppedPolls < 2) return false;
 
     final lastAttempt = _lastRestartAttempt;
     if (lastAttempt == null) return true;
     final delayIndex = (_restartAttempts - 1).clamp(0, _delays.length - 1);
-    return now.difference(lastAttempt) >= _delays[delayIndex];
+    // A failed async attempt can run longer than its nominal delay. Start the
+    // next delay when that task actually stops so long failures cannot bypass
+    // the recovery backoff.
+    final backoffStartedAt = _stoppedAfterAttemptAt ?? lastAttempt;
+    return now.difference(backoffStartedAt) >= _delays[delayIndex];
   }
 
   void recordRestartAttempt(DateTime now) {
     _lastRestartAttempt = now;
+    _stoppedAfterAttemptAt = null;
     _restartAttempts += 1;
     _stoppedPolls = 0;
   }
 
   void reset() {
     _stoppedPolls = 0;
-    _runningPolls = 0;
     _restartAttempts = 0;
     _lastRestartAttempt = null;
+    _stoppedAfterAttemptAt = null;
+    _wasRunning = false;
   }
 }
 
@@ -58,16 +74,18 @@ class _SyncProgressPollState {
   int lastTargetHeight = 0;
   final SyncRestartBackoff restartBackoff = SyncRestartBackoff();
 
-  void recordProgress(SyncStatus status) {
+  bool recordProgress(SyncStatus status) {
     final currentHeight = status.localHeight.toInt();
     final targetHeight = status.targetHeight.toInt();
+    final localHeightChanged = currentHeight != lastHeight;
     if (currentHeight != lastHeight || targetHeight != lastTargetHeight) {
       lastHeight = currentHeight;
       lastTargetHeight = targetHeight;
       idleCount = 0;
-      return;
+      return localHeightChanged;
     }
     idleCount++;
+    return false;
   }
 
   Duration nextInterval({required SyncStatus status, required bool isRunning}) {
@@ -136,9 +154,11 @@ class _FfiBridgeSyncStreamHelper {
         final status = await FfiBridge.syncStatus(id);
 
         final now = DateTime.now();
+        final madeProgress = state.recordProgress(status);
         if (state.restartBackoff.shouldRestart(
           isRunning: isRunning,
           now: now,
+          madeProgress: madeProgress,
         )) {
           state.restartBackoff.recordRestartAttempt(now);
           if (!await FfiBridge.isDecoyMode()) {
@@ -153,7 +173,6 @@ class _FfiBridgeSyncStreamHelper {
         }
 
         yield status;
-        state.recordProgress(status);
         await Future<void>.delayed(
           state.nextInterval(status: status, isRunning: isRunning),
         );

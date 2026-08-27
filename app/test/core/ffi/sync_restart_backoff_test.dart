@@ -57,7 +57,7 @@ void main() {
     );
   });
 
-  test('stable running state clears recovery backoff', () {
+  test('running without progress preserves recovery backoff', () {
     final policy = SyncRestartBackoff();
     final now = DateTime.utc(2026, 8, 24);
 
@@ -92,6 +92,47 @@ void main() {
       policy.shouldRestart(
         isRunning: false,
         now: now.add(const Duration(seconds: 6)),
+      ),
+      isFalse,
+    );
+    expect(
+      policy.shouldRestart(
+        isRunning: false,
+        now: now.add(const Duration(seconds: 7)),
+      ),
+      isTrue,
+    );
+  });
+
+  test('real sync progress clears recovery backoff', () {
+    final policy = SyncRestartBackoff();
+    final now = DateTime.utc(2026, 8, 24);
+
+    expect(policy.shouldRestart(isRunning: false, now: now), isFalse);
+    final attemptedAt = now.add(const Duration(seconds: 1));
+    expect(policy.shouldRestart(isRunning: false, now: attemptedAt), isTrue);
+    policy.recordRestartAttempt(attemptedAt);
+
+    expect(
+      policy.shouldRestart(
+        isRunning: true,
+        now: now.add(const Duration(seconds: 2)),
+        madeProgress: true,
+      ),
+      isFalse,
+    );
+
+    expect(
+      policy.shouldRestart(
+        isRunning: false,
+        now: now.add(const Duration(seconds: 3)),
+      ),
+      isFalse,
+    );
+    expect(
+      policy.shouldRestart(
+        isRunning: false,
+        now: now.add(const Duration(seconds: 4)),
       ),
       isTrue,
     );
