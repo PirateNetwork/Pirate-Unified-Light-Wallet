@@ -189,7 +189,11 @@ Before modifying SQLite, the wallet service decodes the key and address for the
 active wallet network and derives the address at `address_index`. The index is
 bounded to 4096 so untrusted input cannot force an unbounded Sapling diversifier
 search. The wallet must already have a nonzero known chain tip, and the birthday
-must not exceed that tip. A mismatch is rejected without writing the key. A
+must not exceed that tip. The known tip is persisted by a completed
+synchronization and survives sync cancellation, including the internal
+cancellation that ends a completed one-shot sync, so callers can synchronize,
+cancel cleanly, and then import. Only a failed synchronization resets the
+persisted heights. A mismatch is rejected without writing the key. A
 successful request atomically stores the encrypted key, verified address, and
 durable rescan-required state. Repeating the same request returns the existing
 key group instead of inserting a duplicate, and an earlier repeated birthday

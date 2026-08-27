@@ -64,6 +64,13 @@ pub(super) async fn acquire_exclusive_key_import(
     Ok(operation_guard)
 }
 
+/// True when a sync task ended because it was cancelled rather than because it failed.
+fn is_cancelled_sync_error(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<pirate_sync_lightd::Error>()
+        .is_some_and(|inner| matches!(inner, pirate_sync_lightd::Error::Cancelled))
+}
+
 #[derive(Clone)]
 struct SyncRuntimeHandles {
     progress: Arc<tokio::sync::RwLock<SyncProgress>>,
@@ -1085,6 +1092,14 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
                     }
                 }
             }
+            Err(e) if is_cancelled_sync_error(e) => {
+                // Cancellation is an orderly stop, not a sync failure. Wiping the
+                // persisted spendability heights here would zero the known chain tip
+                // that `import_spending_key_verified` validates birthdays against,
+                // and a completed one-shot sync ends in a self-cancel, so the tip
+                // would otherwise become unknown moments after validation.
+                tracing::info!("Sync task cancelled for wallet {}", wallet_id_for_task);
+            }
             Err(e) => {
                 tracing::error!("Sync failed for wallet {}: {:?}", wallet_id_for_task, e);
                 tracing::error!("Sync error details: {}", e);
@@ -1695,6 +1710,24 @@ fn plan_rescan_start(effective_from_height: u32, retained_tree_height: u64) -> R
 #[cfg(test)]
 mod rescan_start_plan_tests {
     use super::*;
+
+    #[test]
+    fn cancellation_is_not_classified_as_a_sync_failure() {
+        let cancelled = anyhow::Error::from(pirate_sync_lightd::Error::Cancelled);
+        assert!(is_cancelled_sync_error(&cancelled));
+
+        // The engine-task select wraps the typed cancellation with context;
+        // classification must see through the context chain.
+        let wrapped =
+            anyhow::Error::from(pirate_sync_lightd::Error::Cancelled).context("Sync cancelled");
+        assert!(is_cancelled_sync_error(&wrapped));
+
+        let network = anyhow::Error::from(pirate_sync_lightd::Error::Network("down".to_string()));
+        assert!(!is_cancelled_sync_error(&network));
+
+        let unrelated = anyhow::anyhow!("some other failure");
+        assert!(!is_cancelled_sync_error(&unrelated));
+    }
 
     #[test]
     fn encryption_failures_use_an_actionable_rescan_error() {
