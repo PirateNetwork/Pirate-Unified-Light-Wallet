@@ -169,8 +169,8 @@ no longer needs command-string compatibility.
 
 Qortal recovery code should use `import_spending_key_verified`, not the older
 `import_spending_key` request. The verified request imports exactly one pool at
-a time and requires the caller to provide the receive address and its
-sequential address index:
+a time and requires the caller to provide the receive address. The sequential
+address index remains required as legacy response/display metadata:
 
 ```json
 {
@@ -186,11 +186,13 @@ sequential address index:
 ```
 
 Before modifying SQLite, the wallet service decodes the key and address for the
-active wallet network and derives the address at `address_index`. The index is
-bounded to 4096 so untrusted input cannot force an unbounded Sapling diversifier
-search. The wallet must already have a nonzero known chain tip, and the birthday
-must not exceed that tip. The known tip is persisted by a completed
-synchronization and survives sync cancellation, including the internal
+active wallet network and proves ownership directly with the full viewing key.
+It recovers and persists the real 88-bit ZIP-32 diversifier index without an
+address-range search; the supplied 32-bit `address_index` is not a security
+boundary or derivation cursor. The wallet must already have a nonzero known
+chain tip, and the birthday must not exceed that tip. The known tip is
+persisted by a completed synchronization and survives sync cancellation,
+including the internal
 cancellation that ends a completed one-shot sync, so callers can synchronize,
 cancel cleanly, and then import. Only a failed synchronization resets the
 persisted heights. A mismatch is rejected without writing the key. A

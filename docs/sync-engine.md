@@ -101,6 +101,14 @@ Each source receives a disjoint 256-block range. Results are buffered behind one
 
 **Technical detail:** Trial decryption runs on a bounded shared Rayon pool. Work is partitioned into immutable chunks and each result carries its source position. Results are sorted and validated against the originating block boundaries before they can reach persistence. Parallelism changes scheduling, not transaction or note order.
 
+### Direct Diversified-Address Ownership
+
+**In plain terms:** When the wallet finds one of its notes, it identifies the exact receiving address and remembers where that address belongs. It does not try thousands of possible addresses afterward.
+
+**Technical detail:** Sapling and Ironwood full viewing keys reverse an owned payment address to its key scope and complete 88-bit ZIP-32 diversifier index. The ordered persistence worker stores that index with the address and links the note to the address row in the same wallet-state transaction. Legacy rows are repaired by the same ownership proof when first used. The old sequential recovery walk and its 4,096-address ceiling are not part of balance reconstruction.
+
+**Performance impact:** Index recovery runs once per owned note, not once per compact block or possible address. Healthy cached rescans retain the same trial-decryption workload and avoid the former range-derivation fallback, so the change does not add work proportional to chain length or address history.
+
 ### One-Batch Lookahead
 
 **In plain terms:** While batch N updates the commitment trees, the CPU can already decrypt batch N+1.

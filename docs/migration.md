@@ -50,6 +50,17 @@ Qortal integration:
 - existing Qortal `wallet-<hash>.dat` blobs require one deterministic entropy-seed restore into encrypted SQLite; see `docs/qortal-handoff.md`
 - external spending-key recovery has a verified, retry-idempotent `invokeJson` prerequisite that atomically stores one pool key, its proven address, and a rescan-required gate; file-format parsing remains in the Qortal integration layer
 
+Address derivation state
+------------------------
+
+- schema v38 stores the complete 88-bit ZIP-32 diversifier index for Sapling and Ironwood addresses
+- the existing 32-bit `diversifier_index` remains a stable display sequence for API and UI compatibility; it is no longer the authoritative cryptographic derivation cursor
+- the database stores the complete index as 11 big-endian bytes so indexed SQLite ordering matches its numeric order, while Rust key APIs use ZIP-32's native little-endian representation
+- legacy address rows remain valid and are upgraded lazily by proving each encoded address against its full viewing key; the migration never guesses a Sapling raw index from the old valid-address ordinal
+- newly decrypted notes persist their recovered key, scope, address, and complete index in the ordered sync transaction
+- imported spending-key ownership is verified directly from the viewing key and address instead of scanning an arbitrary address range
+- an incoming-only viewing key that omits the diversifier key can detect notes but cannot generate or reverse diversified addresses; address rotation remains unavailable for that key type by protocol design
+
 iOS SDK:
 
 - repo-owned native FFI: `crates/pirate-ffi-native`

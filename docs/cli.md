@@ -253,6 +253,9 @@ These commands accept `--wallet-id <WALLET_ID>`. If omitted, the active wallet i
 
 `address current` and `address next` follow network activation automatically:
 they return Sapling addresses before Ironwood and Ironwood addresses afterward.
+Address rotation persists and advances each key group's complete 88-bit ZIP-32
+diversifier index. The numeric index in list output remains a compact, stable
+display sequence for compatibility and is not the protocol derivation cursor.
 
 ## Legacy-compatible top-level commands
 
