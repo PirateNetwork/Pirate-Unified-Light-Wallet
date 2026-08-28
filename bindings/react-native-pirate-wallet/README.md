@@ -240,6 +240,85 @@ active wallet between running wallets.
     - `coinType`
     - `rpcPort`
     - `defaultBirthday`
+
+### Lightwalletd endpoints and failover pools
+
+Endpoint configuration is wallet-scoped. The recommended integration flow is
+to test candidate servers, save one primary plus its alternates, and then start
+or restart that wallet's synchronizer:
+
+```js
+const primary = 'https://lightd1.pirate.black:443'
+const alternates = [
+  'https://lightwalletd1.cryptoforge.cc:443',
+  'https://pirate.mathnodes.com:443'
+]
+
+const tests = await Promise.all(
+  [primary, ...alternates].map(url => sdk.testLightdEndpoint({ url }))
+)
+
+if (tests.every(result => result.success)) {
+  await sdk.setLightdEndpointPool({
+    walletId,
+    url: primary,
+    failoverEndpoints: alternates
+  })
+}
+
+const saved = await sdk.getLightdEndpointConfig(walletId)
+```
+
+- `getLightdEndpoint(walletId)`
+  - RPC: `get_lightd_endpoint`
+  - returns the effective primary endpoint URL
+- `getLightdEndpointConfig(walletId)`
+  - RPC: `get_lightd_endpoint_config`
+  - returns `LightdEndpointConfig`:
+    - `host`
+    - `port`
+    - `useTls`
+    - `tlsPin`
+    - `label`
+    - `automaticFailover`
+    - `failoverEndpoints`
+    - `isConfigured`
+- `testLightdEndpoint({ url, tlsPin? })`
+  - RPC: `test_node`
+  - also accepts `testLightdEndpoint(url, tlsPin?)`
+  - tests through the currently selected Direct, Tor, SOCKS5, or I2P transport
+  - reports success, height, latency, transport, TLS/pin information, server
+    version, chain name, and any connection error
+- `setLightdEndpoint({ walletId, url, tlsPin? })`
+  - RPC: `set_lightd_endpoint`
+  - also accepts `setLightdEndpoint(walletId, url, tlsPin?)`
+  - saves one primary and clears any previously configured failover pool
+- `setLightdEndpointPool({ walletId, url, failoverEndpoints, tlsPin? })`
+  - RPC: `set_lightd_endpoint_pool`
+  - also accepts
+    `setLightdEndpointPool(walletId, url, failoverEndpoints, tlsPin?)`
+  - saves the primary and up to 16 explicit alternates
+  - an empty `failoverEndpoints` array disables automatic failover
+
+Pool membership is validated by the backend before anything is persisted.
+Every member must resolve to the same recognized Pirate network, use the same
+clearnet, onion, or I2P route, and use the same HTTP/TLS security mode as the
+primary. The primary is removed from the alternate list and duplicate
+alternates are collapsed. A pinned primary cannot use automatic failover,
+because one server's SPKI pin cannot authenticate unrelated servers; use
+`setLightdEndpoint()` when pinning a single server.
+
+Saving either endpoint form cancels an existing sync session for that wallet so
+it cannot continue against stale connection state. Restart the synchronizer
+after the setter resolves. Pool candidates are still checked for compatible
+chain identity and history before failover or historical work is assigned; the
+array order is not a request to trust a candidate blindly.
+
+`testLightdEndpoint()` returns a structured failure result for connection-level
+failures. Invalid setter input or a rejected pool throws through the normal SDK
+promise, so applications should show the error and retain the previous saved
+configuration.
+
 - `formatAmount(arrrtoshis)`
   - RPC: `format_amount`
   - returns formatted string

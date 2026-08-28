@@ -79,6 +79,19 @@ endpoint, so later scans for another wallet on the same endpoint can reuse
 previously fetched ranges, while concurrent sync still shares device, network,
 and lightwalletd resources.
 
+Endpoint selection is also wallet-scoped. React Native consumers have typed
+methods to read the effective endpoint, inspect its complete configuration,
+test a candidate, set a pinned or unpinned single endpoint, and set an explicit
+failover pool. The pool setter accepts one primary and at most 16 alternates;
+the Rust service remains authoritative for same-chain, route, TLS, pin, and
+duplicate validation. Saving a new endpoint cancels stale sync work, so the
+consumer must restart that wallet's synchronizer after the setter succeeds.
+
+The public package README is the normative JavaScript reference for
+`getLightdEndpoint`, `getLightdEndpointConfig`, `testLightdEndpoint`,
+`setLightdEndpoint`, and `setLightdEndpointPool`, including their TypeScript
+request and response shapes.
+
 Receive-address access is split into `getCurrentAddress(walletId)`,
 `getNextAddress(walletId)`, `listAddresses(walletId)`, and
 `listAddressBalances(walletId, keyId?)`. These APIs return shielded receive
