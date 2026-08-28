@@ -1,89 +1,50 @@
-import 'dart:convert';
-import 'dart:io';
+// The release tag is injected by the packaging workflow so prerelease builds
+// verify against their exact GitHub release rather than a nearby stable tag.
+// ignore_for_file: do_not_use_environment
 
-import 'package:archive/archive.dart';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/security/release_verification_service.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
-import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/api.dart' as api;
 import 'providers/preferences_providers.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 
+typedef VerifyBuildInfoLoader = Future<Map<String, String>> Function();
+typedef VerifyReleaseRunner = Future<ReleaseVerificationResult> Function(
+  String appVersion,
+  String embeddedReleaseTag,
+);
+
 /// Verify My Build Screen - Shows reproducible build verification steps
 class VerifyBuildScreen extends ConsumerStatefulWidget {
-  const VerifyBuildScreen({super.key});
+  const VerifyBuildScreen({
+    super.key,
+    this.buildInfoLoader,
+    this.releaseVerifier,
+  });
+
+  final VerifyBuildInfoLoader? buildInfoLoader;
+  final VerifyReleaseRunner? releaseVerifier;
 
   @override
   ConsumerState<VerifyBuildScreen> createState() => _VerifyBuildScreenState();
 }
 
-enum ReleaseVerificationStatus {
-  idle,
-  checking,
-  match,
-  mismatch,
-  noRelease,
-  noChecksums,
-  noLocalArtifact,
-  noMatchingChecksum,
-  error,
-}
-
-class _ReleaseAsset {
-  const _ReleaseAsset({required this.name, required this.url});
-
-  final String name;
-  final String url;
-}
-
-class _ReleaseInfo {
-  const _ReleaseInfo({
-    required this.tagName,
-    required this.name,
-    required this.url,
-    required this.isDraft,
-    required this.isPrerelease,
-    required this.assets,
-  });
-
-  final String tagName;
-  final String name;
-  final String url;
-  final bool isDraft;
-  final bool isPrerelease;
-  final List<_ReleaseAsset> assets;
-}
-
-class _LocalArtifact {
-  const _LocalArtifact({
-    required this.path,
-    required this.name,
-    required this.sha256,
-  });
-
-  final String path;
-  final String name;
-  final String sha256;
-}
-
-class _ChecksumResult {
-  const _ChecksumResult({required this.entries, required this.sourceName});
-
-  final Map<String, String> entries;
-  final String? sourceName;
-}
-
 class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
+  static const _embeddedReleaseTag = String.fromEnvironment(
+    'PIRATE_RELEASE_TAG',
+  );
   Map<String, String>? _buildInfo;
   bool _isLoading = true;
   String? _error;
@@ -109,17 +70,11 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
 
   Future<void> _loadBuildInfo() async {
     try {
-      final info = await api.getBuildInfo();
+      final buildInfo = await (widget.buildInfoLoader ?? _readBuildInfo)();
 
       if (!mounted) return;
       setState(() {
-        _buildInfo = {
-          'version': info.version,
-          'gitCommit': info.gitCommit,
-          'buildDate': info.buildDate,
-          'rustVersion': info.rustVersion,
-          'targetTriple': info.targetTriple,
-        };
+        _buildInfo = buildInfo;
         _error = null;
         _isLoading = false;
       });
@@ -133,6 +88,18 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     }
   }
 
+  Future<Map<String, String>> _readBuildInfo() async {
+    final info = await api.getBuildInfo();
+    final packageInfo = await PackageInfo.fromPlatform();
+    return {
+      'version': packageInfo.version,
+      'gitCommit': info.gitCommit,
+      'buildDate': info.buildDate,
+      'rustVersion': info.rustVersion,
+      'targetTriple': info.targetTriple,
+    };
+  }
+
   Future<void> _checkReleaseVerification() async {
     if (kIsWeb) {
       setState(() {
@@ -143,13 +110,20 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       return;
     }
 
-    final allowGithubApis = ref.read(allowGithubApisProvider);
-    if (!allowGithubApis) {
+    if (!ref.read(allowGithubApisProvider)) {
       setState(() {
         _verificationStatus = ReleaseVerificationStatus.error;
-        _verificationMessage =
-            'Outbound GitHub checks are disabled in Settings > Outbound API Calls.'
-                .tr;
+        _verificationMessage = 'Outbound GitHub checks are disabled in Settings > Outbound API Calls.'
+            .tr;
+      });
+      return;
+    }
+
+    final version = _buildInfo?['version'];
+    if (version == null || version.isEmpty) {
+      setState(() {
+        _verificationStatus = ReleaseVerificationStatus.error;
+        _verificationMessage = 'Build information unavailable.'.tr;
       });
       return;
     }
@@ -169,432 +143,26 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       _lastCheckedAt = DateTime.now();
     });
 
-    try {
-      final localArtifacts = await _loadLocalArtifacts();
-      final primaryLocalArtifact = localArtifacts.isEmpty
-          ? null
-          : localArtifacts.first;
-      if (!mounted) return;
-      setState(() {
-        _localArtifactPath = primaryLocalArtifact?.path;
-        _localArtifactName = primaryLocalArtifact?.name;
-        _localHash = primaryLocalArtifact?.sha256;
-      });
-
-      final releases = await _fetchReleases();
-      if (!mounted) return;
-      if (releases.isEmpty) {
-        setState(() {
-          _verificationStatus = ReleaseVerificationStatus.noRelease;
-          _verificationMessage =
-              'No GitHub releases found yet. This page will verify hashes once releases are published.'
-                  .tr;
-        });
-        return;
-      }
-
-      final release = _selectRelease(releases);
-      final signatureAsset = _findSignatureAsset(release.assets);
-
-      setState(() {
-        _releaseTag = release.tagName.isEmpty ? release.name : release.tagName;
-        _releaseUrl = release.url;
-        _signatureAssetName = signatureAsset?.name;
-      });
-
-      final checksums = await _fetchChecksums(release.assets);
-      if (!mounted) return;
-
-      setState(() {
-        _checksumAssetName = checksums.sourceName;
-      });
-
-      if (checksums.entries.isEmpty) {
-        setState(() {
-          _verificationStatus = ReleaseVerificationStatus.noChecksums;
-          _verificationMessage =
-              'This release cannot be verified because no readable checksums were published. Only install builds from official PirateNetwork release assets.'
-                  .tr;
-        });
-        return;
-      }
-
-      if (primaryLocalArtifact == null) {
-        setState(() {
-          _verificationStatus = ReleaseVerificationStatus.noLocalArtifact;
-          _verificationMessage =
-              'Local build artifact could not be accessed on this platform.'.tr;
-        });
-        return;
-      }
-
-      final localArtifact = _selectLocalArtifactForChecksums(
-        localArtifacts,
-        checksums.entries,
-      );
-      final expectedHash = _lookupChecksum(
-        checksums.entries,
-        localArtifact.name,
-      );
-      if (expectedHash == null) {
-        final sampledNames = localArtifacts
-            .take(3)
-            .map((artifact) => artifact.name)
-            .join(', ');
-        setState(() {
-          _verificationStatus = ReleaseVerificationStatus.noMatchingChecksum;
-          _verificationMessage =
-              'This build is not verified against the selected official release. '
-                      'Published checksums were found, but none match local '
-                      'artifacts{sampledNames}.'
-                  .trArgs({
-                    'sampledNames': sampledNames.isEmpty
-                        ? ''
-                        : ' ($sampledNames)',
-                  });
-        });
-        return;
-      }
-
-      final normalizedExpected = _normalizeHash(expectedHash);
-      final normalizedLocal = _normalizeHash(localArtifact.sha256);
-      final matched = normalizedExpected == normalizedLocal;
-      final matchedName = _lookupChecksumName(
-        checksums.entries,
-        localArtifact.name,
-      );
-
-      setState(() {
-        _localArtifactPath = localArtifact.path;
-        _localArtifactName = localArtifact.name;
-        _localHash = localArtifact.sha256;
-        _expectedHash = expectedHash;
-        _matchedChecksumName = matchedName;
-        _verificationStatus = matched
-            ? ReleaseVerificationStatus.match
-            : ReleaseVerificationStatus.mismatch;
-        _verificationMessage = matched
-            ? 'Local build hash matches the published release.'.tr
-            : 'Local build hash does not match the published release. Do not trust this build for funds unless you can independently verify its source and build pipeline.'
-                  .tr;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _verificationStatus = ReleaseVerificationStatus.error;
-        _verificationMessage = 'Verification failed: {error}'.trArgs({
-          'error': e,
-        });
-      });
-    }
-  }
-
-  Future<List<_LocalArtifact>> _loadLocalArtifacts() async {
-    final artifacts = <_LocalArtifact>[];
-    final seenPaths = <String>{};
-
-    Future<void> addArtifact(String path) async {
-      final file = File(path);
-      if (!file.existsSync()) return;
-      final absolutePath = file.absolute.path;
-      if (seenPaths.contains(absolutePath)) return;
-      final hash = await _hashFile(file);
-      artifacts.add(
-        _LocalArtifact(
-          path: absolutePath,
-          name: absolutePath.split(Platform.pathSeparator).last,
-          sha256: hash,
-        ),
-      );
-      seenPaths.add(absolutePath);
-    }
-
-    try {
-      final resolvedExecutable = Platform.resolvedExecutable;
-      if (resolvedExecutable.isNotEmpty) {
-        await addArtifact(resolvedExecutable);
-      }
-    } catch (_) {
-      // Ignore and continue with path probing.
-    }
-
-    for (final path in _candidateArtifactPaths()) {
-      await addArtifact(path);
-    }
-
-    return artifacts;
-  }
-
-  Set<String> _candidateArtifactPaths() {
-    final candidates = <String>{};
-    final roots = <String>{Directory.current.absolute.path};
-
-    try {
-      final executable = File(Platform.resolvedExecutable).absolute;
-      Directory dir = executable.parent;
-      for (var i = 0; i < 8; i++) {
-        roots.add(dir.path);
-        final parent = dir.parent;
-        if (parent.path == dir.path) break;
-        dir = parent;
-      }
-    } catch (_) {
-      // Ignore.
-    }
-
-    const relativeCandidates = <String>[
-      'dist/windows/pirate-unified-wallet-windows-installer.exe',
-      'dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe',
-      'dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip',
-      'dist/macos/pirate-unified-wallet-macos.dmg',
-      'dist/macos/pirate-unified-wallet-macos-unsigned.dmg',
-      'dist/linux/pirate-unified-wallet-linux-x86_64.AppImage',
-      'dist/linux/pirate-unified-wallet-amd64.deb',
-    ];
-
-    for (final root in roots) {
-      for (final relativePath in relativeCandidates) {
-        candidates.add(_joinPath(root, relativePath.split('/')).absolute.path);
-      }
-    }
-
-    return candidates;
-  }
-
-  File _joinPath(String root, List<String> parts) {
-    return File([root, ...parts].join(Platform.pathSeparator));
-  }
-
-  _LocalArtifact _selectLocalArtifactForChecksums(
-    List<_LocalArtifact> localArtifacts,
-    Map<String, String> checksums,
-  ) {
-    for (final localArtifact in localArtifacts) {
-      if (_lookupChecksum(checksums, localArtifact.name) != null) {
-        return localArtifact;
-      }
-    }
-    return localArtifacts.first;
-  }
-
-  String? _lookupChecksum(Map<String, String> checksums, String localName) {
-    final canonicalLocal = _canonicalAssetName(localName);
-    for (final entry in checksums.entries) {
-      if (_canonicalAssetName(entry.key) == canonicalLocal) {
-        return entry.value;
-      }
-    }
-    return null;
-  }
-
-  String? _lookupChecksumName(Map<String, String> checksums, String localName) {
-    final canonicalLocal = _canonicalAssetName(localName);
-    for (final entry in checksums.entries) {
-      if (_canonicalAssetName(entry.key) == canonicalLocal) {
-        return entry.key;
-      }
-    }
-    return null;
-  }
-
-  String _canonicalAssetName(String value) {
-    final normalizedPath = value
-        .replaceAll(String.fromCharCode(92), '/')
-        .trim();
-    final parts = normalizedPath.split('/');
-    return parts.last.toLowerCase();
-  }
-
-  Future<String> _hashFile(File file) async {
-    final digest = await sha256.bind(file.openRead()).first;
-    return digest.toString();
-  }
-
-  bool _isDirectChecksumAsset(String name) {
-    final lower = name.toLowerCase();
-    return lower.endsWith('.sha256') ||
-        lower.endsWith('.sha256sum') ||
-        lower.contains('checksums');
-  }
-
-  bool _isChecksumBundleAsset(String name) {
-    final lower = name.toLowerCase();
-    return lower.endsWith('.zip') &&
-        (lower.contains('metadata') ||
-            lower.contains('checksum') ||
-            lower.contains('sha256'));
-  }
-
-  Future<_ChecksumResult> _fetchChecksums(List<_ReleaseAsset> assets) async {
-    final entries = <String, String>{};
-    String? sourceName;
-
-    final checksumAssets = assets.where(
-      (asset) => _isDirectChecksumAsset(asset.name),
-    );
-    for (final asset in checksumAssets) {
-      final text = await _downloadText(asset.url);
-      final parsed = _parseChecksums(text, asset.name);
-      if (parsed.isNotEmpty) {
-        entries.addAll(parsed);
-        sourceName ??= asset.name;
-      }
-    }
-
-    final checksumBundles = assets.where(
-      (asset) => _isChecksumBundleAsset(asset.name),
-    );
-    for (final asset in checksumBundles) {
-      final bundleBytes = await _downloadBytes(asset.url);
-      final parsed = _parseChecksumsFromZip(bundleBytes);
-      if (parsed.isNotEmpty) {
-        entries.addAll(parsed);
-        sourceName ??= asset.name;
-      }
-    }
-
-    return _ChecksumResult(entries: entries, sourceName: sourceName);
-  }
-
-  Future<Uint8List> _downloadBytes(String url) async {
-    return FfiBridge.fetchExternalBytes(url: url, userAgent: 'PirateWallet');
-  }
-
-  Map<String, String> _parseChecksumsFromZip(Uint8List bytes) {
-    final map = <String, String>{};
-    Archive archive;
-    try {
-      archive = ZipDecoder().decodeBytes(bytes);
-    } catch (_) {
-      return map;
-    }
-
-    for (final file in archive.files) {
-      if (!file.isFile || !_isDirectChecksumAsset(file.name)) {
-        continue;
-      }
-
-      try {
-        final text = utf8.decode(
-          file.content as List<int>,
-          allowMalformed: true,
-        );
-        map.addAll(_parseChecksums(text, file.name));
-      } catch (_) {
-        // Ignore malformed entries and keep parsing the rest.
-      }
-    }
-    return map;
-  }
-
-  Future<String> _downloadText(String url) async {
-    final bytes = await _downloadBytes(url);
-    return utf8.decode(bytes, allowMalformed: true);
-  }
-
-  Map<String, String> _parseChecksums(String text, String assetName) {
-    final map = <String, String>{};
-    final lines = LineSplitter.split(text);
-    for (final line in lines) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty || trimmed.startsWith('#')) {
-        continue;
-      }
-
-      final parts = trimmed.split(RegExp(r'\s+'));
-      if (parts.length == 1) {
-        final fallbackName = assetName.replaceAll(
-          RegExp(r'\.sha256(sum)?$', caseSensitive: false),
-          '',
-        );
-        map[_canonicalAssetName(fallbackName)] = parts.first;
-        continue;
-      }
-
-      final hash = parts.first.trim();
-      final filename = parts.sublist(1).join(' ').replaceFirst('*', '').trim();
-      if (hash.isNotEmpty && filename.isNotEmpty) {
-        map[_canonicalAssetName(filename)] = hash;
-      }
-    }
-    return map;
-  }
-
-  String _normalizeHash(String value) {
-    return value.trim().toLowerCase();
-  }
-
-  Future<List<_ReleaseInfo>> _fetchReleases() async {
-    final body = await FfiBridge.fetchExternalText(
-      url:
-          'https://api.github.com/repos/PirateNetwork/Pirate-Unified-Light-Wallet/releases',
-      accept: 'application/vnd.github+json',
-      userAgent: 'PirateWallet',
-    );
-    final data = jsonDecode(body);
-    if (data is! List) {
-      throw Exception('Unexpected GitHub API response');
-    }
-
-    return data.whereType<Map<String, dynamic>>().map<_ReleaseInfo>((entry) {
-      final assets = <_ReleaseAsset>[];
-      final rawAssets = entry['assets'];
-      if (rawAssets is List) {
-        for (final asset in rawAssets) {
-          if (asset is Map<String, dynamic>) {
-            final name = asset['name']?.toString() ?? '';
-            final url = asset['browser_download_url']?.toString() ?? '';
-            if (name.isNotEmpty && url.isNotEmpty) {
-              assets.add(_ReleaseAsset(name: name, url: url));
-            }
-          }
-        }
-      }
-
-      return _ReleaseInfo(
-        tagName: entry['tag_name']?.toString() ?? '',
-        name: entry['name']?.toString() ?? '',
-        url: entry['html_url']?.toString() ?? '',
-        isDraft: entry['draft'] == true,
-        isPrerelease: entry['prerelease'] == true,
-        assets: assets,
-      );
-    }).toList();
-  }
-
-  _ReleaseInfo _selectRelease(List<_ReleaseInfo> releases) {
-    final version = _buildInfo?['version'];
-    if (version != null && version.isNotEmpty) {
-      final normalized = version.startsWith('v') ? version : 'v$version';
-      for (final release in releases) {
-        if (release.tagName == version ||
-            release.tagName == normalized ||
-            release.name == version ||
-            release.name == normalized) {
-          return release;
-        }
-      }
-    }
-
-    for (final release in releases) {
-      if (!release.isDraft && !release.isPrerelease) {
-        return release;
-      }
-    }
-
-    return releases.first;
-  }
-
-  _ReleaseAsset? _findSignatureAsset(List<_ReleaseAsset> assets) {
-    for (final asset in assets) {
-      final name = asset.name.toLowerCase();
-      if (name.endsWith('.sig') ||
-          name.endsWith('.asc') ||
-          name.endsWith('.minisig')) {
-        return asset;
-      }
-    }
-    return null;
+    final result = widget.releaseVerifier == null
+        ? await ReleaseVerificationService().verify(
+            version,
+            embeddedReleaseTag: _embeddedReleaseTag,
+          )
+        : await widget.releaseVerifier!(version, _embeddedReleaseTag);
+    if (!mounted) return;
+    setState(() {
+      _verificationStatus = result.status;
+      _verificationMessage = _verificationMessageFor(result.reason);
+      _releaseTag = result.releaseTag;
+      _releaseUrl = result.releaseUrl;
+      _checksumAssetName = result.checksumAssetName;
+      _signatureAssetName = result.signatureAssetName;
+      _localArtifactPath = result.localArtifactPath;
+      _localArtifactName = result.localArtifactName;
+      _localHash = result.localHash;
+      _expectedHash = result.expectedHash;
+      _matchedChecksumName = result.matchedChecksumName;
+    });
   }
 
   Color _statusColor(ReleaseVerificationStatus status) {
@@ -608,7 +176,6 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       case ReleaseVerificationStatus.error:
         return AppColors.error;
       case ReleaseVerificationStatus.noRelease:
-      case ReleaseVerificationStatus.noChecksums:
       case ReleaseVerificationStatus.noMatchingChecksum:
       case ReleaseVerificationStatus.noLocalArtifact:
         return AppColors.warning;
@@ -627,8 +194,6 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         return 'Checking'.tr;
       case ReleaseVerificationStatus.noRelease:
         return 'No Releases'.tr;
-      case ReleaseVerificationStatus.noChecksums:
-        return 'No Checksums'.tr;
       case ReleaseVerificationStatus.noMatchingChecksum:
         return 'Unverified Build'.tr;
       case ReleaseVerificationStatus.noLocalArtifact:
@@ -637,6 +202,34 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         return 'Error'.tr;
       case ReleaseVerificationStatus.idle:
         return 'Not Checked'.tr;
+    }
+  }
+
+  String _verificationMessageFor(ReleaseVerificationReason reason) {
+    switch (reason) {
+      case ReleaseVerificationReason.none:
+        return 'This installed app matches the PGP-signed official release manifest.'
+            .tr;
+      case ReleaseVerificationReason.releaseFilesUnavailable:
+        return 'Official verification files are not available for this version.'
+            .tr;
+      case ReleaseVerificationReason.downloadFailed:
+        return 'Could not download official verification files. Check the connection and try again.'
+            .tr;
+      case ReleaseVerificationReason.localArtifactUnavailable:
+        return 'This platform does not expose an installed release payload that the app can hash.'
+            .tr;
+      case ReleaseVerificationReason.checksumNotPublished:
+        return 'The signed release does not contain a checksum for this installed payload.'
+            .tr;
+      case ReleaseVerificationReason.checksumMismatch:
+        return 'This installed app does not match the PGP-signed official release manifest. Do not use it with funds.'
+            .tr;
+      case ReleaseVerificationReason.signatureInvalid:
+        return 'The checksum manifest signature is invalid. Do not trust this release.'
+            .tr;
+      case ReleaseVerificationReason.invalidVerificationFiles:
+        return 'Official verification files are invalid or incomplete.'.tr;
     }
   }
 
@@ -755,17 +348,15 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     final statusBackground = statusColor.withValues(alpha: 0.15);
     final stronglyUnverified =
         _verificationStatus == ReleaseVerificationStatus.mismatch ||
-        _verificationStatus == ReleaseVerificationStatus.noMatchingChecksum ||
-        _verificationStatus == ReleaseVerificationStatus.noChecksums;
+        _verificationStatus == ReleaseVerificationStatus.noMatchingChecksum;
     final officialReleaseUrl =
         _releaseUrl ??
         'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases';
 
     return _buildSurfaceCard(
       title: 'Official Release Verification'.tr,
-      subtitle:
-          'Checks the selected GitHub release for published hashes and compares them to local artifacts.'
-              .tr,
+      subtitle: 'Verifies the PGP signature, then checks this installed app against the signed release manifest.'
+          .tr,
       trailing: Container(
         padding: EdgeInsets.symmetric(
           horizontal: PSpacing.sm,
@@ -778,9 +369,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         ),
         child: Text(
           statusLabel,
-          style: PTypography.bodySmall(
-            color: statusColor,
-          ).copyWith(fontWeight: FontWeight.w700),
+          style: PTypography.bodySmall(color: statusColor)
+              .copyWith(fontWeight: FontWeight.w700),
         ),
       ),
       child: Column(
@@ -799,63 +389,10 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
             label: 'Release'.tr,
             value: _releaseTag ?? 'Not found'.tr,
           ),
-          if (_releaseUrl != null)
-            _buildDataRow(
-              label: 'Release URL'.tr,
-              value: _releaseUrl!,
-              copyable: true,
-              monospace: true,
-            ),
           _buildDataRow(
             label: 'Local Artifact'.tr,
             value: _localArtifactName ?? 'Unavailable',
           ),
-          if (_localArtifactPath != null)
-            _buildDataRow(
-              label: 'Local Path'.tr,
-              value: _localArtifactPath!,
-              copyable: true,
-              monospace: true,
-            ),
-          if (_localHash != null)
-            _buildDataRow(
-              label: 'Local SHA256'.tr,
-              value: _localHash!,
-              copyable: true,
-              monospace: true,
-            ),
-          if (_expectedHash != null)
-            _buildDataRow(
-              label: 'Expected SHA256'.tr,
-              value: _expectedHash!,
-              copyable: true,
-              monospace: true,
-            ),
-          if (_matchedChecksumName != null)
-            _buildDataRow(
-              label: 'Matched Checksum Entry'.tr,
-              value: _matchedChecksumName!,
-              monospace: true,
-            ),
-          if (_checksumAssetName != null)
-            _buildDataRow(
-              label: 'Checksum Source'.tr,
-              value: _checksumAssetName!,
-              copyable: true,
-              monospace: true,
-            ),
-          if (_signatureAssetName != null)
-            _buildDataRow(
-              label: 'Signature Asset'.tr,
-              value: _signatureAssetName!,
-              copyable: true,
-              monospace: true,
-            ),
-          if (_lastCheckedAt != null)
-            _buildDataRow(
-              label: 'Last Checked'.tr,
-              value: _formatTimestamp(_lastCheckedAt!),
-            ),
           if (_verificationMessage != null) ...[
             SizedBox(height: PSpacing.sm),
             Container(
@@ -869,6 +406,37 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                 _verificationMessage!,
                 style: PTypography.bodySmall(
                   color: statusColor.withValues(alpha: 0.95),
+                ),
+              ),
+            ),
+          ],
+          if (_hasTechnicalDetails) ...[
+            SizedBox(height: PSpacing.sm),
+            Theme(
+              data: Theme.of(context).copyWith(
+                dividerColor: Colors.transparent,
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.zero,
+                  iconColor: AppColors.textSecondary,
+                  collapsedIconColor: AppColors.textSecondary,
+                  title: Text(
+                    'Technical details'.tr,
+                    style: PTypography.bodyMedium(color: AppColors.textPrimary)
+                        .copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    'Hashes, file paths, and signed manifest files'.tr,
+                    style: PTypography.bodySmall(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  children: [_buildTechnicalDetails()],
                 ),
               ),
             ),
@@ -908,7 +476,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                               ReleaseVerificationStatus.checking
                           ? null
                           : _checkReleaseVerification,
-                      text: 'Check GitHub'.tr,
+                      text: 'Verify now'.tr,
                       variant: PButtonVariant.outline,
                       loading:
                           _verificationStatus ==
@@ -937,7 +505,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                               ReleaseVerificationStatus.checking
                           ? null
                           : _checkReleaseVerification,
-                      text: 'Check GitHub'.tr,
+                      text: 'Verify now'.tr,
                       variant: PButtonVariant.outline,
                       loading:
                           _verificationStatus ==
@@ -969,16 +537,87 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
               fullWidth: true,
             ),
           ],
-          if (_signatureAssetName != null) ...[
-            SizedBox(height: PSpacing.md),
-            Text(
-              'Detached signatures and the official public key are available in the release metadata bundle.'
-                  .tr,
-              style: PTypography.bodySmall(color: AppColors.textSecondary),
-            ),
-          ],
         ],
       ),
+    );
+  }
+
+  bool get _hasTechnicalDetails =>
+      _releaseUrl != null ||
+      _localArtifactPath != null ||
+      _localHash != null ||
+      _expectedHash != null ||
+      _matchedChecksumName != null ||
+      _checksumAssetName != null ||
+      _signatureAssetName != null ||
+      _lastCheckedAt != null;
+
+  Widget _buildTechnicalDetails() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_releaseUrl != null)
+          _buildDataRow(
+            label: 'Release URL'.tr,
+            value: _releaseUrl!,
+            copyable: true,
+            monospace: true,
+          ),
+        if (_localArtifactPath != null)
+          _buildDataRow(
+            label: 'Local Path'.tr,
+            value: _localArtifactPath!,
+            copyable: true,
+            monospace: true,
+          ),
+        if (_localHash != null)
+          _buildDataRow(
+            label: 'Local SHA256'.tr,
+            value: _localHash!,
+            copyable: true,
+            monospace: true,
+          ),
+        if (_expectedHash != null)
+          _buildDataRow(
+            label: 'Expected SHA256'.tr,
+            value: _expectedHash!,
+            copyable: true,
+            monospace: true,
+          ),
+        if (_matchedChecksumName != null)
+          _buildDataRow(
+            label: 'Matched Checksum Entry'.tr,
+            value: _matchedChecksumName!,
+            monospace: true,
+          ),
+        if (_checksumAssetName != null)
+          _buildDataRow(
+            label: 'Checksum Source'.tr,
+            value: _checksumAssetName!,
+            copyable: true,
+            monospace: true,
+          ),
+        if (_signatureAssetName != null)
+          _buildDataRow(
+            label: 'Signature Asset'.tr,
+            value: _signatureAssetName!,
+            copyable: true,
+            monospace: true,
+          ),
+        if (_lastCheckedAt != null)
+          _buildDataRow(
+            label: 'Last Checked'.tr,
+            value: _formatTimestamp(_lastCheckedAt!),
+          ),
+        if (_signatureAssetName != null) ...[
+          SizedBox(height: PSpacing.sm),
+          Text(
+            'The release signature bundle includes the signed checksum manifest and official public key.'
+                .tr,
+            style: PTypography.bodySmall(color: AppColors.textSecondary),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1014,9 +653,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                   children: [
                     Text(
                       title,
-                      style: PTypography.bodyLarge(
-                        color: AppColors.textPrimary,
-                      ).copyWith(fontWeight: FontWeight.w700),
+                      style: PTypography.bodyLarge(color: AppColors.textPrimary)
+                          .copyWith(fontWeight: FontWeight.w700),
                     ),
                     if (subtitle != null) ...[
                       SizedBox(height: PSpacing.xs),
@@ -1074,9 +712,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                   child: SelectionArea(
                     child: SelectableText(
                       value,
-                      style: PTypography.bodySmall(
-                        color: AppColors.textPrimary,
-                      ).copyWith(fontFamily: monospace ? 'monospace' : null),
+                      style: PTypography.bodySmall(color: AppColors.textPrimary)
+                          .copyWith(fontFamily: monospace ? 'monospace' : null),
                     ),
                   ),
                 ),
@@ -1159,8 +796,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           icon: Icons.article,
           title: 'Verification Guide'.tr,
           description: 'Complete documentation on reproducible builds'.tr,
-          url:
-              'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/verify-build.md',
+          url: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/verify-build.md',
         ),
         SizedBox(height: PSpacing.sm),
         _buildLinkCard(
@@ -1174,8 +810,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           icon: Icons.security,
           title: 'Security Practices'.tr,
           description: 'Learn about our security model'.tr,
-          url:
-              'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/security.md',
+          url: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/security.md',
         ),
       ],
     );
@@ -1208,9 +843,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                 children: [
                   Text(
                     title,
-                    style: PTypography.bodyMedium(
-                      color: AppColors.textPrimary,
-                    ).copyWith(fontWeight: FontWeight.w500),
+                    style: PTypography.bodyMedium(color: AppColors.textPrimary)
+                        .copyWith(fontWeight: FontWeight.w500),
                   ),
                   Text(
                     description,
