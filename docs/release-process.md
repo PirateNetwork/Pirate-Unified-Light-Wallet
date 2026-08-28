@@ -258,6 +258,7 @@ Top-level release assets are:
 - signed iOS IPA when available
 - `PirateWalletNative.xcframework.zip` and `PirateWalletSDK-Package.swift` only when the iOS SDK changes, because Swift Package Manager binary targets need a direct release URL
 - `pirate-unified-wallet-release-metadata.zip`
+- `signatures-<tag>.zip`
 - `pirate-unified-wallet-developer-artifacts.zip` when developer artifacts were produced
 
 The unsigned portable Windows build is retained in
@@ -266,11 +267,22 @@ reproducible verification. It is not published as a normal-user download.
 
 `pirate-unified-wallet-release-metadata.zip` contains:
 
-- `README.md` with checksum and detached-signature verification instructions
+- `README` with checksum and detached-signature verification instructions
 - `SHA256SUMS` with one entry for every top-level release asset
 - `checksums/` with `.sha256` files for every top-level release asset
 - `public-keys/` with the official armored release-verification key
 - `raw/` with the original checksums, detached signatures, SBOMs, provenance files, verification notes, and optional VirusTotal reports from the package jobs
+
+`signatures-<tag>.zip` follows the established Treasure Chest filename and
+verification layout, but is signed exclusively by the Pirate Unified Wallet
+release key. It contains:
+
+- `README` with verification commands
+- `public_key.asc` for `Pirate Unified Wallet <dev@piratechainfoundation.com>`
+- `sha256sum-<tag>.txt` and its binary detached `.sig`
+- one binary detached `<release-asset>.sig` for every top-level release asset
+- a signed `build-payloads-<tag>.txt` manifest when desktop installed-payload
+  hashes are available for the in-app verifier
 
 `pirate-unified-wallet-developer-artifacts.zip` contains grouped folders for CLI tools, native FFI libraries, SDK packages, store/test mobile builds, and unsigned desktop test builds. These are intentionally not top-level user downloads.
 
@@ -290,7 +302,7 @@ Release publication checklist
 -----------------------------
 
 - artifacts built from committed sources
-- checksums published in `pirate-unified-wallet-release-metadata.zip`
+- checksums and detached signatures published in `signatures-<tag>.zip`
 - release public-key fingerprint matches `E4FB 2399 AECC F9B9 447D ED47 2CE6 5343 4015 53A6`
 - release notes prepared
 - signed artifacts used where intended

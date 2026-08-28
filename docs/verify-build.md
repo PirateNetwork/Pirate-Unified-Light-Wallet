@@ -49,11 +49,14 @@ portable build is retained inside
 `pirate-unified-wallet-unsigned-desktop-test-builds.zip` for testing and
 reproducible comparison.
 
-Each top-level release artifact should be covered by `pirate-unified-wallet-release-metadata.zip`, which includes a consolidated `SHA256SUMS` manifest and an individual generated checksum for every published top-level asset.
+Each release also publishes `signatures-<tag>.zip`. Its filenames and command
+flow intentionally match Treasure Chest's verification bundle, while every
+signature is made with Pirate Unified Wallet's own release key. Never use a
+Treasure Chest maintainer key to authenticate a Unified Wallet release.
 
-The metadata bundle also contains a verification README and the official
-armored Linux release public key. The authoritative key identity is
-`Pirate Unified Wallet <dev@piratechainfoundation.com>`, with fingerprint:
+The authoritative key identity is
+`Pirate Unified Wallet <dev@piratechainfoundation.com>`, with primary
+fingerprint:
 
 ```text
 E4FB 2399 AECC F9B9 447D ED47 2CE6 5343 4015 53A6
@@ -62,71 +65,54 @@ E4FB 2399 AECC F9B9 447D ED47 2CE6 5343 4015 53A6
 Verify an official release
 --------------------------
 
-1. Download the release asset you want and the metadata bundle.
+1. Download the release asset you want and the signature bundle for the same
+   tag.
 
 ```bash
 gh release download <tag> -R PirateNetwork/Pirate-Unified-Light-Wallet \
   -p pirate-unified-wallet-windows-installer.exe \
-  -p pirate-unified-wallet-release-metadata.zip
+  -p 'signatures-*.zip'
 ```
 
-2. Locate the checksum source.
-
-The repository currently supports either:
-
-- per-artifact checksum files such as `pirate-unified-wallet-windows-installer.exe.sha256`
-- checksum bundles whose filenames include `metadata`, `checksum`, or `checksums`
-
-3. Compare the local file hash to the published hash.
-
-Linux:
+2. Extract the signature bundle, import its key, and independently confirm the
+   complete fingerprint above. Importing a key does not establish that it is
+   the correct key.
 
 ```bash
-expected="$(unzip -p pirate-unified-wallet-release-metadata.zip \
-  checksums/pirate-unified-wallet-windows-installer.exe.sha256 | awk '{print $1}')"
-actual="$(sha256sum pirate-unified-wallet-windows-installer.exe | awk '{print $1}')"
-test "$expected" = "$actual" && echo MATCH || echo MISMATCH
-```
-
-macOS:
-
-```bash
-expected="$(unzip -p pirate-unified-wallet-release-metadata.zip \
-  checksums/pirate-unified-wallet-macos.dmg.sha256 | awk '{print $1}')"
-actual="$(shasum -a 256 pirate-unified-wallet-macos.dmg | awk '{print $1}')"
-test "$expected" = "$actual" && echo MATCH || echo MISMATCH
-```
-
-Windows PowerShell:
-
-```powershell
-$tmp = Join-Path $env:TEMP 'pirate-release-metadata'
-Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive .\pirate-unified-wallet-release-metadata.zip -DestinationPath $tmp
-$expected = (Get-Content "$tmp\checksums\pirate-unified-wallet-windows-installer.exe.sha256" | Select-Object -First 1).Split()[0].ToLower()
-$actual = (Get-FileHash .\pirate-unified-wallet-windows-installer.exe -Algorithm SHA256).Hash.ToLower()
-if ($expected -eq $actual) { 'MATCH' } else { 'MISMATCH' }
-```
-
-4. Verify a detached Linux signature when one is available.
-
-Extract the metadata bundle, import its public key, independently confirm the
-complete fingerprint above, and verify the downloaded artifact:
-
-```bash
-unzip pirate-unified-wallet-release-metadata.zip -d pirate-release-metadata
-gpg --import pirate-release-metadata/public-keys/pirate-unified-wallet-release-public-key.asc
+unzip signatures-<tag>.zip -d signatures-<tag>
+gpg --import signatures-<tag>/public_key.asc
 gpg --fingerprint E4FB2399AECCF9B9447DED472CE65343401553A6
+```
+
+3. Verify the signature on the checksum manifest, then verify the downloaded
+   files against it.
+
+```bash
 gpg --verify \
-  pirate-release-metadata/raw/linux-signatures/pirate-unified-wallet-linux-x86_64.AppImage.asc \
+  signatures-<tag>/sha256sum-<tag>.txt.sig \
+  signatures-<tag>/sha256sum-<tag>.txt
+
+(cd . && sha256sum -c signatures-<tag>/sha256sum-<tag>.txt)
+```
+
+Run the checksum command from the directory containing all files listed in the
+manifest, or verify one file by comparing its locally calculated SHA-256 with
+that file's manifest entry.
+
+4. Optionally verify the downloaded asset directly. Every top-level release
+   asset has a binary detached `.sig` file in the signature bundle.
+
+```bash
+gpg --verify \
+  signatures-<tag>/pirate-unified-wallet-linux-x86_64.AppImage.sig \
   pirate-unified-wallet-linux-x86_64.AppImage
 ```
 
-PGP verification does not decrypt the package. It confirms that the exact
-downloaded bytes were signed by the holder of the official release private
-key. A public key obtained from the same download location is only useful as
-an identity proof after its full fingerprint has been confirmed through an
-independent official Pirate Network channel.
+PGP verification does not decrypt a package. It confirms that the exact bytes
+were signed by the holder of the matching private key. A public key obtained
+from the same release page is only an identity proof after its complete
+fingerprint has been confirmed through an independent official Pirate Network
+channel.
 
 Signed and unsigned outputs
 ---------------------------
@@ -223,9 +209,14 @@ Verify Build screen
 
 The application includes a Verify Build screen that:
 
-- fetches GitHub release metadata
-- locates published checksums
-- hashes local artifacts
-- reports whether the local artifact matches a published checksum
+- downloads the deterministic `signatures-<tag>.zip` asset for its exact build
+- verifies the signed manifest with the embedded Unified Wallet public key and
+  pinned primary key identity
+- hashes the distributed desktop artifact when available, otherwise the
+  installed desktop executable recorded during packaging
+- reports a match only when the PGP signature and SHA-256 comparison both pass
+
+The screen does not treat a checksum by itself as proof of publisher identity,
+and it does not silently fall back to a different release tag.
 
 That screen depends on outbound GitHub access being enabled in application settings.
