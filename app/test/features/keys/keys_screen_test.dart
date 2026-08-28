@@ -64,6 +64,12 @@ void main() {
       find.textContaining('Each account has its own Sapling and Ironwood'),
       findsOneWidget,
     );
+    expect(
+      find.text(
+        'Imported keys can create new addresses, but not new accounts.',
+      ),
+      findsOneWidget,
+    );
     semantics.dispose();
   });
 
