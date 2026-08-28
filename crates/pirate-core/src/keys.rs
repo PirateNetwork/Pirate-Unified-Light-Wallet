@@ -28,6 +28,15 @@ use zip32::{AccountId, DiversifierIndex, Scope};
 const PRF_EXPAND_PERSONALIZATION: &[u8; 16] = b"Zcash_ExpandSeed";
 const ZIP32_ORCHARD_CHILD_DOMAIN: u8 = 0x81;
 
+/// The ZIP-32 key scope that owns a diversified address.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiversifierScope {
+    /// Address generated for receiving funds.
+    External,
+    /// Address generated for wallet-internal change.
+    Internal,
+}
+
 fn sapling_extfvk_hrp_for_network(network: NetworkType) -> &'static str {
     match network {
         NetworkType::Mainnet => "zxviews",
@@ -344,6 +353,38 @@ impl ExtendedFullViewingKey {
         }
     }
 
+    /// Finds the next valid external payment address at or after a ZIP-32
+    /// diversifier index.
+    ///
+    /// The index is the protocol's complete 88-bit, little-endian value. This
+    /// is the constant-time starting point callers should persist for address
+    /// rotation; unlike [`Self::derive_address`], it is not an ordinal in the
+    /// sequence of valid Sapling diversifiers.
+    pub fn find_address_from_index(&self, index: [u8; 11]) -> Option<([u8; 11], PaymentAddress)> {
+        self.inner
+            .find_address(DiversifierIndex::from(index))
+            .map(|(found, address)| (*found.as_bytes(), PaymentAddress { inner: address }))
+    }
+
+    /// Recovers the complete ZIP-32 diversifier index and scope for an address
+    /// owned by this viewing key.
+    pub fn diversifier_index(
+        &self,
+        address: &PaymentAddress,
+    ) -> Option<([u8; 11], DiversifierScope)> {
+        self.inner
+            .decrypt_diversifier(&address.inner)
+            .map(|(index, scope)| {
+                (
+                    *index.as_bytes(),
+                    match scope {
+                        Scope::External => DiversifierScope::External,
+                        Scope::Internal => DiversifierScope::Internal,
+                    },
+                )
+            })
+    }
+
     /// Derive a payment address from a raw diversifier (11 bytes).
     pub fn address_from_diversifier(&self, diversifier: [u8; 11]) -> Option<PaymentAddress> {
         let sapling_div = sapling::Diversifier(diversifier);
@@ -562,6 +603,19 @@ impl IronwoodPaymentAddress {
             .map_err(|e| Error::InvalidAddress(format!("Invalid Ironwood HRP: {e}")))?;
         bech32::encode::<Bech32>(hrp, &self.inner.to_raw_address_bytes())
             .map_err(|e| Error::InvalidAddress(format!("Ironwood bech32 encode failed: {e}")))
+    }
+
+    /// Decode a Pirate Ironwood payment address for an expected network.
+    pub fn decode_for_network(network: NetworkType, addr: &str) -> Result<Self> {
+        let decoded = Self::decode_any_network(addr)?;
+        let (hrp, _) = bech32::decode(addr)
+            .map_err(|e| Error::InvalidAddress(format!("Ironwood bech32 decode failed: {e}")))?;
+        if hrp.as_str() != Self::ironwood_hrp_for_network(network) {
+            return Err(Error::InvalidAddress(
+                "Ironwood address network does not match wallet network".to_string(),
+            ));
+        }
+        Ok(decoded)
     }
 
     /// Decode a Pirate Ironwood payment address, accepting any Pirate network HRP.
@@ -902,6 +956,45 @@ impl IronwoodExtendedFullViewingKey {
         }
     }
 
+    /// Derive an external address at a complete 88-bit ZIP-32 diversifier
+    /// index encoded little-endian.
+    pub fn address_at_index(&self, index: [u8; 11]) -> IronwoodPaymentAddress {
+        IronwoodPaymentAddress {
+            inner: self.inner.address_at(
+                DiversifierIndex::from(index),
+                orchard::keys::Scope::External,
+            ),
+        }
+    }
+
+    /// Derive an internal address at a complete 88-bit ZIP-32 diversifier
+    /// index encoded little-endian.
+    pub fn address_at_internal_index(&self, index: [u8; 11]) -> IronwoodPaymentAddress {
+        IronwoodPaymentAddress {
+            inner: self.inner.address_at(
+                DiversifierIndex::from(index),
+                orchard::keys::Scope::Internal,
+            ),
+        }
+    }
+
+    /// Recovers the complete ZIP-32 diversifier index for an address and the
+    /// requested scope. Returns `None` when the address is not owned by this
+    /// viewing key in that scope.
+    pub fn diversifier_index(
+        &self,
+        address: &IronwoodPaymentAddress,
+        scope: DiversifierScope,
+    ) -> Option<[u8; 11]> {
+        self.inner
+            .to_ivk(match scope {
+                DiversifierScope::External => orchard::keys::Scope::External,
+                DiversifierScope::Internal => orchard::keys::Scope::Internal,
+            })
+            .diversifier_index(&address.inner)
+            .map(|index| *index.as_bytes())
+    }
+
     /// Derive an address from a raw diversifier (11 bytes).
     pub fn address_from_diversifier(
         &self,
@@ -1116,6 +1209,48 @@ mod tests {
         let addr2 = fvk.derive_address(1);
 
         assert_ne!(addr1, addr2);
+    }
+
+    #[test]
+    fn sapling_full_diversifier_index_round_trips_beyond_u32() {
+        let sk = ExtendedSpendingKey::from_mnemonic(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        )
+        .unwrap();
+        let fvk = sk.to_extended_fvk();
+        let start = [0x34, 0x12, 0, 0, 1, 0, 0, 0, 0, 0, 0];
+
+        let (found, address) = fvk.find_address_from_index(start).unwrap();
+        let (recovered, scope) = fvk.diversifier_index(&address).unwrap();
+
+        assert_eq!(recovered, found);
+        assert_eq!(scope, DiversifierScope::External);
+        let mut widened = [0u8; 16];
+        widened[..11].copy_from_slice(&found);
+        assert!(u128::from_le_bytes(widened) > u32::MAX as u128);
+    }
+
+    #[test]
+    fn ironwood_full_diversifier_index_round_trips_beyond_u32() {
+        let sk = IronwoodExtendedSpendingKey::master(&[9u8; 32]).unwrap();
+        let fvk = sk.to_extended_fvk();
+        let index = [0x78, 0x56, 0x34, 0x12, 1, 2, 3, 4, 5, 6, 7];
+
+        let external = fvk.address_at_index(index);
+        let internal = fvk.address_at_internal_index(index);
+
+        assert_eq!(
+            fvk.diversifier_index(&external, DiversifierScope::External),
+            Some(index)
+        );
+        assert_eq!(
+            fvk.diversifier_index(&internal, DiversifierScope::Internal),
+            Some(index)
+        );
+        assert_eq!(
+            fvk.diversifier_index(&external, DiversifierScope::Internal),
+            None
+        );
     }
 
     #[test]
