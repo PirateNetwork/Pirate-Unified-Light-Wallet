@@ -102,7 +102,7 @@ fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
         )
         .unwrap();
 
-    assert_eq!(version, 37);
+    assert_eq!(version, 38);
     assert_eq!(sapling_checkpoint, 12345);
     assert_eq!(orchard_checkpoint, 67890);
     assert_eq!(retained_tables, 2);
@@ -137,7 +137,7 @@ fn test_v33_adds_durable_outgoing_transaction_intents() {
         )
         .unwrap();
 
-    assert_eq!(version, 37);
+    assert_eq!(version, 38);
     assert_eq!(table_count, 1);
 }
 
@@ -153,6 +153,15 @@ fn test_v34_adds_ironwood_activation_height_to_sync_state() {
              key TEXT PRIMARY KEY,
              value TEXT NOT NULL,
              updated_at TEXT NOT NULL
+         );
+         CREATE TABLE addresses (
+             id INTEGER PRIMARY KEY,
+             account_id INTEGER NOT NULL,
+             key_id INTEGER,
+             diversifier_index INTEGER NOT NULL,
+             address TEXT NOT NULL UNIQUE,
+             address_type TEXT NOT NULL,
+             address_scope TEXT NOT NULL
          );
          CREATE TABLE sync_state (
              id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -203,7 +212,7 @@ fn test_v34_adds_ironwood_activation_height_to_sync_state() {
         )
         .unwrap();
 
-    assert_eq!(version, 37);
+    assert_eq!(version, 38);
     assert_eq!(activation_height, None);
     assert_eq!(migration_marker, "completed");
 }
@@ -312,6 +321,94 @@ fn test_v37_adds_durable_verified_key_rescan_requirement() {
 
     assert_eq!(state, (123, 7));
     assert_eq!(marker, "completed");
+}
+
+#[test]
+fn test_v38_adds_ordered_full_diversifier_indices() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+         INSERT INTO schema_version (version) VALUES (37);
+         CREATE TABLE migration_state (
+             key TEXT PRIMARY KEY,
+             value TEXT NOT NULL,
+             updated_at TEXT NOT NULL
+         );
+         CREATE TABLE addresses (
+             id INTEGER PRIMARY KEY,
+             account_id INTEGER NOT NULL,
+             key_id INTEGER,
+             diversifier_index INTEGER NOT NULL,
+             address TEXT NOT NULL UNIQUE,
+             address_type TEXT NOT NULL,
+             address_scope TEXT NOT NULL
+         );",
+    )
+    .unwrap();
+
+    migrations::run_migrations(&conn).unwrap();
+
+    let version: i32 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let marker: String = conn
+        .query_row(
+            "SELECT value FROM migration_state WHERE key = 'v38_full_diversifier_indices'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(version, 38);
+    assert_eq!(marker, "completed");
+
+    let lower = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+    let higher = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0];
+    conn.execute(
+        "INSERT INTO addresses (
+             account_id, key_id, diversifier_index, address, address_type,
+             address_scope, diversifier_index_be
+         ) VALUES (1, 7, 0, 'zs1-v38-low', 'Sapling', 'external', ?1)",
+        [&lower],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO addresses (
+             account_id, key_id, diversifier_index, address, address_type,
+             address_scope, diversifier_index_be
+         ) VALUES (1, 7, 1, 'zs1-v38-high', 'Sapling', 'external', ?1)",
+        [&higher],
+    )
+    .unwrap();
+    let maximum: Vec<u8> = conn
+        .query_row(
+            "SELECT MAX(diversifier_index_be) FROM addresses",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(maximum, higher);
+
+    assert!(conn
+        .execute(
+            "INSERT INTO addresses (
+                 account_id, key_id, diversifier_index, address, address_type,
+                 address_scope, diversifier_index_be
+             ) VALUES (1, 7, 2, 'zs1-v38-short', 'Sapling', 'external', ?1)",
+            [vec![0u8; 10]],
+        )
+        .is_err());
+    assert!(conn
+        .execute(
+            "INSERT INTO addresses (
+                 account_id, key_id, diversifier_index, address, address_type,
+                 address_scope, diversifier_index_be
+             ) VALUES (1, 7, 3, 'zs1-v38-duplicate', 'Sapling', 'external', ?1)",
+            [&lower],
+        )
+        .is_err());
 }
 
 #[test]

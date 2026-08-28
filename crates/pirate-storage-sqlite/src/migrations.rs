@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 37;
+const SCHEMA_VERSION: i32 = 38;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -140,6 +140,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 37 {
         migrate_v37(conn)?;
+    }
+    if current_version < 38 {
+        migrate_v38(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -811,6 +814,54 @@ fn migrate_v37(conn: &Connection) -> Result<()> {
 
         INSERT INTO migration_state (key, value, updated_at)
         VALUES ('v37_verified_key_rescan_requirement', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#
+    ))
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v38(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(addresses)")?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    let add_full_index = if columns
+        .iter()
+        .any(|column| column == "diversifier_index_be")
+    {
+        ""
+    } else {
+        "ALTER TABLE addresses ADD COLUMN diversifier_index_be BLOB CHECK (diversifier_index_be IS NULL OR length(diversifier_index_be) = 11);"
+    };
+
+    conn.execute_batch(&format!(
+        r#"
+        BEGIN IMMEDIATE;
+
+        {add_full_index}
+
+        -- Big-endian storage makes SQLite's bytewise BLOB ordering match the
+        -- numeric ordering of ZIP-32's little-endian 88-bit index.
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_addresses_full_diversifier
+            ON addresses(
+                account_id,
+                key_id,
+                address_scope,
+                address_type,
+                diversifier_index_be
+            )
+            WHERE key_id IS NOT NULL AND diversifier_index_be IS NOT NULL;
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v38_full_diversifier_indices', 'completed', datetime('now'))
         ON CONFLICT(key) DO UPDATE SET
             value = excluded.value,
             updated_at = excluded.updated_at;
