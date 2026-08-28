@@ -3924,7 +3924,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pirate-cli-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -3939,7 +3939,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "argon2",
@@ -3986,7 +3986,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-ffi-frb"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "bech32",
@@ -4023,7 +4023,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-ffi-native"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "jni",
  "pirate-wallet-service",
@@ -4032,7 +4032,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-net"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "argon2",
  "arti-client",
@@ -4069,7 +4069,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-params"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "chrono",
  "serde",
@@ -4080,7 +4080,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-qortal-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "pirate-cli-core",
@@ -4089,7 +4089,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-qortal-jni"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "base64",
@@ -4103,7 +4103,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-storage-sqlite"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -4139,7 +4139,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-sync-lightd"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4190,7 +4190,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-sync-oblivious"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "pirate-core",
@@ -4200,7 +4200,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-wallet-service"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "bech32",
@@ -4241,7 +4241,7 @@ dependencies = [
 
 [[package]]
 name = "piratewallet-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "pirate-cli-core",
@@ -5762,7 +5762,7 @@ dependencies = [
 
 [[package]]
 name = "sync-harness"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "clap",

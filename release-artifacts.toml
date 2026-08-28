@@ -2,27 +2,27 @@
 version_source = "app/pubspec.yaml"
 
 [cli]
-version = "0.3.1"
+version = "0.3.2"
 artifact = "piratewallet-cli"
 
 [qortal_cli]
-version = "0.3.1"
+version = "0.3.2"
 artifact = "pirate-qortal-cli"
 
 [qortal_jni]
-version = "0.3.1"
+version = "0.3.2"
 artifact = "pirate-qortal-jni"
 
 [native_ffi]
-version = "0.3.1"
+version = "0.3.2"
 artifact = "pirate-ffi-native"
 
 [ios_sdk]
-version = "0.3.1"
+version = "0.3.2"
 artifact = "pirate-ios-sdk"
 
 [android_sdk]
-version = "0.3.1"
+version = "0.3.2"
 artifact = "pirate-android-sdk"
 
 [react_native_plugin]
