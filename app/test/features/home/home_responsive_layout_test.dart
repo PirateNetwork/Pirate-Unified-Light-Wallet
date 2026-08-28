@@ -169,6 +169,29 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('keeps the pinned phone header opaque while content scrolls', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_testApp());
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -700));
+    await tester.pumpAndSettle();
+
+    final surface = tester.widget<DecoratedBox>(
+      find.byKey(HomeScreen.headerSurfaceKey),
+    );
+    final decoration = surface.decoration as BoxDecoration;
+    expect(decoration.color?.a, 1.0);
+    expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('keeps long recent amounts clear and separates mobile cards', (
     tester,
   ) async {

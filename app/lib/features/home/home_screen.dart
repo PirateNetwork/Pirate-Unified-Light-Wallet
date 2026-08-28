@@ -40,6 +40,7 @@ class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, this.useScaffold = true});
 
   static const Key headerKey = Key('home-dashboard-header');
+  static const Key headerSurfaceKey = Key('home-dashboard-header-surface');
   static const Key recentActivityTitleKey = Key('recent-activity-title');
 
   final bool useScaffold;
@@ -273,9 +274,8 @@ class _HomeHeader extends ConsumerWidget {
     }
 
     final headerSurface = DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.backgroundBase.withValues(alpha: 0.85),
-      ),
+      key: HomeScreen.headerSurfaceKey,
+      decoration: BoxDecoration(color: AppColors.backgroundBase),
       child: SafeArea(
         bottom: false,
         child: Padding(
