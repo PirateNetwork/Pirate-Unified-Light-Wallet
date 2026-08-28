@@ -5,7 +5,30 @@ use crate::{Error, Result};
 use rusqlite::{params, OptionalExtension, Row};
 
 const ADDRESS_SELECT_COLUMNS: &str =
-    "id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope";
+    "id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope, diversifier_index_be";
+
+fn encode_diversifier_index_be(index: [u8; 11]) -> [u8; 11] {
+    let mut encoded = index;
+    encoded.reverse();
+    encoded
+}
+
+fn decode_diversifier_index_be(mut encoded: [u8; 11]) -> [u8; 11] {
+    encoded.reverse();
+    encoded
+}
+
+fn increment_diversifier_index(index: &mut [u8; 11]) -> Result<()> {
+    for byte in index {
+        *byte = byte.wrapping_add(1);
+        if *byte != 0 {
+            return Ok(());
+        }
+    }
+    Err(Error::Validation(
+        "ZIP-32 diversifier index space is exhausted".to_string(),
+    ))
+}
 
 pub(super) fn get_current_diversifier_index_for_scope(
     repo: &Repository<'_>,
@@ -63,7 +86,49 @@ pub(super) fn get_next_diversifier_index_for_scope_and_type(
         |row| row.get(0),
     )?;
 
-    Ok(max_index.map_or(0, |value| (value as u32).saturating_add(1)))
+    match max_index {
+        None => Ok(0),
+        Some(value) => u32::try_from(value)
+            .map_err(|_| Error::Validation("Stored address sequence is invalid".to_string()))?
+            .checked_add(1)
+            .ok_or_else(|| Error::Validation("Address sequence is exhausted".to_string())),
+    }
+}
+
+fn get_next_diversifier_index_88_for_scope_and_type(
+    repo: &Repository<'_>,
+    account_id: i64,
+    key_id: i64,
+    scope: AddressScope,
+    address_type: AddressType,
+) -> Result<[u8; 11]> {
+    let encoded: Option<Vec<u8>> = repo
+        .db
+        .conn()
+        .query_row(
+            "SELECT diversifier_index_be FROM addresses
+             WHERE account_id = ?1 AND key_id = ?2 AND address_scope = ?3
+               AND address_type = ?4 AND diversifier_index_be IS NOT NULL
+             ORDER BY diversifier_index_be DESC LIMIT 1",
+            params![
+                account_id,
+                key_id,
+                address_scope_str(scope),
+                address_type_str(address_type)
+            ],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    let Some(encoded) = encoded else {
+        return Ok([0; 11]);
+    };
+    let encoded: [u8; 11] = encoded.try_into().map_err(|_| {
+        Error::Validation("Stored ZIP-32 diversifier index has an invalid length".to_string())
+    })?;
+    let mut index = decode_diversifier_index_be(encoded);
+    increment_diversifier_index(&mut index)?;
+    Ok(index)
 }
 
 pub(super) fn backfill_address_key_id(
@@ -91,7 +156,8 @@ pub(super) fn backfill_address_key_id(
 /// `pirate-wallet-service` caches one connection per thread - blocks until
 /// the first commits and then correctly observes its newly-inserted row.
 ///
-/// `build` must be a pure function of the index (it runs with the write
+/// `build` must be a pure function of the sequence number and the first raw
+/// 88-bit index it may use (it runs with the write
 /// lock held, so it must not perform its own database I/O).
 pub(super) fn allocate_next_diversified_address<F>(
     repo: &Repository<'_>,
@@ -102,7 +168,7 @@ pub(super) fn allocate_next_diversified_address<F>(
     build: F,
 ) -> Result<Address>
 where
-    F: FnOnce(u32) -> Result<Address>,
+    F: FnOnce(u32, [u8; 11]) -> Result<Address>,
 {
     let conn = repo.db.conn();
     conn.execute_batch("BEGIN IMMEDIATE")?;
@@ -115,7 +181,22 @@ where
             scope,
             address_type,
         )?;
-        let address = build(next_index)?;
+        let next_index_88 = get_next_diversifier_index_88_for_scope_and_type(
+            repo,
+            account_id,
+            key_id,
+            scope,
+            address_type,
+        )?;
+        let address = build(next_index, next_index_88)?;
+        let actual_index = address.diversifier_index_88.ok_or_else(|| {
+            Error::Validation("Address derivation did not return a ZIP-32 index".to_string())
+        })?;
+        if encode_diversifier_index_be(actual_index) < encode_diversifier_index_be(next_index_88) {
+            return Err(Error::Validation(
+                "Address derivation moved the ZIP-32 index backwards".to_string(),
+            ));
+        }
         upsert_address(repo, &address)?;
         Ok(address)
     })();
@@ -131,8 +212,8 @@ where
 
 pub(super) fn upsert_address(repo: &Repository<'_>, address: &Address) -> Result<()> {
     repo.db.conn().execute(
-        "INSERT INTO addresses (account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        "INSERT INTO addresses (account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope, diversifier_index_be)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT(address) DO UPDATE SET
              account_id = excluded.account_id,
              key_id = COALESCE(excluded.key_id, addresses.key_id),
@@ -147,7 +228,11 @@ pub(super) fn upsert_address(repo: &Repository<'_>, address: &Address) -> Result
              address_scope = CASE
                  WHEN addresses.address_scope = 'internal' THEN addresses.address_scope
                  ELSE excluded.address_scope
-             END",
+             END,
+             diversifier_index_be = COALESCE(
+                 excluded.diversifier_index_be,
+                 addresses.diversifier_index_be
+             )",
         params![
             address.account_id,
             address.key_id,
@@ -158,6 +243,10 @@ pub(super) fn upsert_address(repo: &Repository<'_>, address: &Address) -> Result
             address.created_at,
             address.color_tag.as_u8() as i64,
             address_scope_str(address.address_scope),
+            address
+                .diversifier_index_88
+                .map(encode_diversifier_index_be)
+                .map(|value| value.to_vec()),
         ],
     )?;
     Ok(())
@@ -372,11 +461,29 @@ pub(super) fn set_address_archived(
 }
 
 fn decode_address_row(row: &Row<'_>) -> rusqlite::Result<Address> {
+    let encoded_index: Option<Vec<u8>> = row.get(10)?;
+    let diversifier_index_88 = encoded_index
+        .map(|encoded| {
+            let encoded: [u8; 11] = encoded.try_into().map_err(|_| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    10,
+                    rusqlite::types::Type::Blob,
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "ZIP-32 diversifier index must contain 11 bytes",
+                    )
+                    .into(),
+                )
+            })?;
+            Ok::<[u8; 11], rusqlite::Error>(decode_diversifier_index_be(encoded))
+        })
+        .transpose()?;
     Ok(Address {
         id: Some(row.get(0)?),
         account_id: row.get(1)?,
         key_id: row.get(2)?,
         diversifier_index: row.get::<_, i64>(3)? as u32,
+        diversifier_index_88,
         address: row.get(4)?,
         address_type: decode_address_type(row)?,
         label: row.get(6)?,

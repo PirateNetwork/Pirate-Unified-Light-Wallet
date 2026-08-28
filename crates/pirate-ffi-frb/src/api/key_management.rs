@@ -214,6 +214,7 @@ pub(super) fn generate_address_for_key(
         key_id: Some(key_id),
         account_id,
         diversifier_index: next_index,
+        diversifier_index_88: None,
         address: addr_string.clone(),
         address_type,
         label: None,

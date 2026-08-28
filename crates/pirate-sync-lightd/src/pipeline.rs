@@ -172,6 +172,8 @@ pub struct DecryptedNote {
     pub address_scope: AddressScope,
     /// Diversifier bytes (Sapling/Orchard)
     pub diversifier: Vec<u8>,
+    /// Complete ZIP-32 diversifier index in protocol little-endian form.
+    pub diversifier_index_88: Option<[u8; 11]>,
     /// Sapling note leadbyte (v1/v2) for nullifier derivation
     pub sapling_rseed_leadbyte: Option<u8>,
     /// Sapling note rseed bytes (32 bytes) for nullifier derivation
@@ -233,6 +235,7 @@ impl DecryptedNote {
             key_id: None,
             address_scope: AddressScope::External,
             diversifier: Vec::new(),
+            diversifier_index_88: None,
             sapling_rseed_leadbyte: None,
             sapling_rseed: None,
             note_bytes: Vec::new(),
@@ -259,6 +262,7 @@ impl DecryptedNote {
             key_id: None,
             address_scope: AddressScope::External,
             diversifier: Vec::new(),
+            diversifier_index_88: None,
             sapling_rseed_leadbyte: None,
             sapling_rseed: None,
             note_bytes: Vec::new(),

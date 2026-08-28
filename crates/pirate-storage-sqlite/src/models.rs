@@ -44,6 +44,13 @@ pub struct Address {
     pub account_id: i64,
     /// Diversifier index
     pub diversifier_index: u32,
+    /// Complete ZIP-32 diversifier index in protocol little-endian form.
+    ///
+    /// `None` identifies a legacy row that has not yet been recovered from
+    /// its viewing key and encoded address. `diversifier_index` remains the
+    /// stable, user-facing address sequence number.
+    #[serde(default)]
+    pub diversifier_index_88: Option<[u8; 11]>,
     /// Address string
     pub address: String,
     /// Address type (Sapling or Ironwood)

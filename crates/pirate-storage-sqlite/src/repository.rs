@@ -3824,7 +3824,7 @@ impl<'a> Repository<'a> {
         build: F,
     ) -> Result<Address>
     where
-        F: FnOnce(u32) -> Result<Address>,
+        F: FnOnce(u32, [u8; 11]) -> Result<Address>,
     {
         address::allocate_next_diversified_address(
             self,
@@ -6061,6 +6061,7 @@ mod tests {
             key_id: None,
             account_id,
             diversifier_index: 0,
+            diversifier_index_88: None,
             address: value.to_string(),
             address_type: AddressType::Sapling,
             label: None,
@@ -6094,6 +6095,7 @@ mod tests {
             key_id: None,
             account_id,
             diversifier_index: 3,
+            diversifier_index_88: None,
             address: value.to_string(),
             address_type: AddressType::Ironwood,
             label: None,
@@ -7288,6 +7290,7 @@ mod tests {
             key_id: None,
             account_id,
             diversifier_index: 1,
+            diversifier_index_88: None,
             address: "pirate1-internal-change".to_string(),
             address_type: AddressType::Ironwood,
             label: None,
@@ -7441,6 +7444,7 @@ mod tests {
             key_id: None,
             account_id,
             diversifier_index: 0,
+            diversifier_index_88: None,
             address: "zs1deposit-history".to_string(),
             address_type: AddressType::Sapling,
             label: None,
@@ -7784,6 +7788,7 @@ mod tests {
             key_id: Some(key_id),
             account_id,
             diversifier_index: 7,
+            diversifier_index_88: None,
             address: "zs1scopeexternal000000000000000000000000000000000000000000".to_string(),
             address_type: AddressType::Sapling,
             label: None,
@@ -7796,6 +7801,7 @@ mod tests {
             key_id: Some(key_id),
             account_id,
             diversifier_index: 7,
+            diversifier_index_88: None,
             address: "zs1scopeinternal000000000000000000000000000000000000000000".to_string(),
             address_type: AddressType::Sapling,
             label: None,
@@ -7853,6 +7859,7 @@ mod tests {
             key_id: None,
             account_id,
             diversifier_index: 3,
+            diversifier_index_88: None,
             address: "zs1displaypreferences0000000000000000000000000000000000000000".to_string(),
             address_type: AddressType::Sapling,
             label: None,
@@ -7940,6 +7947,7 @@ mod tests {
                 key_id: Some(key_id),
                 account_id,
                 diversifier_index: 7,
+                diversifier_index_88: None,
                 address: "zs1poolindex0000000000000000000000000000000000000000000000".to_string(),
                 address_type: AddressType::Sapling,
                 label: None,
@@ -7952,6 +7960,7 @@ mod tests {
                 key_id: Some(key_id),
                 account_id,
                 diversifier_index: 2,
+                diversifier_index_88: None,
                 address: "pirate1poolindex00000000000000000000000000000000000000000000".to_string(),
                 address_type: AddressType::Ironwood,
                 label: None,
@@ -8006,6 +8015,104 @@ mod tests {
             .address_type,
             AddressType::Ironwood
         );
+    }
+
+    #[test]
+    fn full_diversifier_allocation_crosses_u32_without_scanning() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Full diversifier test".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let key_id = 77;
+        let mut last_index = [0u8; 11];
+        last_index[..4].copy_from_slice(&u32::MAX.to_le_bytes());
+        repo.upsert_address(&Address {
+            id: None,
+            key_id: Some(key_id),
+            account_id,
+            diversifier_index: 4096,
+            diversifier_index_88: Some(last_index),
+            address: "pirate1-full-index-before-u32-boundary".to_string(),
+            address_type: AddressType::Ironwood,
+            label: None,
+            created_at: 1,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        })
+        .unwrap();
+
+        let allocated = repo
+            .allocate_next_diversified_address(
+                account_id,
+                key_id,
+                AddressScope::External,
+                AddressType::Ironwood,
+                |sequence, index| {
+                    assert_eq!(sequence, 4097);
+                    assert_eq!(index, [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]);
+                    Ok(Address {
+                        id: None,
+                        key_id: Some(key_id),
+                        account_id,
+                        diversifier_index: sequence,
+                        diversifier_index_88: Some(index),
+                        address: "pirate1-full-index-after-u32-boundary".to_string(),
+                        address_type: AddressType::Ironwood,
+                        label: None,
+                        created_at: 2,
+                        color_tag: ColorTag::None,
+                        address_scope: AddressScope::External,
+                    })
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            allocated.diversifier_index_88,
+            Some([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0])
+        );
+    }
+
+    #[test]
+    fn full_diversifier_allocation_reports_true_exhaustion() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Exhausted diversifier test".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let key_id = 78;
+        repo.upsert_address(&Address {
+            id: None,
+            key_id: Some(key_id),
+            account_id,
+            diversifier_index: 1,
+            diversifier_index_88: Some([u8::MAX; 11]),
+            address: "pirate1-full-index-exhausted".to_string(),
+            address_type: AddressType::Ironwood,
+            label: None,
+            created_at: 1,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        })
+        .unwrap();
+
+        let result = repo.allocate_next_diversified_address(
+            account_id,
+            key_id,
+            AddressScope::External,
+            AddressType::Ironwood,
+            |_, _| unreachable!("the builder must not run after index exhaustion"),
+        );
+        assert!(matches!(result, Err(Error::Validation(message)) if message.contains("exhausted")));
     }
 
     #[test]

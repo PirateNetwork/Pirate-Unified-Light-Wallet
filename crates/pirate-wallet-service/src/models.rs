@@ -876,7 +876,9 @@ pub struct VerifiedSpendingKeyImport {
     pub pool: VerifiedSpendingKeyPool,
     /// Canonical verified receive address.
     pub address: String,
-    /// Sequential address index used for verification.
+    /// Legacy sequential address metadata supplied by the integration.
+    ///
+    /// Ownership is verified from the address and full viewing key directly.
     pub address_index: u32,
     /// Earliest birthday retained for the key group.
     pub birthday_height: u32,

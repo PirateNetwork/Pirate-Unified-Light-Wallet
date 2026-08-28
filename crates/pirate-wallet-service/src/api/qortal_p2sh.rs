@@ -431,7 +431,7 @@ pub async fn qortal_send_p2sh(
     let change_index =
         resolve_fixed_internal_change_index(&repo, secret.account_id, source_key_id)?;
     if use_orchard_change || use_sapling_internal_change {
-        let (change_addr, address_type) = if use_orchard_change {
+        let (change_addr, address_type, diversifier_index_88) = if use_orchard_change {
             let orchard_key = default_orchard_key
                 .as_ref()
                 .ok_or_else(|| anyhow!("Ironwood spending key required for Ironwood change"))?;
@@ -439,13 +439,21 @@ pub async fn qortal_send_p2sh(
                 .to_extended_fvk()
                 .address_at_internal(change_index)
                 .encode_for_network(network_type)?;
-            (address, pirate_storage_sqlite::AddressType::Ironwood)
+            let mut index = [0u8; 11];
+            index[..4].copy_from_slice(&change_index.to_le_bytes());
+            (address, pirate_storage_sqlite::AddressType::Ironwood, index)
         } else {
-            let address = default_sapling_key
-                .to_internal_fvk()
-                .derive_address(change_index)
-                .encode_for_network(network_type);
-            (address, pirate_storage_sqlite::AddressType::Sapling)
+            let internal_fvk = default_sapling_key.to_internal_fvk();
+            let payment_address = internal_fvk.derive_address(change_index);
+            let index = internal_fvk
+                .diversifier_index(&payment_address)
+                .map(|(index, _)| index)
+                .ok_or_else(|| anyhow!("Unable to recover Sapling change address index"))?;
+            (
+                payment_address.encode_for_network(network_type),
+                pirate_storage_sqlite::AddressType::Sapling,
+                index,
+            )
         };
 
         let change_address = pirate_storage_sqlite::Address {
@@ -453,6 +461,7 @@ pub async fn qortal_send_p2sh(
             key_id: Some(source_key_id),
             account_id: secret.account_id,
             diversifier_index: change_index,
+            diversifier_index_88: Some(diversifier_index_88),
             address: change_addr,
             address_type,
             label: None,

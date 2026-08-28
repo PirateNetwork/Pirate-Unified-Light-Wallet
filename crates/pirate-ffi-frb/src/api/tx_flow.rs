@@ -1583,6 +1583,7 @@ fn sign_tx_internal(
             key_id: Some(change_key_id),
             account_id: secret.account_id,
             diversifier_index: change_diversifier_index,
+            diversifier_index_88: None,
             address: change_addr,
             address_type,
             label: None,

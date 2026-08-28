@@ -91,6 +91,7 @@ fn insert_address(repo: &Repository, account_id: i64, key_id: i64, tag: &str) ->
         key_id: Some(key_id),
         account_id,
         diversifier_index: 0,
+        diversifier_index_88: None,
         address: format!("test-{}-{}", key_id, tag),
         address_type: AddressType::Sapling,
         label: None,

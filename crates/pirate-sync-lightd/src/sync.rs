@@ -44,7 +44,7 @@ use orchard::tree::MerkleHashOrchard;
 use orchard::value::NoteValue as OrchardNoteValue;
 use orchard::Address as OrchardAddress;
 use pirate_core::keys::{
-    ExtendedFullViewingKey, ExtendedSpendingKey, IronwoodExtendedFullViewingKey,
+    DiversifierScope, ExtendedFullViewingKey, ExtendedSpendingKey, IronwoodExtendedFullViewingKey,
     IronwoodExtendedSpendingKey, IronwoodPaymentAddress as PirateIronwoodPaymentAddress,
     PaymentAddress as PiratePaymentAddress,
 };
@@ -4938,6 +4938,7 @@ impl SyncEngine {
                     self.apply_positions(&mut notes, &position_mappings).await;
                     self.apply_sapling_nullifiers(&mut notes, &position_mappings)
                         .await?;
+                    self.apply_diversifier_indices(&mut notes);
                 }
 
                 let require_memos = !self.config.lazy_memo_decode;
@@ -9021,6 +9022,70 @@ impl SyncEngine {
         Ok(())
     }
 
+    fn apply_diversifier_indices(&self, notes: &mut [DecryptedNote]) {
+        for note in notes {
+            if note.diversifier_index_88.is_some() || note.note_bytes.is_empty() {
+                continue;
+            }
+
+            let mut candidates = self.keys.iter().filter(|keys| {
+                note.key_id
+                    .is_none_or(|selected_key_id| keys.key_id == selected_key_id)
+            });
+            match note.note_type {
+                NoteType::Sapling => {
+                    let Some(address) =
+                        decode_sapling_address_bytes_from_note_bytes(&note.note_bytes)
+                            .and_then(|bytes| SaplingPaymentAddress::from_bytes(&bytes))
+                            .map(|inner| PiratePaymentAddress { inner })
+                    else {
+                        continue;
+                    };
+                    if let Some((key_id, index, scope)) = candidates.find_map(|keys| {
+                        keys.sapling_dfvk.as_ref().and_then(|dfvk| {
+                            dfvk.diversifier_index(&address)
+                                .map(|(index, scope)| (keys.key_id, index, scope))
+                        })
+                    }) {
+                        note.key_id = Some(key_id);
+                        note.diversifier_index_88 = Some(index);
+                        note.address_scope = match scope {
+                            DiversifierScope::External => AddressScope::External,
+                            DiversifierScope::Internal => AddressScope::Internal,
+                        };
+                    }
+                }
+                NoteType::Ironwood => {
+                    let Some(address) =
+                        decode_orchard_address_bytes_from_note_bytes(&note.note_bytes)
+                            .and_then(|bytes| {
+                                Option::from(OrchardAddress::from_raw_address_bytes(&bytes))
+                            })
+                            .map(|inner| PirateIronwoodPaymentAddress { inner })
+                    else {
+                        continue;
+                    };
+                    if let Some((key_id, index, scope)) = candidates.find_map(|keys| {
+                        let fvk = keys.orchard_fvk.as_ref()?;
+                        [DiversifierScope::External, DiversifierScope::Internal]
+                            .into_iter()
+                            .find_map(|scope| {
+                                fvk.diversifier_index(&address, scope)
+                                    .map(|index| (keys.key_id, index, scope))
+                            })
+                    }) {
+                        note.key_id = Some(key_id);
+                        note.diversifier_index_88 = Some(index);
+                        note.address_scope = match scope {
+                            DiversifierScope::External => AddressScope::External,
+                            DiversifierScope::Internal => AddressScope::Internal,
+                        };
+                    }
+                }
+            }
+        }
+    }
+
     async fn apply_spends(
         &mut self,
         blocks: &[CompactBlockData],
@@ -10579,11 +10644,26 @@ impl StorageSink {
                 }
             };
 
+            let existing_address = repo.get_address_by_string(self.account_id, &address_string)?;
+            let diversifier_index = match existing_address.as_ref() {
+                Some(address) => address.diversifier_index,
+                None => match note.key_id {
+                    Some(key_id) => repo.get_next_diversifier_index_for_scope_and_type(
+                        self.account_id,
+                        key_id,
+                        note.address_scope,
+                        address_type,
+                    )?,
+                    None => 0,
+                },
+            };
+
             let address_record = pirate_storage_sqlite::Address {
-                id: None,
+                id: existing_address.and_then(|address| address.id),
                 key_id: note.key_id,
                 account_id: self.account_id,
-                diversifier_index: 0,
+                diversifier_index,
+                diversifier_index_88: note.diversifier_index_88,
                 address: address_string.clone(),
                 address_type,
                 label: None,
@@ -12346,6 +12426,7 @@ mod tests {
             key_id: Some(key_id),
             account_id,
             diversifier_index: 0,
+            diversifier_index_88: None,
             address: "pirate1-preserved-address".to_string(),
             address_type: pirate_storage_sqlite::AddressType::Ironwood,
             label: Some("Preserved".to_string()),

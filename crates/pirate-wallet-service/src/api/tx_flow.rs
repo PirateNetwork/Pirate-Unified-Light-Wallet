@@ -1563,7 +1563,7 @@ fn sign_tx_internal(
     if pending.change >= CHANGE_DUST_THRESHOLD
         && (use_orchard_change || use_sapling_internal_change)
     {
-        let (change_addr, address_type) = if use_orchard_change {
+        let (change_addr, address_type, diversifier_index_88) = if use_orchard_change {
             let orchard_extsk = orchard_extsk_opt
                 .as_ref()
                 .ok_or_else(|| anyhow!("Ironwood spending key required for Ironwood change"))?;
@@ -1571,13 +1571,21 @@ fn sign_tx_internal(
             let addr = orchard_fvk
                 .address_at_internal(change_diversifier_index)
                 .encode_for_network(network_type)?;
-            (addr, AddressType::Ironwood)
+            let mut index = [0u8; 11];
+            index[..4].copy_from_slice(&change_diversifier_index.to_le_bytes());
+            (addr, AddressType::Ironwood, index)
         } else {
-            let addr = extsk
-                .to_internal_fvk()
-                .derive_address(change_diversifier_index)
-                .encode_for_network(network_type);
-            (addr, AddressType::Sapling)
+            let internal_fvk = extsk.to_internal_fvk();
+            let payment_address = internal_fvk.derive_address(change_diversifier_index);
+            let index = internal_fvk
+                .diversifier_index(&payment_address)
+                .map(|(index, _)| index)
+                .ok_or_else(|| anyhow!("Unable to recover Sapling change address index"))?;
+            (
+                payment_address.encode_for_network(network_type),
+                AddressType::Sapling,
+                index,
+            )
         };
 
         let address = pirate_storage_sqlite::Address {
@@ -1585,6 +1593,7 @@ fn sign_tx_internal(
             key_id: Some(change_key_id),
             account_id: secret.account_id,
             diversifier_index: change_diversifier_index,
+            diversifier_index_88: Some(diversifier_index_88),
             address: change_addr,
             address_type,
             label: None,

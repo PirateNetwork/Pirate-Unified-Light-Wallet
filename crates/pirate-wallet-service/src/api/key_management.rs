@@ -6,7 +6,6 @@ use zcash_client_backend::encoding::{
 };
 
 const KEY_IMPORT_LOG_SCHEMA_VERSION: u8 = 1;
-const MAX_VERIFIED_IMPORT_ADDRESS_INDEX: u32 = 4096;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct AccountKeyInventory {
@@ -316,6 +315,13 @@ pub(super) fn generate_address_for_key(
     } else {
         AddressType::Sapling
     };
+    let viewing_keys = super::addresses::viewing_keys_for_account_key(&key)?;
+    super::addresses::backfill_full_diversifier_indices(
+        &repo,
+        account_id,
+        network_type,
+        &viewing_keys,
+    )?;
 
     // Allocating the index and deriving+storing the address for it must be
     // one atomic operation - see allocate_next_diversified_address's doc
@@ -325,14 +331,14 @@ pub(super) fn generate_address_for_key(
         key_id,
         pirate_storage_sqlite::AddressScope::External,
         address_type,
-        move |next_index| {
+        move |next_index, next_index_88| {
             // The closure runs inside allocate_next_diversified_address's
             // transaction and is bounded by pirate-storage-sqlite's own
             // Result/Error type, not anyhow - map failures into its generic
             // `Storage` variant; the `?` on the outer call converts back to
             // anyhow::Error for this function's own Result.
             use pirate_storage_sqlite::Error as StorageError;
-            let (addr_string, address_type) = if use_ironwood {
+            let (addr_string, address_type, actual_index_88) = if use_ironwood {
                 let fvk = if let Some(extsk_bytes) = key.orchard_extsk.as_deref() {
                     IronwoodExtendedSpendingKey::from_bytes(extsk_bytes)
                         .map_err(|e| {
@@ -350,12 +356,12 @@ pub(super) fn generate_address_for_key(
                     })?
                 };
                 let addr = fvk
-                    .address_at(next_index)
+                    .address_at_index(next_index_88)
                     .encode_for_network(network_type)
                     .map_err(|e| {
                         StorageError::Storage(format!("Ironwood address encoding failed: {e}"))
                     })?;
-                (addr, AddressType::Ironwood)
+                (addr, AddressType::Ironwood, next_index_88)
             } else {
                 let dfvk = if let Some(extsk_bytes) = key.sapling_extsk.as_deref() {
                     ExtendedSpendingKey::from_bytes(extsk_bytes)
@@ -373,10 +379,14 @@ pub(super) fn generate_address_for_key(
                         StorageError::Storage("Invalid Sapling viewing key bytes".to_string())
                     })?
                 };
-                let addr = dfvk
-                    .derive_address(next_index)
-                    .encode_for_network(network_type);
-                (addr, AddressType::Sapling)
+                let (actual_index, address) =
+                    dfvk.find_address_from_index(next_index_88).ok_or_else(|| {
+                        StorageError::Storage(
+                            "Sapling diversifier index space is exhausted".to_string(),
+                        )
+                    })?;
+                let addr = address.encode_for_network(network_type);
+                (addr, AddressType::Sapling, actual_index)
             };
 
             Ok(pirate_storage_sqlite::Address {
@@ -384,6 +394,7 @@ pub(super) fn generate_address_for_key(
                 key_id: Some(key_id),
                 account_id,
                 diversifier_index: next_index,
+                diversifier_index_88: Some(actual_index_88),
                 address: addr_string,
                 address_type,
                 label: None,
@@ -507,6 +518,7 @@ pub(super) fn import_spending_key(
 
 struct VerifiedSpendingKeyMaterial {
     canonical_address: String,
+    diversifier_index_88: [u8; 11],
     sapling_extsk: Option<Vec<u8>>,
     sapling_dfvk: Option<Vec<u8>>,
     orchard_extsk: Option<Vec<u8>>,
@@ -527,12 +539,13 @@ fn verify_spending_key_address(
     pool: VerifiedSpendingKeyPool,
     spending_key: &str,
     expected_address: &str,
-    address_index: u32,
+    _address_index: u32,
     wallet_network: NetworkType,
 ) -> Result<VerifiedSpendingKeyMaterial> {
-    if address_index > MAX_VERIFIED_IMPORT_ADDRESS_INDEX {
-        return Err(anyhow!("Address index exceeds the recovery limit"));
-    }
+    // `address_index` is retained as legacy display metadata by the caller.
+    // Ownership is proven directly by reversing the encoded address with the
+    // full viewing key; scanning an ordinal range would be both unnecessary
+    // and an attacker-controlled CPU cost.
     let key_for_decode = normalized_bech32_input(spending_key);
     let address_for_decode = normalized_bech32_input(expected_address);
     match pool {
@@ -548,16 +561,19 @@ fn verify_spending_key_address(
                 .map_err(|_| anyhow!("Invalid Sapling address for wallet network"))?;
             let canonical = decoded.encode_for_network(wallet_network);
             let dfvk = extsk.to_extended_fvk();
-            let derived = dfvk
-                .derive_address(address_index)
-                .encode_for_network(wallet_network);
-            if !canonical.eq_ignore_ascii_case(expected_address) || derived != canonical {
+            let diversifier_index_88 = dfvk
+                .diversifier_index(&decoded)
+                .filter(|(_, scope)| *scope == pirate_core::keys::DiversifierScope::External)
+                .map(|(index, _)| index)
+                .ok_or_else(|| anyhow!("Expected address is not controlled by the spending key"))?;
+            if !canonical.eq_ignore_ascii_case(expected_address) {
                 return Err(anyhow!(
                     "Expected address is not controlled by the spending key"
                 ));
             }
             Ok(VerifiedSpendingKeyMaterial {
                 canonical_address: canonical,
+                diversifier_index_88,
                 sapling_extsk: Some(extsk.to_bytes()),
                 sapling_dfvk: Some(dfvk.to_bytes()),
                 orchard_extsk: None,
@@ -578,17 +594,17 @@ fn verify_spending_key_address(
                 .encode_for_network(wallet_network)
                 .map_err(|_| anyhow!("Invalid Ironwood address for wallet network"))?;
             let fvk = extsk.to_extended_fvk();
-            let derived = fvk
-                .address_at(address_index)
-                .encode_for_network(wallet_network)
-                .map_err(|_| anyhow!("Unable to derive Ironwood address"))?;
-            if !canonical.eq_ignore_ascii_case(expected_address) || derived != canonical {
+            let diversifier_index_88 = fvk
+                .diversifier_index(&decoded, pirate_core::keys::DiversifierScope::External)
+                .ok_or_else(|| anyhow!("Expected address is not controlled by the spending key"))?;
+            if !canonical.eq_ignore_ascii_case(expected_address) {
                 return Err(anyhow!(
                     "Expected address is not controlled by the spending key"
                 ));
             }
             Ok(VerifiedSpendingKeyMaterial {
                 canonical_address: canonical,
+                diversifier_index_88,
                 sapling_extsk: None,
                 sapling_dfvk: None,
                 orchard_extsk: Some(extsk.to_bytes()),
@@ -676,6 +692,7 @@ pub(super) async fn import_spending_key_verified(
         key_id: None,
         account_id: secret.account_id,
         diversifier_index: address_index,
+        diversifier_index_88: Some(material.diversifier_index_88),
         address: material.canonical_address.clone(),
         address_type: match pool {
             VerifiedSpendingKeyPool::Sapling => AddressType::Sapling,
@@ -939,7 +956,7 @@ mod verified_import_tests {
     }
 
     #[test]
-    fn rejects_wrong_address_index_key_and_network_before_storage() {
+    fn verifies_address_ownership_independently_of_legacy_sequence_metadata() {
         let (key, address) = sapling_key_and_address(NetworkType::Mainnet, 2);
         assert!(verify_spending_key_address(
             VerifiedSpendingKeyPool::Sapling,
@@ -948,15 +965,15 @@ mod verified_import_tests {
             3,
             NetworkType::Mainnet,
         )
-        .is_err());
+        .is_ok());
         assert!(verify_spending_key_address(
             VerifiedSpendingKeyPool::Sapling,
             &key,
             &address,
-            MAX_VERIFIED_IMPORT_ADDRESS_INDEX + 1,
+            u32::MAX,
             NetworkType::Mainnet,
         )
-        .is_err());
+        .is_ok());
 
         let other = ExtendedSpendingKey::from_mnemonic_with_account(
             OTHER_MNEMONIC,
@@ -989,25 +1006,16 @@ mod verified_import_tests {
     }
 
     #[test]
-    fn accepts_recovery_index_limit_and_rejects_the_next_index() {
-        let (key, address) =
-            sapling_key_and_address(NetworkType::Mainnet, MAX_VERIFIED_IMPORT_ADDRESS_INDEX);
+    fn accepts_the_full_legacy_sequence_range_without_scanning_it() {
+        let (key, address) = sapling_key_and_address(NetworkType::Mainnet, 2);
         assert!(verify_spending_key_address(
             VerifiedSpendingKeyPool::Sapling,
             &key,
             &address,
-            MAX_VERIFIED_IMPORT_ADDRESS_INDEX,
+            u32::MAX,
             NetworkType::Mainnet,
         )
         .is_ok());
-        assert!(verify_spending_key_address(
-            VerifiedSpendingKeyPool::Sapling,
-            &key,
-            &address,
-            MAX_VERIFIED_IMPORT_ADDRESS_INDEX + 1,
-            NetworkType::Mainnet,
-        )
-        .is_err());
     }
 
     #[test]
