@@ -266,7 +266,10 @@ reproducible verification. It is not published as a normal-user download.
 
 `pirate-unified-wallet-release-metadata.zip` contains:
 
+- `README.md` with checksum and detached-signature verification instructions
+- `SHA256SUMS` with one entry for every top-level release asset
 - `checksums/` with `.sha256` files for every top-level release asset
+- `public-keys/` with the official armored release-verification key
 - `raw/` with the original checksums, detached signatures, SBOMs, provenance files, verification notes, and optional VirusTotal reports from the package jobs
 
 `pirate-unified-wallet-developer-artifacts.zip` contains grouped folders for CLI tools, native FFI libraries, SDK packages, store/test mobile builds, and unsigned desktop test builds. These are intentionally not top-level user downloads.
@@ -288,6 +291,7 @@ Release publication checklist
 
 - artifacts built from committed sources
 - checksums published in `pirate-unified-wallet-release-metadata.zip`
+- release public-key fingerprint matches `E4FB 2399 AECC F9B9 447D ED47 2CE6 5343 4015 53A6`
 - release notes prepared
 - signed artifacts used where intended
 - unsigned artifacts retained where deterministic verification is needed

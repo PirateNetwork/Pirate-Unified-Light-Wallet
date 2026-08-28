@@ -49,7 +49,15 @@ portable build is retained inside
 `pirate-unified-wallet-unsigned-desktop-test-builds.zip` for testing and
 reproducible comparison.
 
-Each top-level release artifact should be covered by `pirate-unified-wallet-release-metadata.zip`, which includes generated checksums for every published top-level asset.
+Each top-level release artifact should be covered by `pirate-unified-wallet-release-metadata.zip`, which includes a consolidated `SHA256SUMS` manifest and an individual generated checksum for every published top-level asset.
+
+The metadata bundle also contains a verification README and the official
+armored Linux release public key. The authoritative key identity is
+`Pirate Unified Wallet <dev@piratechainfoundation.com>`, with fingerprint:
+
+```text
+E4FB 2399 AECC F9B9 447D ED47 2CE6 5343 4015 53A6
+```
 
 Verify an official release
 --------------------------
@@ -99,6 +107,26 @@ $expected = (Get-Content "$tmp\checksums\pirate-unified-wallet-windows-installer
 $actual = (Get-FileHash .\pirate-unified-wallet-windows-installer.exe -Algorithm SHA256).Hash.ToLower()
 if ($expected -eq $actual) { 'MATCH' } else { 'MISMATCH' }
 ```
+
+4. Verify a detached Linux signature when one is available.
+
+Extract the metadata bundle, import its public key, independently confirm the
+complete fingerprint above, and verify the downloaded artifact:
+
+```bash
+unzip pirate-unified-wallet-release-metadata.zip -d pirate-release-metadata
+gpg --import pirate-release-metadata/public-keys/pirate-unified-wallet-release-public-key.asc
+gpg --fingerprint E4FB2399AECCF9B9447DED472CE65343401553A6
+gpg --verify \
+  pirate-release-metadata/raw/linux-signatures/pirate-unified-wallet-linux-x86_64.AppImage.asc \
+  pirate-unified-wallet-linux-x86_64.AppImage
+```
+
+PGP verification does not decrypt the package. It confirms that the exact
+downloaded bytes were signed by the holder of the official release private
+key. A public key obtained from the same download location is only useful as
+an identity proof after its full fingerprint has been confirmed through an
+independent official Pirate Network channel.
 
 Signed and unsigned outputs
 ---------------------------
