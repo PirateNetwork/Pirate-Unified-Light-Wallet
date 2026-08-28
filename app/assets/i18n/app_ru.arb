@@ -569,6 +569,7 @@
   "Import spending key": "Импортировать ключ расходования",
   "Import view only wallet": "Импортировать кошелек только для просмотра",
   "Import viewing key": "Импортировать ключ просмотра",
+  "Imported keys can create new addresses, but not new accounts.": "Импортированные ключи позволяют создавать новые адреса, но не новые аккаунты.",
   "Imported spending key": "Импортированный ключ расходования",
   "Imported viewing key": "Импортированный ключ просмотра",
   "Importing...": "Импорт...",

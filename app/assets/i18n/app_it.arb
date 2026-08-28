@@ -569,6 +569,7 @@
   "Import spending key": "chiave di spesa per importazione",
   "Import view only wallet": "Importa portafoglio di sola lettura",
   "Import viewing key": "Importa chiave di visualizzazione",
+  "Imported keys can create new addresses, but not new accounts.": "Le chiavi importate possono creare nuovi indirizzi, ma non nuovi account.",
   "Imported spending key": "chiave di spesa importata",
   "Imported viewing key": "chiave di visualizzazione importata",
   "Importing...": "Importazione...",

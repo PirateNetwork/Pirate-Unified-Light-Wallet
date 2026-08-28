@@ -569,6 +569,7 @@
   "Import spending key": "지출 키 가져오기",
   "Import view only wallet": "보기 전용 지갑 가져오기",
   "Import viewing key": "조회 키 가져오기",
+  "Imported keys can create new addresses, but not new accounts.": "가져온 키로 새 주소를 만들 수는 있지만 새 계정을 만들 수는 없습니다.",
   "Imported spending key": "가져온 지출 키",
   "Imported viewing key": "가져온 조회 키",
   "Importing...": "가져오는 중...",

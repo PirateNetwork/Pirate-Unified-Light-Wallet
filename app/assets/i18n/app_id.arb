@@ -569,6 +569,7 @@
   "Import spending key": "Impor spending key",
   "Import view only wallet": "Impor dompet lihat-saja",
   "Import viewing key": "Impor viewing key",
+  "Imported keys can create new addresses, but not new accounts.": "Kunci yang diimpor dapat membuat alamat baru, tetapi bukan akun baru.",
   "Imported spending key": "Spending key telah diimpor",
   "Imported viewing key": "Viewing key telah diimpor",
   "Importing...": "Mengimpor...",

@@ -569,6 +569,7 @@
   "Import spending key": "Harcama anahtarını içe aktar",
   "Import view only wallet": "Salt görüntülenebilir cüzdanı içe aktar",
   "Import viewing key": "Görüntüleme anahtarını içe aktar",
+  "Imported keys can create new addresses, but not new accounts.": "İçe aktarılan anahtarlarla yeni adresler oluşturulabilir, ancak yeni hesaplar oluşturulamaz.",
   "Imported spending key": "İçe aktarılan harcama anahtarı",
   "Imported viewing key": "İçe aktarılan görüntüleme anahtarı",
   "Importing...": "İçe aktarılıyor...",

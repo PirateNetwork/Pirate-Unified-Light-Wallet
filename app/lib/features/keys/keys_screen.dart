@@ -16,6 +16,7 @@ import '../../ui/molecules/p_card.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import 'key_capabilities.dart';
 
 class KeyManagementScreen extends ConsumerStatefulWidget {
   const KeyManagementScreen({super.key});
@@ -257,7 +258,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   }
 
   int _nextSeedAccountIndex(List<KeyGroupInfo> keys) {
-    final indices = keys.map((key) => key.seedAccountIndex).whereType<int>();
+    final indices = keys
+        .where((key) => key.isRecoveryPhraseAccount)
+        .map((key) => key.seedAccountIndex)
+        .whereType<int>();
     return indices.fold<int>(
           0,
           (highest, index) => index > highest ? index : highest,
@@ -266,7 +270,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   }
 
   int _seedBirthdayHeight(List<KeyGroupInfo> keys) {
-    final seedKeys = keys.where((key) => key.seedAccountIndex != null);
+    final seedKeys = keys.where((key) => key.isRecoveryPhraseAccount);
     return seedKeys.map((key) => key.birthdayHeight).fold<int?>(null, (
           lowest,
           height,
@@ -670,7 +674,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                   );
                 }
                 final keys = snapshot.data ?? [];
-                final hasSeed = keys.any((key) => key.seedAccountIndex == 0);
+                final hasSeed = keys.supportsSeedAccountDerivation;
                 return RefreshIndicator(
                   onRefresh: () async => _refresh(),
                   child: LayoutBuilder(
@@ -1040,6 +1044,11 @@ class _SeedAccountHelp extends StatelessWidget {
           ),
           _HelpPoint(
             text: 'Accounts are added in order and remain even when empty.'.tr,
+          ),
+          _HelpPoint(
+            text:
+                'Imported keys can create new addresses, but not new accounts.'
+                    .tr,
           ),
           SizedBox(height: PSpacing.md),
           PTextButton(

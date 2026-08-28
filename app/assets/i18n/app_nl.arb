@@ -569,6 +569,7 @@
   "Import spending key": "Importeer de uitgavesleutel",
   "Import view only wallet": "Alleen-lezenwallet importeren",
   "Import viewing key": "inzagesleutel importeren",
+  "Imported keys can create new addresses, but not new accounts.": "Met geïmporteerde sleutels kun je nieuwe adressen maken, maar geen nieuwe accounts.",
   "Imported spending key": "Geïmporteerde uitgavesleutel",
   "Imported viewing key": "Geïmporteerde inzagesleutel",
   "Importing...": "Importeren...",

@@ -569,6 +569,7 @@
   "Import spending key": "استيراد مفتاح الإنفاق",
   "Import view only wallet": "استيراد محفظة للعرض فقط",
   "Import viewing key": "استيراد مفتاح العرض",
+  "Imported keys can create new addresses, but not new accounts.": "يمكن للمفاتيح المستوردة إنشاء عناوين جديدة، لكن لا يمكنها إنشاء حسابات جديدة.",
   "Imported spending key": "مفتاح الإنفاق المستورد",
   "Imported viewing key": "مفتاح العرض المستورد",
   "Importing...": "جارٍ الاستيراد...",

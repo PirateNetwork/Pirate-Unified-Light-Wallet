@@ -569,6 +569,7 @@
   "Import spending key": "خرچ کرنے کی کلید درآمد کریں۔",
   "Import view only wallet": "صرف دیکھنے والا والیٹ درآمد کریں",
   "Import viewing key": "دیکھنے کی کلید درآمد کریں۔",
+  "Imported keys can create new addresses, but not new accounts.": "درآمد شدہ کلیدوں سے نئے پتے بنائے جا سکتے ہیں، مگر نئے اکاؤنٹس نہیں۔",
   "Imported spending key": "درآمد شدہ خرچ کرنے کی کلید",
   "Imported viewing key": "درآمد شدہ دیکھنے کی کلید",
   "Importing...": "درآمد کر رہا ہے...",

@@ -569,6 +569,7 @@
   "Import spending key": "輸入支出キー",
   "Import view only wallet": "閲覧専用ウォレットをインポート",
   "Import viewing key": "インポート閲覧キー",
+  "Imported keys can create new addresses, but not new accounts.": "インポートしたキーから新しいアドレスは作成できますが、新しいアカウントは作成できません。",
   "Imported spending key": "インポートされた支出キー",
   "Imported viewing key": "インポートされた閲覧キー",
   "Importing...": "インポート中...",

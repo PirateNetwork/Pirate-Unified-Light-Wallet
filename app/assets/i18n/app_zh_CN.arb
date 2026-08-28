@@ -569,6 +569,7 @@
   "Import spending key": "导入支出密钥",
   "Import view only wallet": "导入只读钱包",
   "Import viewing key": "导入查看密钥",
+  "Imported keys can create new addresses, but not new accounts.": "导入的密钥可以生成新地址，但不能创建新账户。",
   "Imported spending key": "导入支出密钥",
   "Imported viewing key": "导入查看密钥",
   "Importing...": "正在导入...",

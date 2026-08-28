@@ -569,6 +569,7 @@
   "Import spending key": "आयात खर्च करने की कुंजी",
   "Import view only wallet": "केवल देखने वाला वॉलेट आयात करें",
   "Import viewing key": "देखने की कुंजी आयात करें",
+  "Imported keys can create new addresses, but not new accounts.": "आयात की गई कुंजियों से नए पते बनाए जा सकते हैं, लेकिन नए खाते नहीं।",
   "Imported spending key": "आयातित खर्च करने की कुंजी",
   "Imported viewing key": "आयातित देखने की कुंजी",
   "Importing...": "आयात किया जा रहा है...",
