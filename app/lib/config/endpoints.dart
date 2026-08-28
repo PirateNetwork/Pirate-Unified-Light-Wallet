@@ -287,6 +287,19 @@ class LightdEndpoint {
         mainnetTor2,
       ]);
 
+  /// Tor-native choices first, followed by manual TLS clearnet servers.
+  ///
+  /// The clearnet hosts are still reached through the selected Tor transport.
+  /// Their automatic preset is intentionally excluded so Auto remains anchored
+  /// to the preferred onion primary and its onion-only failover pool.
+  static final List<LightdEndpoint> mainnetTorSuggestedPresets =
+      List<LightdEndpoint>.unmodifiable([
+        ...mainnetTorPresets,
+        ...mainnetClearnetPresets.where(
+          (endpoint) => !endpoint.automaticFailover,
+        ),
+      ]);
+
   static final List<LightdEndpoint> mainnetI2pPresets =
       List<LightdEndpoint>.unmodifiable([mainnetI2p1]);
 
@@ -302,6 +315,14 @@ class LightdEndpoint {
         autoIronwoodTestnetTor,
         ironwoodTestnetTor1,
         ironwoodTestnetTor2,
+      ]);
+
+  static final List<LightdEndpoint> ironwoodTorSuggestedPresets =
+      List<LightdEndpoint>.unmodifiable([
+        ...ironwoodTorPresets,
+        ...ironwoodClearnetPresets.where(
+          (endpoint) => !endpoint.automaticFailover,
+        ),
       ]);
 
   static final List<LightdEndpoint> ironwoodI2pPresets =
@@ -334,7 +355,7 @@ class LightdEndpoint {
     final normalizedMode = mode.toLowerCase();
     final (mainnetEndpoints, testnetEndpoints) = switch (normalizedMode) {
       'i2p' => (mainnetI2pPresets, ironwoodI2pPresets),
-      'tor' => (mainnetTorPresets, ironwoodTorPresets),
+      'tor' => (mainnetTorSuggestedPresets, ironwoodTorSuggestedPresets),
       _ => (mainnetClearnetPresets, ironwoodClearnetPresets),
     };
     return List<LightdEndpoint>.unmodifiable([
@@ -415,7 +436,7 @@ class LightdEndpoint {
   bool supportsTransport(String mode) {
     return switch (mode.toLowerCase()) {
       'i2p' => route == LightdRoute.i2p,
-      'tor' => route == LightdRoute.tor,
+      'tor' => route == LightdRoute.tor || route == LightdRoute.clearnet,
       _ => route == LightdRoute.clearnet,
     };
   }

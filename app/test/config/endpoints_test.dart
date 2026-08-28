@@ -46,7 +46,7 @@ void main() {
       );
     });
 
-    test('shows only official onion presets in Tor mode', () {
+    test('prioritizes onion presets before Tor-routed clearnet servers', () {
       final presets = LightdEndpoint.presetsForTransport(
         'tor',
         includeTestnet: false,
@@ -56,15 +56,31 @@ void main() {
         LightdEndpoint.autoMainnetTor,
         LightdEndpoint.mainnetTor1,
         LightdEndpoint.mainnetTor2,
+        LightdEndpoint.cryptoForge1Mainnet,
+        LightdEndpoint.cryptoForge2Mainnet,
+        LightdEndpoint.mathNodesMainnet,
+        LightdEndpoint.officialMainnet,
+        LightdEndpoint.qortalMainnet,
+        LightdEndpoint.qortal2Mainnet,
+        LightdEndpoint.qortal3Mainnet,
       ]);
       expect(
         presets.every((endpoint) => endpoint.supportsTransport('tor')),
         isTrue,
       );
       expect(
-        presets.every((endpoint) => !endpoint.supportsTransport('direct')),
+        presets
+            .take(3)
+            .every((endpoint) => !endpoint.supportsTransport('direct')),
         isTrue,
       );
+      expect(
+        presets
+            .skip(3)
+            .every((endpoint) => endpoint.supportsTransport('direct')),
+        isTrue,
+      );
+      expect(presets, isNot(contains(LightdEndpoint.autoMainnetClearnet)));
     });
 
     test('shows only official I2P presets in I2P mode', () {
@@ -99,6 +115,8 @@ void main() {
           LightdEndpoint.autoIronwoodTestnetTor,
           LightdEndpoint.ironwoodTestnetTor1,
           LightdEndpoint.ironwoodTestnetTor2,
+          LightdEndpoint.ironwoodTestnet1,
+          LightdEndpoint.ironwoodTestnet2,
         ],
       );
       expect(
@@ -217,6 +235,13 @@ void main() {
       );
       expect(
         LightdEndpoint.replacementForTransport(
+          mode: 'tor',
+          current: LightdEndpoint.mathNodesMainnet,
+        ),
+        isNull,
+      );
+      expect(
+        LightdEndpoint.replacementForTransport(
           mode: 'direct',
           current: LightdEndpoint.mainnetTor1,
           storedNonI2p: LightdEndpoint.mathNodesMainnet,
@@ -245,7 +270,7 @@ void main() {
           current: LightdEndpoint.autoMainnetI2p,
           storedNonI2p: LightdEndpoint.mathNodesMainnet,
         ),
-        LightdEndpoint.autoMainnetTor,
+        LightdEndpoint.mathNodesMainnet,
       );
     });
 
