@@ -446,7 +446,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
               children: [
                 // Current status card
                 endpointConfigAsync.when(
-                  data: (config) => _buildStatusCard(config, endpointHealth),
+                  data: (config) =>
+                      _buildStatusCard(config, endpointHealth, transportMode),
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
                   error: (e, _) => _buildErrorCard(e.toString()),
@@ -464,7 +465,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                _buildPresetGrid(suggestedEndpoints),
+                _buildPresetGrid(suggestedEndpoints, transportMode),
 
                 const SizedBox(height: AppSpacing.xl),
 
@@ -659,27 +660,33 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   Widget _buildStatusCard(
     ffi.LightdEndpointConfig config,
     EndpointHealthState health,
+    String transportMode,
   ) {
     final configuredEndpoint = endpoints.LightdEndpoint.tryParse(
       config.url,
       automaticFailover: config.automaticFailover,
     );
     final route = configuredEndpoint?.route ?? endpoints.LightdRoute.clearnet;
-    final (securityIcon, securityLabel, securityColor) = switch (route) {
-      endpoints.LightdRoute.tor => (
-        Icons.security_outlined,
-        'Tor'.tr,
-        AppColors.accentPrimary,
-      ),
-      endpoints.LightdRoute.i2p => (
-        Icons.router_outlined,
-        'I2P'.tr,
-        AppColors.accentPrimary,
-      ),
-      endpoints.LightdRoute.clearnet =>
-        config.useTls
-            ? (Icons.lock, 'TLS Enabled'.tr, AppColors.success)
-            : (Icons.lock_open, 'TLS Disabled'.tr, AppColors.warning),
+    final (securityIcon, securityLabel, securityColor) = switch (transportMode
+        .toLowerCase()) {
+      'tor' => (Icons.security_outlined, 'Tor'.tr, AppColors.accentPrimary),
+      'i2p' => (Icons.router_outlined, 'I2P'.tr, AppColors.accentPrimary),
+      _ => switch (route) {
+        endpoints.LightdRoute.tor => (
+          Icons.security_outlined,
+          'Tor'.tr,
+          AppColors.accentPrimary,
+        ),
+        endpoints.LightdRoute.i2p => (
+          Icons.router_outlined,
+          'I2P'.tr,
+          AppColors.accentPrimary,
+        ),
+        endpoints.LightdRoute.clearnet =>
+          config.useTls
+              ? (Icons.lock, 'TLS Enabled'.tr, AppColors.success)
+              : (Icons.lock_open, 'TLS Disabled'.tr, AppColors.warning),
+      },
     };
     final record = health.recordFor(
       config.automaticFailover ? (health.activeUrl ?? config.url) : config.url,
@@ -862,7 +869,10 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     );
   }
 
-  Widget _buildPresetGrid(List<endpoints.LightdEndpoint> presets) {
+  Widget _buildPresetGrid(
+    List<endpoints.LightdEndpoint> presets,
+    String transportMode,
+  ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = constraints.maxWidth >= 900
@@ -878,20 +888,31 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
           runSpacing: gap,
           children: [
             for (final endpoint in presets)
-              SizedBox(width: tileWidth, child: _buildPresetTile(endpoint)),
+              SizedBox(
+                width: tileWidth,
+                child: _buildPresetTile(endpoint, transportMode),
+              ),
           ],
         );
       },
     );
   }
 
-  Widget _buildPresetTile(endpoints.LightdEndpoint endpoint) {
+  Widget _buildPresetTile(
+    endpoints.LightdEndpoint endpoint,
+    String transportMode,
+  ) {
     final selected =
         _endpointController.text.trim() == endpoint.displayString &&
         _useTls == endpoint.useTls &&
         _automaticFailover == endpoint.automaticFailover;
+    final routedThroughTor =
+        transportMode.toLowerCase() == 'tor' &&
+        endpoint.route == endpoints.LightdRoute.clearnet;
     final routeIcon = endpoint.automaticFailover
         ? Icons.hub_outlined
+        : routedThroughTor
+        ? Icons.security_outlined
         : switch (endpoint.route) {
             endpoints.LightdRoute.tor => Icons.security_outlined,
             endpoints.LightdRoute.i2p => Icons.router_outlined,
@@ -954,7 +975,9 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        endpoint.displaySubtitle,
+                        routedThroughTor
+                            ? '${endpoint.displayString} • ${'Tor'.tr}'
+                            : endpoint.displaySubtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.bodySmall.copyWith(

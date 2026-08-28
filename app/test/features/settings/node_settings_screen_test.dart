@@ -50,6 +50,24 @@ class _TestI2pTransportConfigNotifier extends TransportConfigNotifier {
   );
 }
 
+class _TestTorTransportConfigNotifier extends TransportConfigNotifier {
+  @override
+  TransportConfig build() => const TransportConfig(
+    mode: 'tor',
+    dnsProvider: 'cloudflare_doh',
+    socks5Config: <String, String?>{},
+    i2pEndpoint: '',
+    tlsPins: <Map<String, String>>[],
+    torBridge: TorBridgeConfig(
+      useBridges: false,
+      fallbackToBridges: false,
+      transport: 'snowflake',
+      bridgeLines: <String>[],
+      transportPath: null,
+    ),
+  );
+}
+
 void main() {
   testWidgets('keeps the TLS pin control compact and vertically aligned', (
     tester,
@@ -265,6 +283,64 @@ void main() {
       );
       expect(find.text('Available'), findsNothing);
       expect(find.text('Unavailable'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'shows Tor-native endpoints before clearnet servers routed through Tor',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            lightdEndpointConfigProvider.overrideWith(
+              (ref) async => LightdEndpointConfig(
+                url: endpoints.LightdEndpoint.officialMainnet.url,
+              ),
+            ),
+            transportConfigProvider.overrideWith(
+              _TestTorTransportConfigNotifier.new,
+            ),
+            endpointHealthProvider.overrideWith(
+              _TestEndpointHealthNotifier.new,
+            ),
+          ],
+          child: const MaterialApp(home: NodeSettingsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final torAuto = find.byKey(
+        const ValueKey('endpoint-preset-auto-mainnet-tor'),
+      );
+      final secondOnion = find.byKey(
+        const ValueKey('endpoint-preset-mainnet-tor-2'),
+      );
+      final firstClearnet = find.byKey(
+        const ValueKey('endpoint-preset-cryptoforge-1'),
+      );
+
+      expect(torAuto, findsOneWidget);
+      expect(secondOnion, findsOneWidget);
+      expect(firstClearnet, findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('endpoint-preset-auto-mainnet-clearnet')),
+        findsNothing,
+      );
+      expect(
+        tester.getTopLeft(torAuto).dy,
+        lessThan(tester.getTopLeft(firstClearnet).dy),
+      );
+      expect(
+        tester.getTopLeft(secondOnion).dy,
+        lessThan(tester.getTopLeft(firstClearnet).dy),
+      );
+      expect(find.textContaining('• Tor'), findsWidgets);
+      expect(find.text('Tor'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 
