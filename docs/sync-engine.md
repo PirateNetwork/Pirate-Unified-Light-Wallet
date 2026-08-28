@@ -77,6 +77,8 @@ The integrity envelope was benchmarked separately in an optimized build over 65,
 
 **Technical detail:** Auto is a Pirate Unified Wallet policy layered over an explicit core API. Existing SDK, CLI, React Native, and Qortal calls remain single-server unless the caller deliberately supplies a pool. A pool is rejected if its members cross Pirate networks, mix clearnet, onion, or I2P routes, change the connection security mode, or combine automatic failover with a pinned primary.
 
+When Tor is selected, the wallet suggests the native onion endpoints first and then the curated TLS clearnet endpoints, which are also reachable through the active Tor transport. The automatic Tor pool remains onion-only, while a manually selected clearnet endpoint stays confined to Tor until the user changes transport. This keeps the preferred hidden services first without treating a clearnet hostname as permission to bypass Tor.
+
 The clearnet preset starts with a subtree-root-capable CryptoForge endpoint, then retains Pirate.Black, Mathnodes, Qortal, and the second CryptoForge endpoint as canonical failover and historical-stream candidates. Health, chain identity, and tip checks still override that preference whenever the primary is unavailable or stale.
 
 Candidates are probed through the selected Direct, Tor, SOCKS5, or I2P transport. They must agree on chain metadata and the hash at a common historical anchor before receiving work. When the selected server is available, its anchor is authoritative; otherwise a strict majority of responding candidates is required when more than one answer exists.
