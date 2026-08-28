@@ -237,7 +237,7 @@ class _ConnectionSummary extends StatelessWidget {
     };
 
     return Tooltip(
-      message: 'Privacy Shield'.tr,
+      message: 'Network Privacy'.tr,
       child: InkWell(
         key: DesktopStatusBar.connectionKey,
         onTap: onTap,

@@ -21,12 +21,11 @@ import '../../../core/providers/wallet_providers.dart';
 import '../providers/transport_providers.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
 
-/// Privacy Shield settings screen
+/// Network Privacy settings screen
 ///
 /// Allows users to configure:
 /// - Transport mode (Tor/SOCKS5/Direct)
 /// - SOCKS5 proxy settings
-/// - Name-resolution behavior for the selected transport
 /// - Test node connection
 class PrivacyShieldScreen extends ConsumerStatefulWidget {
   const PrivacyShieldScreen({super.key});
@@ -98,9 +97,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     }
 
     return PScaffold(
-      title: 'Privacy Shield'.tr,
+      title: 'Network Privacy'.tr,
       appBar: PAppBar(
-        title: 'Privacy Shield'.tr,
+        title: 'Network Privacy'.tr,
         subtitle: 'Network & tunneling'.tr,
         actions: [ConnectionStatusIndicator(full: !isMobile)],
       ),
@@ -151,11 +150,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               _buildI2pEndpointSettings(context, ref),
               const SizedBox(height: PirateSpacing.lg),
             ],
-
-            // Name resolution follows the active transport automatically.
-            _buildSectionTitle('Name resolution'.tr),
-            const SizedBox(height: 8),
-            _buildNameResolutionCard(transportMode),
 
             const SizedBox(height: PirateSpacing.xl),
 
@@ -601,7 +595,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     final torStatus = ref.watch(torStatusProvider);
     final isBootstrapping = torStatus.status == 'bootstrapping';
     final progress = torStatus.progress;
-    final routingSummary = _torRoutingSummary();
 
     return PCard(
       child: Column(
@@ -649,15 +642,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                         switchExitButton,
                       ],
                     );
-              final route = Text(
-                routingSummary,
-                textAlign: isWide ? TextAlign.right : TextAlign.left,
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  height: 1.4,
-                ),
-              );
               if (!isWide) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -667,8 +651,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                     controls,
                     const SizedBox(height: PirateSpacing.md),
                     description,
-                    const SizedBox(height: PirateSpacing.xs),
-                    route,
                   ],
                 );
               }
@@ -693,11 +675,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                     width: 320,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        controls,
-                        const SizedBox(height: PirateSpacing.xs),
-                        route,
-                      ],
+                      children: [controls],
                     ),
                   ),
                 ],
@@ -948,35 +926,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         .toList();
   }
 
-  String _torTransportLabel(String transport) {
-    final normalized = transport.trim().toLowerCase();
-    if (normalized.isEmpty || normalized == 'snowflake') {
-      return 'Snowflake';
-    }
-    if (normalized == 'obfs4') {
-      return 'obfs4';
-    }
-    return transport;
-  }
-
-  String _torRoutingSummary() {
-    if (!_isDesktop) {
-      return 'Attempting: Direct (bridges disabled on mobile)'.tr;
-    }
-    final transportLabel = _torTransportLabel(_torBridgeTransport);
-    if (_useTorBridges) {
-      return 'Attempting: {transport} (bridges)'.trArgs({
-        'transport': transportLabel,
-      });
-    }
-    if (_fallbackToTorBridges) {
-      return 'Attempting: Direct -> Fallback: {transport}'.trArgs({
-        'transport': transportLabel,
-      });
-    }
-    return 'Attempting: Direct (no fallback bridges)'.tr;
-  }
-
   Future<void> _applyTorBridgeSettings(WidgetRef ref) async {
     if (!_isDesktop) {
       setState(() {
@@ -1032,81 +981,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     await _applyTorBridgeSettings(ref);
   }
 
-  Widget _buildNameResolutionCard(String transportMode) {
-    final (icon, title, description) = switch (transportMode) {
-      'tor' => (
-        Icons.hub_outlined,
-        'Resolved inside Tor'.tr,
-        'Server names are resolved through Tor. Your device DNS is not used for wallet traffic.'
-            .tr,
-      ),
-      'i2p' => (
-        Icons.route_outlined,
-        'Handled by I2P'.tr,
-        'I2P destinations are resolved inside the I2P network.'.tr,
-      ),
-      'socks5' => (
-        Icons.swap_horiz_rounded,
-        'Resolved by your proxy'.tr,
-        'Server names are sent to the configured SOCKS5 proxy for resolution.'
-            .tr,
-      ),
-      _ => (
-        Icons.dns_outlined,
-        'Uses device DNS settings'.tr,
-        'Direct connections follow the DNS settings from your device, VPN, or network.'
-            .tr,
-      ),
-    };
-
-    return Semantics(
-      container: true,
-      label: '$title. $description',
-      child: PCard(
-        child: ExcludeSemantics(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppColors.accentPrimary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: AppColors.accentPrimary, size: 22),
-              ),
-              const SizedBox(width: PirateSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: PirateSpacing.xs),
-                    Text(
-                      description,
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
   Future<void> _testNodeConnection(BuildContext context, WidgetRef ref) async {
     final generation = ++_connectionTestGeneration;
     final testedMode = ref.read(transportConfigProvider).mode.toLowerCase();
