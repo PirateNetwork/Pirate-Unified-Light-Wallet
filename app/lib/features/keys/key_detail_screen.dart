@@ -22,6 +22,7 @@ import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../settings/providers/preferences_providers.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import 'key_capabilities.dart';
 
 class KeyDetailScreen extends ConsumerStatefulWidget {
   const KeyDetailScreen({super.key, required this.keyId});
@@ -527,8 +528,8 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   }
 
   Widget _buildActions(BuildContext context, KeyGroupInfo key) {
-    final canGenerateSapling = key.hasSapling;
-    final canGenerateIronwood = key.hasIronwood;
+    final canGenerateSapling = key.canGenerateSaplingAddresses;
+    final canGenerateIronwood = key.canGenerateIronwoodAddresses;
 
     final actions = <_ActionItem>[
       if (canGenerateSapling)
