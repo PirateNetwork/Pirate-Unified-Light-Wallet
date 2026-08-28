@@ -6,32 +6,31 @@ import unittest
 
 
 PROJECT_ROOT = Path(__file__).parents[2]
-PUBLIC_KEY = (
-    PROJECT_ROOT
-    / "release-signing"
-    / "pirate-unified-wallet-release-public-key.asc"
-)
-METADATA_README = PROJECT_ROOT / "release-signing" / "README.md"
+PUBLIC_KEY = PROJECT_ROOT / "release-signing" / "public_key.asc"
+EMBEDDED_PUBLIC_KEY = PROJECT_ROOT / "app" / "assets" / "security" / "public_key.asc"
+METADATA_README = PROJECT_ROOT / "release-signing" / "README"
 COLLECTOR = PROJECT_ROOT / "scripts" / "collect-github-release-assets.sh"
+SIGNATURE_BUNDLER = PROJECT_ROOT / "scripts" / "create-release-signature-bundle.sh"
 CI_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
 MACOS_NOTARIZATION_WORKFLOW = (
     PROJECT_ROOT / ".github" / "workflows" / "complete-macos-notarization.yml"
 )
-EXPECTED_FINGERPRINT = "E4FB2399AECCF9B9447DED472CE65343401553A6"
-CURRENT_EMAIL = "dev@piratechainfoundation.com"
-REVOKED_EMAIL = "dev@pirate.black"
+EXPECTED_PRIMARY_FINGERPRINT = "E4FB2399AECCF9B9447DED472CE65343401553A6"
+EXPECTED_IDENTITY = "Pirate Unified Wallet"
+EXPECTED_EMAIL = "dev@piratechainfoundation.com"
 
 
 class ReleaseSigningPolicyTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.collector = COLLECTOR.read_text(encoding="utf-8")
+        cls.bundler = SIGNATURE_BUNDLER.read_text(encoding="utf-8")
         cls.workflow = CI_WORKFLOW.read_text(encoding="utf-8")
         cls.macos_notarization_workflow = MACOS_NOTARIZATION_WORKFLOW.read_text(
             encoding="utf-8"
         )
 
-    def test_public_key_has_the_expected_fingerprint_and_identity(self) -> None:
+    def test_public_key_is_the_unified_wallet_release_key(self) -> None:
         gpg = shutil.which("gpg")
         if gpg is None:
             self.skipTest("gpg is required to inspect the release public key")
@@ -45,6 +44,7 @@ class ReleaseSigningPolicyTest(unittest.TestCase):
                     "--batch",
                     "--with-colons",
                     "--show-keys",
+                    "--fingerprint",
                     str(PUBLIC_KEY),
                 ],
                 check=True,
@@ -54,23 +54,18 @@ class ReleaseSigningPolicyTest(unittest.TestCase):
 
         records = [line.split(":") for line in result.stdout.splitlines()]
         fingerprints = [record[9] for record in records if record[0] == "fpr"]
-        self.assertIn(EXPECTED_FINGERPRINT, fingerprints)
+        identities = [record[9] for record in records if record[0] == "uid"]
+        self.assertIn(EXPECTED_PRIMARY_FINGERPRINT, fingerprints)
+        self.assertTrue(any(EXPECTED_IDENTITY in identity for identity in identities))
+        self.assertTrue(any(EXPECTED_EMAIL in identity for identity in identities))
 
-        current_uids = [
-            record for record in records if record[0] == "uid" and CURRENT_EMAIL in record[9]
-        ]
-        revoked_uids = [
-            record for record in records if record[0] == "uid" and REVOKED_EMAIL in record[9]
-        ]
-        self.assertTrue(current_uids)
-        self.assertTrue(all(record[1] != "r" for record in current_uids))
-        self.assertTrue(revoked_uids)
-        self.assertTrue(all(record[1] == "r" for record in revoked_uids))
+    def test_app_embeds_the_same_public_key_published_with_releases(self) -> None:
+        self.assertEqual(PUBLIC_KEY.read_bytes(), EMBEDDED_PUBLIC_KEY.read_bytes())
 
     def test_metadata_bundle_includes_instructions_and_public_key(self) -> None:
         self.assertTrue(METADATA_README.is_file())
         self.assertIn(
-            'cp -f "$RELEASE_METADATA_README" "$META_DIR/README.md"',
+            'cp -f "$RELEASE_METADATA_README" "$META_DIR/README"',
             self.collector,
         )
         self.assertIn(
@@ -79,31 +74,58 @@ class ReleaseSigningPolicyTest(unittest.TestCase):
         )
         self.assertIn('SHA256SUMS_FILE="$META_DIR/SHA256SUMS"', self.collector)
 
-    def test_ci_pins_the_expected_release_key(self) -> None:
+    def test_signature_bundle_matches_treasure_chest_conventions(self) -> None:
         self.assertIn(
-            f'expected_fingerprint="{EXPECTED_FINGERPRINT}"',
-            self.workflow,
+            'CHECKSUM_MANIFEST="$STAGE_DIR/sha256sum-${RELEASE_TAG}.txt"',
+            self.bundler,
+        )
+        self.assertIn('cp -f "$README_SOURCE" "$STAGE_DIR/README"', self.bundler)
+        self.assertIn(
+            'cp -f "$PUBLIC_KEY_SOURCE" "$STAGE_DIR/public_key.asc"',
+            self.bundler,
+        )
+        self.assertIn("--digest-algo SHA512", self.bundler)
+        self.assertIn("--detach-sign", self.bundler)
+        self.assertNotIn("--armor", self.bundler)
+        self.assertIn(
+            'sign_file "$file" "$STAGE_DIR/$filename.sig"',
+            self.bundler,
         )
         self.assertIn(
-            "gpg --batch --import release-signing/"
-            "pirate-unified-wallet-release-public-key.asc",
-            self.workflow,
+            'sign_file "$CHECKSUM_MANIFEST" "$CHECKSUM_MANIFEST.sig"',
+            self.bundler,
         )
-        self.assertIn('--local-user "$GPG_SIGNING_KEY"', self.workflow)
-        self.assertIn('path: dist/linux-signatures/*.asc', self.workflow)
-        self.assertIn("-name '*.flatpak'", self.workflow)
 
-    def test_macos_metadata_refresh_preserves_verification_material(self) -> None:
+    def test_ci_requires_the_unified_wallet_private_key_and_builds_one_bundle(self) -> None:
         self.assertIn(
-            'cp -f release-signing/README.md "$meta_dir/README.md"',
+            f'expected_primary="{EXPECTED_PRIMARY_FINGERPRINT}"',
+            self.workflow,
+        )
+        self.assertIn(
+            "gpg --batch --import release-signing/public_key.asc",
+            self.workflow,
+        )
+        self.assertIn("scripts/create-release-signature-bundle.sh", self.workflow)
+        self.assertIn(
+            '"release/signatures-${GITHUB_REF_NAME}.zip"',
+            self.workflow,
+        )
+
+    def test_macos_refresh_regenerates_verification_material(self) -> None:
+        self.assertIn(
+            'cp -f release-signing/README "$meta_dir/README"',
             self.macos_notarization_workflow,
         )
         self.assertIn(
-            "release-signing/pirate-unified-wallet-release-public-key.asc",
+            "release-signing/public_key.asc",
             self.macos_notarization_workflow,
         )
         self.assertIn(
-            'sort -k2 "$meta_dir/SHA256SUMS.tmp" > "$meta_dir/SHA256SUMS"',
+            "scripts/create-release-signature-bundle.sh",
+            self.macos_notarization_workflow,
+        )
+        self.assertIn(
+            '"$release_dir/signatures-${RELEASE_TAG}.zip"',
             self.macos_notarization_workflow,
         )
 
