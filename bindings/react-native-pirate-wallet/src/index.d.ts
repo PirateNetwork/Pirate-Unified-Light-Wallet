@@ -42,6 +42,50 @@ export interface PirateWalletAccountStorageConfig {
   storagePath?: string | null
 }
 
+export interface LightdEndpointConfig {
+  host: string
+  port: number
+  useTls: boolean
+  tlsPin: string | null
+  label: string | null
+  automaticFailover: boolean
+  failoverEndpoints: string[]
+  isConfigured: boolean
+}
+
+export interface SetLightdEndpointRequest {
+  walletId: string
+  url: string
+  tlsPin?: string | null
+}
+
+export interface SetLightdEndpointPoolRequest extends SetLightdEndpointRequest {
+  failoverEndpoints: string[]
+}
+
+export interface TestLightdEndpointRequest {
+  url: string
+  tlsPin?: string | null
+}
+
+export interface NodeTestResult {
+  success: boolean
+  latestBlockHeight: number | null
+  transportMode: string
+  tlsEnabled: boolean
+  tlsPinMatched: boolean | null
+  expectedPin: string | null
+  actualPin: string | null
+  errorMessage: string | null
+  responseTimeMs: number
+  serverVersion: string | null
+  chainName: string | null
+}
+
+export interface Acknowledgement {
+  acknowledged: true
+}
+
 export interface SynchronizerSnapshot {
   walletId: string
   alias: string
@@ -209,6 +253,19 @@ export class PirateWalletSdk {
   isValidShieldedAddr(address: string): Promise<boolean>
   validateAddress(address: string): Promise<any>
   validateConsensusBranch(walletId: string): Promise<any>
+  getLightdEndpoint(walletId: string): Promise<string>
+  getLightdEndpointConfig(walletId: string): Promise<LightdEndpointConfig>
+  setLightdEndpoint(request: SetLightdEndpointRequest): Promise<Acknowledgement>
+  setLightdEndpoint(walletId: string, url: string, tlsPin?: string | null): Promise<Acknowledgement>
+  setLightdEndpointPool(request: SetLightdEndpointPoolRequest): Promise<Acknowledgement>
+  setLightdEndpointPool(
+    walletId: string,
+    url: string,
+    failoverEndpoints: string[],
+    tlsPin?: string | null
+  ): Promise<Acknowledgement>
+  testLightdEndpoint(request: TestLightdEndpointRequest): Promise<NodeTestResult>
+  testLightdEndpoint(url: string, tlsPin?: string | null): Promise<NodeTestResult>
   formatAmount(arrrtoshis: AmountInput): Promise<string>
   parseAmount(arrr: string): Promise<AmountString>
   getCurrentReceiveAddress(walletId: string): Promise<string>

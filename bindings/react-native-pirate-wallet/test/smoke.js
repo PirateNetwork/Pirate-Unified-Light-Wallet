@@ -48,6 +48,51 @@ function createMockNativeModule() {
           ])
         case 'get_active_wallet':
           return ok('wallet-1')
+        case 'get_lightd_endpoint':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
+          return ok('https://lightd1.pirate.black:443')
+        case 'get_lightd_endpoint_config':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
+          return ok({
+            host: 'lightd1.pirate.black',
+            port: 443,
+            use_tls: true,
+            tls_pin: null,
+            label: 'Primary',
+            automatic_failover: true,
+            failover_endpoints: ['https://lightwalletd1.cryptoforge.cc:443'],
+            is_configured: true
+          })
+        case 'set_lightd_endpoint':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
+          assert.strictEqual(request.url, 'https://lightd1.pirate.black:443')
+          assert.strictEqual(request.tls_pin_opt, 'base64-spki-pin')
+          return ok({ acknowledged: true })
+        case 'set_lightd_endpoint_pool':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
+          assert.strictEqual(request.url, 'https://lightd1.pirate.black:443')
+          assert.strictEqual(request.tls_pin_opt, undefined)
+          assert.deepStrictEqual(request.failover_endpoints, [
+            'https://lightwalletd1.cryptoforge.cc:443',
+            'https://pirate.mathnodes.com:443'
+          ])
+          return ok({ acknowledged: true })
+        case 'test_node':
+          assert.strictEqual(request.url, 'https://lightwalletd1.cryptoforge.cc:443')
+          assert.strictEqual(request.tls_pin, undefined)
+          return ok({
+            success: true,
+            latest_block_height: 4200000,
+            transport_mode: 'Direct',
+            tls_enabled: true,
+            tls_pin_matched: null,
+            expected_pin: null,
+            actual_pin: 'observed-pin',
+            error_message: null,
+            response_time_ms: 95,
+            server_version: 'lightwalletd',
+            chain_name: 'main'
+          })
         case 'current_receive_address':
           assert.strictEqual(request.wallet_id, 'wallet-1')
           return ok('pirate1current')
@@ -163,6 +208,52 @@ async function main() {
 
   const latestBirthdayHeight = await sdk.getLatestBirthdayHeight('wallet-1')
   assert.strictEqual(latestBirthdayHeight, 345678)
+
+  const endpoint = await sdk.getLightdEndpoint('wallet-1')
+  assert.strictEqual(endpoint, 'https://lightd1.pirate.black:443')
+
+  const endpointConfig = await sdk.getLightdEndpointConfig('wallet-1')
+  assert.strictEqual(endpointConfig.automaticFailover, true)
+  assert.deepStrictEqual(endpointConfig.failoverEndpoints, [
+    'https://lightwalletd1.cryptoforge.cc:443'
+  ])
+
+  const endpointTest = await sdk.testLightdEndpoint(
+    'https://lightwalletd1.cryptoforge.cc:443'
+  )
+  assert.strictEqual(endpointTest.latestBlockHeight, 4200000)
+  assert.strictEqual(endpointTest.responseTimeMs, 95)
+
+  const endpointAck = await sdk.setLightdEndpoint({
+    walletId: 'wallet-1',
+    url: 'https://lightd1.pirate.black:443',
+    tlsPin: 'base64-spki-pin'
+  })
+  assert.strictEqual(endpointAck.acknowledged, true)
+
+  const poolAck = await sdk.setLightdEndpointPool({
+    walletId: 'wallet-1',
+    url: 'https://lightd1.pirate.black:443',
+    failoverEndpoints: [
+      'https://lightwalletd1.cryptoforge.cc:443',
+      'https://pirate.mathnodes.com:443'
+    ]
+  })
+  assert.strictEqual(poolAck.acknowledged, true)
+
+  assert.throws(
+    () =>
+      sdk.setLightdEndpointPool({
+        walletId: 'wallet-1',
+        url: 'https://lightd1.pirate.black:443',
+        failoverEndpoints: 'not-an-array'
+      }),
+    /failoverEndpoints must be an array/
+  )
+  assert.throws(
+    () => sdk.testLightdEndpoint('  '),
+    /url must be a non-empty string/
+  )
 
   assert.strictEqual(await sdk.getCurrentAddress('wallet-1'), 'pirate1current')
   assert.strictEqual(await sdk.getNextAddress('wallet-1'), 'pirate1next')

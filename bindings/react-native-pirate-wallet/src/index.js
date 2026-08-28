@@ -83,6 +83,33 @@ function buildRequest(method, params = {}) {
   return JSON.stringify(request)
 }
 
+function requireNonEmptyString(value, name) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${name} must be a non-empty string.`)
+  }
+  return value
+}
+
+function optionalNonEmptyString(value, name) {
+  if (value === undefined || value === null) {
+    return null
+  }
+  return requireNonEmptyString(value, name)
+}
+
+function validateFailoverEndpoints(value) {
+  if (!Array.isArray(value)) {
+    throw new Error('failoverEndpoints must be an array of endpoint URL strings.')
+  }
+  if (value.length > 16) {
+    throw new Error('failoverEndpoints may contain at most 16 endpoint URLs.')
+  }
+
+  return value.map((endpoint, index) =>
+    requireNonEmptyString(endpoint, `failoverEndpoints[${index}]`)
+  )
+}
+
 function unwrapEnvelope(responseJson, method, options = {}) {
   const { camelizeResult = true } = options
   let envelope
@@ -665,6 +692,62 @@ class PirateWalletSdk {
 
   validateConsensusBranch(walletId) {
     return this._call('validate_consensus_branch', { wallet_id: walletId })
+  }
+
+  getLightdEndpoint(walletId) {
+    return this._call('get_lightd_endpoint', {
+      wallet_id: requireNonEmptyString(walletId, 'walletId')
+    })
+  }
+
+  getLightdEndpointConfig(walletId) {
+    return this._call('get_lightd_endpoint_config', {
+      wallet_id: requireNonEmptyString(walletId, 'walletId')
+    })
+  }
+
+  setLightdEndpoint(requestOrWalletId, url = null, tlsPin = null) {
+    const request =
+      typeof requestOrWalletId === 'object' && requestOrWalletId !== null
+        ? requestOrWalletId
+        : { walletId: requestOrWalletId, url, tlsPin }
+
+    return this._call('set_lightd_endpoint', {
+      wallet_id: requireNonEmptyString(request.walletId, 'walletId'),
+      url: requireNonEmptyString(request.url, 'url'),
+      tls_pin_opt: optionalNonEmptyString(request.tlsPin, 'tlsPin')
+    })
+  }
+
+  setLightdEndpointPool(
+    requestOrWalletId,
+    url = null,
+    failoverEndpoints = [],
+    tlsPin = null
+  ) {
+    const request =
+      typeof requestOrWalletId === 'object' && requestOrWalletId !== null
+        ? requestOrWalletId
+        : { walletId: requestOrWalletId, url, failoverEndpoints, tlsPin }
+
+    return this._call('set_lightd_endpoint_pool', {
+      wallet_id: requireNonEmptyString(request.walletId, 'walletId'),
+      url: requireNonEmptyString(request.url, 'url'),
+      tls_pin_opt: optionalNonEmptyString(request.tlsPin, 'tlsPin'),
+      failover_endpoints: validateFailoverEndpoints(request.failoverEndpoints)
+    })
+  }
+
+  testLightdEndpoint(requestOrUrl, tlsPin = null) {
+    const request =
+      typeof requestOrUrl === 'object' && requestOrUrl !== null
+        ? requestOrUrl
+        : { url: requestOrUrl, tlsPin }
+
+    return this._call('test_node', {
+      url: requireNonEmptyString(request.url, 'url'),
+      tls_pin: optionalNonEmptyString(request.tlsPin, 'tlsPin')
+    })
   }
 
   formatAmount(arrrtoshis) {
