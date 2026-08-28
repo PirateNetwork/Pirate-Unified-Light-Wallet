@@ -74,7 +74,11 @@ void main() {
     expect(find.text('I2P'), findsOneWidget);
     expect(find.text('SOCKS5'), findsOneWidget);
     expect(find.text('Direct'), findsOneWidget);
-    expect(find.text('Resolved inside Tor'), findsOneWidget);
+    expect(find.text('Network Privacy'), findsOneWidget);
+    expect(find.textContaining('Attempting:'), findsNothing);
+    expect(find.text('Name resolution'), findsNothing);
+    expect(find.text('Resolved inside Tor'), findsNothing);
+    expect(find.text('Uses device DNS settings'), findsNothing);
     expect(find.text('System (Not Private)'), findsNothing);
     final exception = tester.takeException();
     expect(
@@ -86,7 +90,7 @@ void main() {
     );
   });
 
-  testWidgets('describes direct resolution without a privacy verdict', (
+  testWidgets('keeps direct mode focused on its transport risk', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -106,13 +110,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Uses device DNS settings'), findsOneWidget);
+    expect(find.text('Privacy Warning'), findsOneWidget);
     expect(
-      find.text(
-        'Direct connections follow the DNS settings from your device, VPN, or network.',
-      ),
+      find.text('Direct mode exposes your IP address to the selected server.'),
       findsOneWidget,
     );
+    expect(find.text('Name resolution'), findsNothing);
+    expect(find.text('Uses device DNS settings'), findsNothing);
     expect(find.textContaining('Not Private'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -146,12 +150,8 @@ void main() {
     );
     final statusRect = tester.getRect(find.text('Ready'));
     final actionRect = tester.getRect(find.text('Switch exit node'));
-    final routeRect = tester.getRect(
-      find.text('Attempting: Direct (no fallback bridges)'),
-    );
-
     expect(statusRect.left, greaterThan(titleRect.right));
-    expect(routeRect.left, greaterThan(descriptionRect.left));
+    expect(descriptionRect.left, lessThan(statusRect.left));
     expect((statusRect.center.dy - actionRect.center.dy).abs(), lessThan(8));
     expect(tester.takeException(), isNull);
     debugDefaultTargetPlatformOverride = null;
