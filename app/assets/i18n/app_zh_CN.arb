@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "安装程序已启动。关闭应用程序以完成更新...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "安装程序已启动。按照安装程序提示进行操作。仅在安装程序要求时关闭应用程序。",
   "Insufficient funds": "资金不足",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "可花费资金不足：需要 {needed} ARRR，当前有 {available} ARRR",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "可花费资金不足：需要 {needed} ARRR，当前有 {available} ARRR。另有 {pending} ARRR 待确认，1 次确认后即可花费。",
   "Internal change": "内部找零",
   "Internal transfer between your addresses. Net change equals the network fee.": "在您自己的地址之间转账。余额净变动等于网络手续费。",
   "Invalid ARRR swap fee.": "ARRR 兑换手续费无效。",

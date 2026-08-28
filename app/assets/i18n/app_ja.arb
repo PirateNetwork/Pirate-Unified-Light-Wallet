@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "インストーラーが起動しました。アップデートを終了するためにアプリを閉じています...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "インストーラーが起動しました。インストーラーのプロンプトに従います。インストーラーが要求した場合にのみアプリを閉じます。",
   "Insufficient funds": "資金不足",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "使用可能な資金が不足しています: {needed} ARRR が必要ですが、{available} ARRR があります",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "使用可能な資金が不足しています: {needed} ARRR が必要ですが、{available} ARRR を持っています。 {pending} ARRR は保留中であり、1 回の確認後に使用可能になります。",
   "Internal change": "内部のおつり",
   "Internal transfer between your addresses. Net change equals the network fee.": "住所間の内部転送。正味の変化はネットワーク料金と同じです。",
   "Invalid ARRR swap fee.": "無効な ARRR スワップ手数料です。",

@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "इंस्टॉलर लॉन्च किया गया. अपडेट ख़त्म करने के लिए ऐप बंद किया जा रहा है...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "इंस्टॉलर लॉन्च किया गया. इंस्टॉलर संकेतों का पालन करें. इंस्टॉलर के कहने पर ही ऐप बंद करें।",
   "Insufficient funds": "अपर्याप्त धन",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "अपर्याप्त व्यय योग्य निधि: {needed} ARRR की आवश्यकता है, {available} ARRR है",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "अपर्याप्त व्यय योग्य निधि: {needed} ARRR की आवश्यकता है, {available} ARRR है। {pending} ARRR लंबित है और 1 पुष्टि के बाद खर्च करने योग्य हो जाता है।",
   "Internal change": "आंतरिक वापसी राशि",
   "Internal transfer between your addresses. Net change equals the network fee.": "आपके पतों के बीच आंतरिक स्थानांतरण. शुद्ध परिवर्तन नेटवर्क शुल्क के बराबर होता है।",
   "Invalid ARRR swap fee.": "अमान्य ARRR स्वैप शुल्क।",

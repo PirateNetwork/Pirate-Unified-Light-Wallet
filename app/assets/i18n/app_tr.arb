@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "Yükleyici başlatıldı. Güncellemeyi tamamlamak için uygulama kapatılıyor...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "Yükleyici başlatıldı. Yükleyicinin talimatlarını izleyin. Uygulamayı yalnızca yükleyici sorarsa kapatın.",
   "Insufficient funds": "Yetersiz bakiye",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "Harcanabilir bakiye yetersiz: gereken {needed} ARRR, mevcut {available} ARRR",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "Harcanabilir bakiye yetersiz: gereken {needed} ARRR, mevcut {available} ARRR. {pending} ARRR beklemede ve 1 onaydan sonra harcanabilir olacak.",
   "Internal change": "Dahili para üstü",
   "Internal transfer between your addresses. Net change equals the network fee.": "Adresleriniz arasında dahili aktarım. Net bakiye değişimi ağ ücretine eşittir.",
   "Invalid ARRR swap fee.": "Geçersiz ARRR takas ücreti.",

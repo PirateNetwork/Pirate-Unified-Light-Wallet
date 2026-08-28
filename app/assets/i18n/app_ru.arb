@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "Установщик запущен. Закрытие приложения для завершения обновления...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "Установщик запущен. Следуйте подсказкам установщика. Закрывайте приложение только по запросу установщика.",
   "Insufficient funds": "Недостаточно средств",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "Недостаточно доступных средств: требуется {needed} ARRR, доступно {available} ARRR",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "Недостаточно доступных средств: требуется {needed} ARRR, доступно {available} ARRR. Еще {pending} ARRR ожидает подтверждения и станет доступно после 1 подтверждения.",
   "Internal change": "Внутренняя сдача",
   "Internal transfer between your addresses. Net change equals the network fee.": "Внутренний перевод между вашими адресами. Чистое изменение баланса равно сетевой комиссии.",
   "Invalid ARRR swap fee.": "Неверная комиссия за обмен ARRR.",

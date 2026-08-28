@@ -614,8 +614,6 @@
   "Installer launched. Closing app to finish update...": "Installer launched. Closing app to finish update...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "Installer launched. Follow the installer prompts. Only close the app if the installer asks.",
   "Insufficient funds": "Insufficient funds",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.",
   "Internal change": "Internal change",
   "Internal transfer between your addresses. Net change equals the network fee.": "Internal transfer between your addresses. Net change equals the network fee.",
   "Invalid ARRR swap fee.": "Invalid ARRR swap fee.",

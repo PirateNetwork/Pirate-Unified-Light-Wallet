@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "انسٹالر لانچ کیا گیا۔ اپ ڈیٹ مکمل کرنے کے لیے ایپ کو بند کیا جا رہا ہے...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "انسٹالر لانچ کیا گیا۔ انسٹالر کے اشارے پر عمل کریں۔ اگر انسٹالر پوچھے تو صرف ایپ کو بند کریں۔",
   "Insufficient funds": "ناکافی فنڈز",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "ناکافی خرچ کے قابل فنڈز: {needed} ARRR، {available} ARRR کی ضرورت ہے",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "ناکافی خرچ کے قابل فنڈز: {needed} ARRR، {available} ARRR کی ضرورت ہے۔ {pending} ARRR زیر التواء ہے اور 1 تصدیق کے بعد قابل خرچ ہو جاتا ہے۔",
   "Internal change": "اندرونی واپسی کی رقم",
   "Internal transfer between your addresses. Net change equals the network fee.": "آپ کے پتوں کے درمیان اندرونی منتقلی. نیٹ تبدیلی نیٹ ورک فیس کے برابر ہے۔",
   "Invalid ARRR swap fee.": "غلط ARRR سویپ فیس۔",

@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "설치 프로그램이 시작되었습니다. 업데이트를 완료하기 위해 앱을 닫는 중...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "설치 프로그램이 시작되었습니다. 설치 프로그램의 지시를 따릅니다. 설치 프로그램이 요청하는 경우에만 앱을 닫으십시오.",
   "Insufficient funds": "자금 부족",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "지출 가능한 자금 부족: {needed} ARRR 필요, {available} ARRR 보유",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "지출 가능한 자금 부족: {needed} ARRR 필요, {available} ARRR 보유. {pending} ARRR는 보류 중이며 1번 확인 후에 사용할 수 있게 됩니다.",
   "Internal change": "내부 반환 잔액",
   "Internal transfer between your addresses. Net change equals the network fee.": "귀하의 주소 간 내부 전송. 순 변화는 네트워크 수수료와 같습니다.",
   "Invalid ARRR swap fee.": "ARRR 스왑 수수료가 잘못되었습니다.",

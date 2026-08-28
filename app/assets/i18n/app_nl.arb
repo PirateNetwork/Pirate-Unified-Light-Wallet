@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "Installatieprogramma gestart. App sluiten om update te voltooien...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "Installatieprogramma gestart. Volg de aanwijzingen van het installatieprogramma. Sluit de app alleen als het installatieprogramma daarom vraagt.",
   "Insufficient funds": "Onvoldoende middelen",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "Onvoldoende besteedbare middelen: {needed} ARRR nodig, {available} ARRR",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "Onvoldoende besteedbare middelen: {needed} ARRR nodig, {available} ARRR. {pending} ARRR is in behandeling en wordt na 1 bevestiging besteedbaar.",
   "Internal change": "Intern wisselgeld",
   "Internal transfer between your addresses. Net change equals the network fee.": "Interne overdracht tussen uw adressen. De netto verandering is gelijk aan de netwerkkosten.",
   "Invalid ARRR swap fee.": "Ongeldige ARRR-swapkosten.",

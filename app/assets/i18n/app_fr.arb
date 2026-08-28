@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "Programme d'installation lancé. Fermeture de l'application pour terminer la mise à jour...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "Programme d'installation lancé. Suivez les invites du programme d'installation. Fermez l'application uniquement si le programme d'installation le demande.",
   "Insufficient funds": "Fonds insuffisants",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "Fonds disponibles insuffisants : besoin de {needed} ARRR, avoir {available} ARRR",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "Fonds disponibles insuffisants : besoin de {needed} ARRR, avoir {available} ARRR. {pending} ARRR est en attente et devient utilisable après 1 confirmation.",
   "Internal change": "Monnaie interne",
   "Internal transfer between your addresses. Net change equals the network fee.": "Transfert interne entre vos adresses. Le changement net est égal aux frais de réseau.",
   "Invalid ARRR swap fee.": "Frais d'échange ARRR non valides.",

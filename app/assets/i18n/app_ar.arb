@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "تم إطلاق برنامج التثبيت. جارٍ إغلاق التطبيق لإنهاء التحديث...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "تم إطلاق برنامج التثبيت. اتبع مطالبات المثبت. أغلق التطبيق فقط إذا طلب منك المثبت ذلك.",
   "Insufficient funds": "الأموال غير كافية",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "الأموال المتاحة للإنفاق غير كافية: المطلوب {needed} ARRR، والمتاح {available} ARRR",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "الأموال المتاحة للإنفاق غير كافية: المطلوب {needed} ARRR، والمتاح {available} ARRR. هناك {pending} ARRR معلّقة وستصبح قابلة للإنفاق بعد تأكيد واحد.",
   "Internal change": "الباقي الداخلي",
   "Internal transfer between your addresses. Net change equals the network fee.": "تحويل داخلي بين عناوينك. صافي تغير الرصيد يساوي رسوم الشبكة.",
   "Invalid ARRR swap fee.": "رسوم مقايضة ARRR غير صالحة.",

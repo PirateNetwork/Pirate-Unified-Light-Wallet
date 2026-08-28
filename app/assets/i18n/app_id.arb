@@ -586,8 +586,6 @@
   "Installer launched. Closing app to finish update...": "Pemasang (installer) diluncurkan. Menutup aplikasi untuk menyelesaikan pembaruan...",
   "Installer launched. Follow the installer prompts. Only close the app if the installer asks.": "Pemasang diluncurkan. Ikuti petunjuk pemasang. Hanya tutup aplikasi jika diminta oleh pemasang.",
   "Insufficient funds": "Dana tidak mencukupi",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR": "Dana yang dapat dibelanjakan tidak cukup: perlu {needed} ARRR, tersedia {available} ARRR",
-  "Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.": "Dana yang dapat dibelanjakan tidak cukup: perlu {needed} ARRR, tersedia {available} ARRR. Sebanyak {pending} ARRR sedang tertunda dan dapat dibelanjakan setelah 1 konfirmasi.",
   "Internal change": "Kembalian internal",
   "Internal transfer between your addresses. Net change equals the network fee.": "Transfer internal antar alamat Anda sendiri. Perubahan bersih sama dengan biaya jaringan.",
   "Invalid ARRR swap fee.": "Biaya swap ARRR tidak valid.",
