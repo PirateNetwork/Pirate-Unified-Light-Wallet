@@ -30,6 +30,24 @@ class _ReadyTorStatusNotifier extends TorStatusNotifier {
   TorStatusDetails build() => const TorStatusDetails(status: 'ready');
 }
 
+class _DirectTransportNotifier extends TransportConfigNotifier {
+  @override
+  TransportConfig build() => const TransportConfig(
+    mode: 'direct',
+    dnsProvider: 'cloudflare_doh',
+    socks5Config: <String, String?>{},
+    i2pEndpoint: '',
+    tlsPins: <Map<String, String>>[],
+    torBridge: TorBridgeConfig(
+      useBridges: false,
+      fallbackToBridges: false,
+      transport: 'snowflake',
+      bridgeLines: <String>[],
+      transportPath: null,
+    ),
+  );
+}
+
 void main() {
   testWidgets('keeps every transport choice readable at phone width', (
     tester,
@@ -56,6 +74,8 @@ void main() {
     expect(find.text('I2P'), findsOneWidget);
     expect(find.text('SOCKS5'), findsOneWidget);
     expect(find.text('Direct'), findsOneWidget);
+    expect(find.text('Resolved inside Tor'), findsOneWidget);
+    expect(find.text('System (Not Private)'), findsNothing);
     final exception = tester.takeException();
     expect(
       exception,
@@ -64,6 +84,37 @@ void main() {
           ? exception.toStringDeep()
           : '$exception',
     );
+  });
+
+  testWidgets('describes direct resolution without a privacy verdict', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          transportConfigProvider.overrideWith(_DirectTransportNotifier.new),
+          connectionStatusLevelProvider.overrideWithValue(
+            ConnectionStatusLevel.limited,
+          ),
+        ],
+        child: const MaterialApp(home: PrivacyShieldScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Uses device DNS settings'), findsOneWidget);
+    expect(
+      find.text(
+        'Direct connections follow the DNS settings from your device, VPN, or network.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Not Private'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('gives Tor status a balanced desktop hierarchy', (tester) async {
