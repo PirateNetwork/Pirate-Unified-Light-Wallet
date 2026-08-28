@@ -20,6 +20,10 @@ import '../../core/i18n/arb_text_localizer.dart';
 class KeyManagementScreen extends ConsumerStatefulWidget {
   const KeyManagementScreen({super.key});
 
+  static const Key seedAccountsCardKey = Key('seed-accounts-card');
+  static const Key importKeysCardKey = Key('import-keys-card');
+  static const Key walletKeysSectionKey = Key('wallet-keys-section');
+
   @override
   ConsumerState<KeyManagementScreen> createState() =>
       _KeyManagementScreenState();
@@ -273,6 +277,45 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
         1;
   }
 
+  Future<void> _showSeedAccountHelp() async {
+    final isHandset = PSpacing.isHandset(MediaQuery.sizeOf(context));
+
+    if (isHandset) {
+      await showModalBottomSheet<void>(
+        context: context,
+        useSafeArea: true,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: AppColors.backgroundElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(PSpacing.radiusXL),
+          ),
+        ),
+        builder: (sheetContext) =>
+            _SeedAccountHelp(onClose: () => Navigator.of(sheetContext).pop()),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      barrierColor: AppColors.backgroundOverlay,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: AppColors.backgroundElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(PSpacing.radiusXL),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: _SeedAccountHelp(
+            onClose: () => Navigator.of(dialogContext).pop(),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<bool> _confirmSeedAccountAddition({
     required int count,
     required int firstIndex,
@@ -292,82 +335,12 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     return await showDialog<bool>(
           context: context,
           barrierColor: AppColors.backgroundOverlay,
-          builder: (dialogContext) => Dialog(
-            backgroundColor: AppColors.backgroundElevated,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(PSpacing.radiusXL),
-            ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Padding(
-                padding: EdgeInsets.all(PSpacing.dialogPadding),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.accentPrimary.withValues(
-                              alpha: 0.12,
-                            ),
-                            borderRadius: BorderRadius.circular(
-                              PSpacing.radiusMD,
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.account_tree_outlined,
-                            color: AppColors.accentPrimary,
-                          ),
-                        ),
-                        SizedBox(width: PSpacing.sm),
-                        Expanded(
-                          child: Text(title, style: PTypography.heading4()),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: PSpacing.md),
-                    Text(
-                      "{range} will be derived from this wallet's existing seed phrase. This does not create a new seed."
-                          .trArgs({'range': range}),
-                      style: PTypography.bodyMedium(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    SizedBox(height: PSpacing.sm),
-                    Text(
-                      'The wallet will then rescan from birthday block {height} using verified cached blocks when available.'
-                          .trArgs({'height': birthdayHeight}),
-                      style: PTypography.bodySmall(
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                    SizedBox(height: PSpacing.lg),
-                    Wrap(
-                      alignment: WrapAlignment.end,
-                      spacing: PSpacing.sm,
-                      runSpacing: PSpacing.sm,
-                      children: [
-                        PButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(false),
-                          variant: PButtonVariant.ghost,
-                          child: Text('Cancel'.tr),
-                        ),
-                        PButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(true),
-                          child: Text('Add and rescan'.tr),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          builder: (dialogContext) => _SeedAccountConfirmation(
+            title: title,
+            range: range,
+            birthdayHeight: birthdayHeight,
+            onCancel: () => Navigator.of(dialogContext).pop(false),
+            onConfirm: () => Navigator.of(dialogContext).pop(true),
           ),
         ) ??
         false;
@@ -399,7 +372,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
           ? '#${added.first}'
           : '#${added.first}–#${added.last}';
       _showSnack(
-        'Seed account(s) {accounts} added. Historical rescan started.'.trArgs({
+        'Accounts {accounts} added. Scan started.'.trArgs({
           'accounts': addedLabel,
         }),
       );
@@ -436,25 +409,30 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       required int count,
     }) {
       final enabled = !isDecoy && !busy;
+      final button = Semantics(
+        button: true,
+        enabled: enabled,
+        label: label,
+        hint: tooltip,
+        child: PButton(
+          onPressed: enabled ? () => _addSeedAccounts(keys, count) : null,
+          fullWidth: true,
+          variant: count == 1
+              ? PButtonVariant.primary
+              : PButtonVariant.secondary,
+          icon: Icon(icon),
+          child: Text(label),
+        ),
+      );
+      if (PSpacing.isHandset(MediaQuery.sizeOf(context))) {
+        return button;
+      }
       return Tooltip(
         message: tooltip,
+        constraints: const BoxConstraints(maxWidth: 280),
         waitDuration: const Duration(milliseconds: 350),
-        showDuration: const Duration(seconds: 8),
-        child: Semantics(
-          button: true,
-          enabled: enabled,
-          label: label,
-          hint: tooltip,
-          child: PButton(
-            onPressed: enabled ? () => _addSeedAccounts(keys, count) : null,
-            fullWidth: true,
-            variant: count == 1
-                ? PButtonVariant.primary
-                : PButtonVariant.secondary,
-            icon: Icon(icon),
-            child: Text(label),
-          ),
-        ),
+        showDuration: const Duration(seconds: 5),
+        child: button,
       );
     }
 
@@ -462,15 +440,16 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       container: true,
       label: 'Seed account management'.tr,
       child: PCard(
+        key: KeyManagementScreen.seedAccountsCardKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: AppColors.accentPrimary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(PSpacing.radiusMD),
@@ -482,22 +461,25 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 ),
                 SizedBox(width: PSpacing.sm),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Seed accounts'.tr, style: PTypography.heading4()),
-                      SizedBox(height: PSpacing.xxs),
-                      Text(
-                        'A seed can hold funds in separate numbered accounts. Add them in order if another wallet used more than the default account.'
-                            .tr,
-                        style: PTypography.bodySmall(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Seed accounts'.tr,
+                    style: PTypography.heading4(),
                   ),
                 ),
-                SizedBox(width: PSpacing.sm),
+              ],
+            ),
+            SizedBox(height: PSpacing.sm),
+            Text(
+              'Account 0 is the standard account. Add another only if you used a different account number in another wallet.'
+                  .tr,
+              style: PTypography.bodyMedium(color: AppColors.textSecondary),
+            ),
+            SizedBox(height: PSpacing.md),
+            Wrap(
+              spacing: PSpacing.sm,
+              runSpacing: PSpacing.xs,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
                 Semantics(
                   label: 'Next seed account is {index}'.trArgs({
                     'index': nextIndex,
@@ -510,15 +492,21 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.backgroundElevated,
                       borderRadius: BorderRadius.circular(PSpacing.radiusFull),
-                      border: Border.all(color: AppColors.borderSubtle),
+                      border: Border.all(color: AppColors.borderDefault),
                     ),
                     child: Text(
-                      'Next #{index}'.trArgs({'index': nextIndex}),
+                      'Next account #{index}'.trArgs({'index': nextIndex}),
                       style: PTypography.labelSmall(
                         color: AppColors.textSecondary,
                       ),
                     ),
                   ),
+                ),
+                PTextButton(
+                  label: 'How seed accounts work'.tr,
+                  leadingIcon: Icons.info_outline,
+                  compact: true,
+                  onPressed: _showSeedAccountHelp,
                 ),
               ],
             ),
@@ -527,17 +515,15 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
               builder: (context, constraints) {
                 final addOne = action(
                   label: 'Add next account'.tr,
-                  tooltip:
-                      'Adds the next numbered account from your current seed, then rescans for its funds. The account stays even if it is empty.'
-                          .tr,
+                  tooltip: 'Add account #{index} and scan for its transactions.'
+                      .trArgs({'index': nextIndex}),
                   icon: Icons.add_circle_outline,
                   count: 1,
                 );
                 final addFive = action(
                   label: 'Add 5 accounts'.tr,
-                  tooltip:
-                      'Adds five numbered accounts in order. It does not stop at empty accounts, so you can repeat this to reach a higher account number.'
-                          .tr,
+                  tooltip: 'Add accounts #{first}–#{last} and scan for their transactions.'
+                      .trArgs({'first': nextIndex, 'last': nextIndex + 4}),
                   icon: Icons.playlist_add,
                   count: 5,
                 );
@@ -574,7 +560,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                     SizedBox(width: PSpacing.sm),
                     Expanded(
                       child: Text(
-                        'Adding accounts and preparing a historical rescan…'.tr,
+                        'Adding accounts and starting the scan…'.tr,
                         style: PTypography.bodySmall(
                           color: AppColors.textSecondary,
                         ),
@@ -590,36 +576,68 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     );
   }
 
-  Widget _buildViewingKeyCard({required bool isDecoy}) {
+  Widget _buildImportKeysCard({required bool isDecoy}) {
     return PCard(
+      key: KeyManagementScreen.importKeysCardKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Key imports'.tr, style: PTypography.heading4()),
-          SizedBox(height: PSpacing.xs),
-          Text(
-            'Import viewing keys for view only wallets or add a private key.'
-                .tr,
-            style: PTypography.bodySmall(color: AppColors.textSecondary),
-          ),
-          SizedBox(height: PSpacing.md),
-          Wrap(
-            spacing: PSpacing.sm,
-            runSpacing: PSpacing.sm,
+          Row(
             children: [
-              PButton(
-                onPressed: isDecoy
-                    ? null
-                    : () => context.push('/settings/keys/import'),
-                variant: PButtonVariant.secondary,
-                child: Text('Import private key'.tr),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.accentSecondary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+                ),
+                child: Icon(
+                  Icons.key_outlined,
+                  color: AppColors.accentSecondary,
+                ),
               ),
-              PButton(
-                onPressed: isDecoy ? null : _showImportViewingKeyDialog,
-                variant: PButtonVariant.secondary,
-                child: Text('Import viewing key'.tr),
+              SizedBox(width: PSpacing.sm),
+              Expanded(
+                child: Text('Import keys'.tr, style: PTypography.heading4()),
               ),
             ],
+          ),
+          SizedBox(height: PSpacing.md),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final spending = _ImportKeyAction(
+                icon: Icons.key,
+                title: 'Spending Key'.tr,
+                description: 'Add an existing key to this wallet'.tr,
+                enabled: !isDecoy,
+                onTap: () => context.push('/settings/keys/import'),
+              );
+              final viewing = _ImportKeyAction(
+                icon: Icons.visibility_outlined,
+                title: 'Viewing Key'.tr,
+                description:
+                    'Create a view-only wallet to view incoming activity.'.tr,
+                enabled: !isDecoy,
+                onTap: _showImportViewingKeyDialog,
+              );
+              if (constraints.maxWidth < 600) {
+                return Column(
+                  children: [
+                    spending,
+                    SizedBox(height: PSpacing.sm),
+                    viewing,
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: spending),
+                  SizedBox(width: PSpacing.sm),
+                  Expanded(child: viewing),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -635,17 +653,8 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     return PScaffold(
       appBar: PAppBar(
         title: 'Keys & Addresses'.tr,
-        subtitle: 'Manage imported keys and addresses'.tr,
+        subtitle: 'Manage keys & addresses'.tr,
         showBackButton: true,
-        actions: [
-          IconButton(
-            tooltip: 'Import spending key'.tr,
-            icon: const Icon(Icons.add),
-            onPressed: walletId == null || isDecoy
-                ? null
-                : () => context.push('/settings/keys/import'),
-          ),
-        ],
       ),
       body: walletId == null
           ? _buildEmptyWallet()
@@ -664,38 +673,117 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 final hasSeed = keys.any((key) => key.seedAccountIndex == 0);
                 return RefreshIndicator(
                   onRefresh: () async => _refresh(),
-                  child: ListView(
-                    padding: PSpacing.screenPadding(
-                      MediaQuery.of(context).size.width,
-                    ),
-                    children: [
-                      if (hasSeed) ...[
-                        _buildSeedAccountsCard(keys: keys, isDecoy: isDecoy),
-                        SizedBox(height: PSpacing.lg),
-                      ],
-                      _buildViewingKeyCard(isDecoy: isDecoy),
-                      if (keys.isEmpty) ...[
-                        SizedBox(height: PSpacing.lg),
-                        _buildNoKeysCard(),
-                      ] else ...[
-                        SizedBox(height: PSpacing.lg),
-                        ...keys.map(
-                          (key) => Padding(
-                            padding: EdgeInsets.only(bottom: PSpacing.md),
-                            child: _KeyCard(
-                              keyInfo: key,
-                              onTap: () => context.push(
-                                '/settings/keys/detail?keyId=${key.id}',
+                  child: LayoutBuilder(
+                    builder: (context, _) {
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: PSpacing.screenPadding(screenWidth),
+                        children: [
+                          Align(
+                            alignment: Alignment.topCenter,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 1180),
+                              child: LayoutBuilder(
+                                builder: (context, content) {
+                                  final useColumns =
+                                      hasSeed && content.maxWidth >= 900;
+                                  final seedAccounts = _buildSeedAccountsCard(
+                                    keys: keys,
+                                    isDecoy: isDecoy,
+                                  );
+                                  final imports = _buildImportKeysCard(
+                                    isDecoy: isDecoy,
+                                  );
+                                  final overview = useColumns
+                                      ? Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              flex: 3,
+                                              child: seedAccounts,
+                                            ),
+                                            SizedBox(width: PSpacing.lg),
+                                            Expanded(flex: 2, child: imports),
+                                          ],
+                                        )
+                                      : Column(
+                                          children: [
+                                            if (hasSeed) ...[
+                                              seedAccounts,
+                                              SizedBox(height: PSpacing.lg),
+                                            ],
+                                            imports,
+                                          ],
+                                        );
+
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      overview,
+                                      SizedBox(height: PSpacing.xl),
+                                      if (keys.isEmpty)
+                                        _buildNoKeysCard()
+                                      else
+                                        _buildWalletKeysSection(keys),
+                                    ],
+                                  );
+                                },
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ],
+                        ],
+                      );
+                    },
                   ),
                 );
               },
             ),
+    );
+  }
+
+  Widget _buildWalletKeysSection(List<KeyGroupInfo> keys) {
+    return Semantics(
+      key: KeyManagementScreen.walletKeysSectionKey,
+      container: true,
+      label: 'Keys'.tr,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Keys'.tr, style: PTypography.heading3()),
+          SizedBox(height: PSpacing.md),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final useGrid = keys.length > 1 && constraints.maxWidth >= 760;
+              final itemWidth = useGrid
+                  ? (constraints.maxWidth - PSpacing.md) / 2
+                  : constraints.maxWidth.clamp(0, 760).toDouble();
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Wrap(
+                  spacing: PSpacing.md,
+                  runSpacing: PSpacing.md,
+                  children: keys
+                      .map(
+                        (key) => SizedBox(
+                          width: itemWidth,
+                          child: _KeyCard(
+                            keyInfo: key,
+                            onTap: () => context.push(
+                              '/settings/keys/detail?keyId=${key.id}',
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -760,6 +848,346 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   }
 }
 
+class _SeedAccountConfirmation extends StatelessWidget {
+  const _SeedAccountConfirmation({
+    required this.title,
+    required this.range,
+    required this.birthdayHeight,
+    required this.onCancel,
+    required this.onConfirm,
+  });
+
+  final String title;
+  final String range;
+  final int birthdayHeight;
+  final VoidCallback onCancel;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final isHandset = PSpacing.isHandset(MediaQuery.sizeOf(context));
+    final primaryAction = PButton(
+      onPressed: onConfirm,
+      fullWidth: isHandset,
+      child: Text('Add and scan'.tr),
+    );
+    final cancelAction = PTextButton(
+      label: 'Cancel'.tr,
+      onPressed: onCancel,
+      variant: PTextButtonVariant.neutral,
+      fullWidth: isHandset,
+    );
+
+    return Dialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: isHandset ? PSpacing.md : PSpacing.xl,
+        vertical: PSpacing.lg,
+      ),
+      backgroundColor: AppColors.backgroundElevated,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(PSpacing.radiusXL),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: EdgeInsets.all(PSpacing.dialogPadding),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.accentPrimary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+                    ),
+                    child: Icon(
+                      Icons.account_tree_outlined,
+                      color: AppColors.accentPrimary,
+                    ),
+                  ),
+                  SizedBox(width: PSpacing.sm),
+                  Expanded(child: Text(title, style: PTypography.heading4())),
+                ],
+              ),
+              SizedBox(height: PSpacing.lg),
+              _ConfirmationDetail(
+                icon: Icons.key_outlined,
+                label: range,
+                detail: 'Recovery phrase'.tr,
+              ),
+              SizedBox(height: PSpacing.sm),
+              _ConfirmationDetail(
+                icon: Icons.manage_search_outlined,
+                label: 'Scan starts at block {height}'.trArgs({
+                  'height': birthdayHeight,
+                }),
+                detail: 'Scanning for transactions'.tr,
+              ),
+              SizedBox(height: PSpacing.xl),
+              if (isHandset) ...[
+                primaryAction,
+                SizedBox(height: PSpacing.xs),
+                cancelAction,
+              ] else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    cancelAction,
+                    SizedBox(width: PSpacing.sm),
+                    primaryAction,
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConfirmationDetail extends StatelessWidget {
+  const _ConfirmationDetail({
+    required this.icon,
+    required this.label,
+    required this.detail,
+  });
+
+  final IconData icon;
+  final String label;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(PSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: PSpacing.iconMD, color: AppColors.textSecondary),
+          SizedBox(width: PSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: PTypography.labelLarge(color: AppColors.textPrimary),
+                ),
+                SizedBox(height: PSpacing.xxs),
+                Text(
+                  detail,
+                  style: PTypography.bodySmall(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SeedAccountHelp extends StatelessWidget {
+  const _SeedAccountHelp({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        PSpacing.dialogPadding,
+        PSpacing.sm,
+        PSpacing.dialogPadding,
+        PSpacing.dialogPadding,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.account_tree_outlined, color: AppColors.accentPrimary),
+              SizedBox(width: PSpacing.sm),
+              Expanded(
+                child: Text(
+                  'How seed accounts work'.tr,
+                  style: PTypography.heading4(),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: PSpacing.lg),
+          _HelpPoint(
+            text: "Every account comes from this wallet's recovery phrase.".tr,
+          ),
+          _HelpPoint(
+            text: 'Each account has its own Sapling and Ironwood keys.'.tr,
+          ),
+          _HelpPoint(
+            text: 'After you add an account, the wallet scans for its past transactions.'
+                .tr,
+          ),
+          _HelpPoint(
+            text: 'Accounts are added in order and remain even when empty.'.tr,
+          ),
+          SizedBox(height: PSpacing.md),
+          PTextButton(
+            label: 'Close'.tr,
+            onPressed: onClose,
+            variant: PTextButtonVariant.neutral,
+            fullWidth: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HelpPoint extends StatelessWidget {
+  const _HelpPoint({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: PSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 3),
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: AppColors.accentPrimary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.check,
+              size: PSpacing.iconSM,
+              color: AppColors.accentPrimary,
+            ),
+          ),
+          SizedBox(width: PSpacing.sm),
+          Expanded(
+            child: Text(
+              text,
+              style: PTypography.bodyMedium(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImportKeyAction extends StatelessWidget {
+  const _ImportKeyAction({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = enabled ? AppColors.textPrimary : AppColors.textDisabled;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: title,
+      hint: description,
+      child: Material(
+        color: AppColors.backgroundElevated,
+        borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 82),
+            padding: EdgeInsets.all(PSpacing.sm),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+              border: Border.all(color: AppColors.borderSubtle),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.accentSecondary.withValues(
+                      alpha: enabled ? 0.12 : 0.05,
+                    ),
+                    borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: PSpacing.iconMD,
+                    color: enabled
+                        ? AppColors.accentSecondary
+                        : AppColors.textDisabled,
+                  ),
+                ),
+                SizedBox(width: PSpacing.sm),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: PTypography.labelLarge(color: foreground),
+                      ),
+                      SizedBox(height: PSpacing.xxs),
+                      Text(
+                        description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: PTypography.bodySmall(
+                          color: enabled
+                              ? AppColors.textSecondary
+                              : AppColors.textDisabled,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: PSpacing.xs),
+                Icon(
+                  Icons.chevron_right,
+                  color: enabled
+                      ? AppColors.textTertiary
+                      : AppColors.textDisabled,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _KeyCard extends StatelessWidget {
   const _KeyCard({required this.keyInfo, required this.onTap});
 
@@ -768,62 +1196,104 @@ class _KeyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                keyInfo.spendable ? Icons.key : Icons.visibility_outlined,
-                color: keyInfo.spendable
-                    ? AppColors.accentPrimary
-                    : AppColors.textSecondary,
-              ),
-              SizedBox(width: PSpacing.sm),
-              Expanded(
-                child: Text(
-                  _displayKeyLabel(keyInfo),
-                  style: PTypography.bodyLarge(),
+    final title = _displayKeyLabel(keyInfo);
+    final type = _keyTypeLabel(keyInfo);
+    return Semantics(
+      button: true,
+      label: title,
+      hint: 'Key details'.tr,
+      child: PCard(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: keyInfo.spendable
+                        ? AppColors.accentPrimary.withValues(alpha: 0.12)
+                        : AppColors.warningBackground,
+                    borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+                  ),
+                  child: Icon(
+                    keyInfo.spendable ? Icons.key : Icons.visibility_outlined,
+                    color: keyInfo.spendable
+                        ? AppColors.accentPrimary
+                        : AppColors.warning,
+                  ),
                 ),
-              ),
-              Icon(Icons.chevron_right, color: AppColors.textTertiary),
-            ],
-          ),
-          SizedBox(height: PSpacing.sm),
-          Text(
-            _keyTypeLabel(keyInfo),
-            style: PTypography.bodySmall(color: AppColors.textSecondary),
-          ),
-          SizedBox(height: PSpacing.sm),
-          Wrap(
-            spacing: PSpacing.xs,
-            runSpacing: PSpacing.xs,
-            children: [
-              if (keyInfo.seedAccountIndex case final accountIndex?)
-                _chip(
-                  'Account #{index}'.trArgs({'index': accountIndex}),
-                  AppColors.accentPrimary.withValues(alpha: 0.12),
-                  AppColors.accentPrimary,
+                SizedBox(width: PSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: PTypography.bodyLarge()),
+                      SizedBox(height: PSpacing.xxs),
+                      Text(
+                        type,
+                        style: PTypography.bodySmall(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              if (keyInfo.hasSapling)
-                _chip('Sapling', AppColors.infoBackground, AppColors.info),
-              if (keyInfo.hasIronwood)
-                _chip(
-                  'Ironwood',
-                  AppColors.successBackground,
-                  AppColors.success,
+                SizedBox(width: PSpacing.xs),
+                Icon(Icons.chevron_right, color: AppColors.textTertiary),
+              ],
+            ),
+            SizedBox(height: PSpacing.md),
+            Wrap(
+              spacing: PSpacing.xs,
+              runSpacing: PSpacing.xs,
+              children: [
+                if (keyInfo.seedAccountIndex case final accountIndex?)
+                  _chip(
+                    'Account #{index}'.trArgs({'index': accountIndex}),
+                    AppColors.accentPrimary.withValues(alpha: 0.12),
+                    AppColors.accentPrimary,
+                  ),
+                if (keyInfo.hasSapling)
+                  _chip('Sapling', AppColors.infoBackground, AppColors.info),
+                if (keyInfo.hasIronwood)
+                  _chip(
+                    'Ironwood',
+                    AppColors.successBackground,
+                    AppColors.success,
+                  ),
+                if (!keyInfo.spendable)
+                  _chip(
+                    'View only'.tr,
+                    AppColors.warningBackground,
+                    AppColors.warning,
+                  ),
+              ],
+            ),
+            SizedBox(height: PSpacing.sm),
+            Row(
+              children: [
+                Icon(
+                  Icons.history_outlined,
+                  size: PSpacing.iconSM,
+                  color: AppColors.textTertiary,
                 ),
-              if (!keyInfo.spendable)
-                _chip(
-                  'View only'.tr,
-                  AppColors.warningBackground,
-                  AppColors.warning,
+                SizedBox(width: PSpacing.xs),
+                Expanded(
+                  child: Text(
+                    'Birthday {height}'.trArgs({
+                      'height': keyInfo.birthdayHeight,
+                    }),
+                    style: PTypography.caption(color: AppColors.textTertiary),
+                  ),
                 ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -854,22 +1324,11 @@ class _KeyCard extends StatelessWidget {
   }
 
   String _keyTypeLabel(KeyGroupInfo key) {
-    final accountIndex = key.seedAccountIndex;
-    if (key.keyType == KeyTypeInfo.seed && accountIndex != null) {
-      return '{type} | Birthday {height}'.trArgs({
-        'type': 'Seed phrase account #{index}'.trArgs({'index': accountIndex}),
-        'height': key.birthdayHeight,
-      });
-    }
-    final type = switch (key.keyType) {
-      KeyTypeInfo.seed => 'Seed phrase keys'.tr,
+    return switch (key.keyType) {
+      KeyTypeInfo.seed => 'Recovery phrase'.tr,
       KeyTypeInfo.importedSpending => 'Imported spending key'.tr,
       KeyTypeInfo.importedViewing => 'Imported viewing key'.tr,
     };
-    return '{type} | Birthday {height}'.trArgs({
-      'type': type,
-      'height': key.birthdayHeight,
-    });
   }
 
   Widget _chip(String text, Color background, Color foreground) {

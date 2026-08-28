@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
@@ -376,7 +377,7 @@ class _ImportSaplingViewingKeyTabState
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Create a view only wallet to view incoming activity.'.tr,
+            'Create a view-only wallet to view incoming activity.'.tr,
             style: PirateTypography.body.copyWith(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),
