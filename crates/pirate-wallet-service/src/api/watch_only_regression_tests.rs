@@ -67,6 +67,15 @@ fn watch_only_wallet_supports_balance_listing_and_address_generation() {
     );
     let key_id = groups[0].id;
 
+    let account_error = add_next_seed_accounts(watch_wallet.clone(), 1)
+        .expect_err("a viewing key must not derive sibling seed accounts");
+    assert!(
+        account_error
+            .to_string()
+            .contains("Seed accounts are unavailable for view-only wallets"),
+        "unexpected account-derivation error: {account_error}"
+    );
+
     // Regression: get_accounts (list_address_balances) used to fail here.
     // A fresh wallet seeds its index-0 addresses with zero balances rather
     // than returning an empty list, so check amounts, not list emptiness.
