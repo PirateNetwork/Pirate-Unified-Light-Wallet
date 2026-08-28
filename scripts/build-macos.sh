@@ -42,7 +42,8 @@ flutter_build_macos_release() {
     if OVERRIDE_DEFI_API_DOWNLOAD=false \
       FLUTTER_XCODE_CODE_SIGNING_ALLOWED=NO \
       FLUTTER_XCODE_CODE_SIGNING_REQUIRED=NO \
-      flutter build macos --release; then
+      flutter build macos --release \
+        --dart-define="PIRATE_RELEASE_TAG=${GITHUB_REF_NAME:-}"; then
       return 0
     else
       status=$?
@@ -607,6 +608,20 @@ else
   log "Re-signing macOS app ad-hoc..."
   adhoc_sign_app_bundle "$APP_PATH"
 fi
+
+# Authenticate the executable users actually run, independently of the DMG.
+# This manifest is folded into the release's PGP-signed verification bundle.
+APP_EXECUTABLE="$APP_PATH/Contents/MacOS/Pirate Unified Wallet"
+[ -f "$APP_EXECUTABLE" ] || autofail "App executable not found: $APP_EXECUTABLE"
+mkdir -p "$PROJECT_ROOT/dist/macos"
+if [ "$SIGNED" = "true" ]; then
+  PAYLOAD_MANIFEST="$PROJECT_ROOT/dist/macos/installed-payload-macos.txt"
+else
+  PAYLOAD_MANIFEST="$PROJECT_ROOT/dist/macos/installed-payload-macos-unsigned.txt"
+fi
+app_executable_hash="$(shasum -a 256 "$APP_EXECUTABLE" | awk '{print $1}')"
+printf '%s  %s\n' "$app_executable_hash" 'Pirate Unified Wallet' \
+  > "$PAYLOAD_MANIFEST"
 
 # Create DMG
 log "Creating DMG..."

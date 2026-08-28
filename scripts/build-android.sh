@@ -123,7 +123,8 @@ bash "$SCRIPT_DIR/prepare-flutter-build.sh" android
 # Build based on type
 if [ "$BUILD_TYPE" = "bundle" ]; then
     log "Building Android App Bundle..."
-    flutter build appbundle --release --target-platform="$ANDROID_TARGET_PLATFORMS"
+    flutter build appbundle --release --target-platform="$ANDROID_TARGET_PLATFORMS" \
+        --dart-define="PIRATE_RELEASE_TAG=${GITHUB_REF_NAME:-}"
     
     OUTPUT_FILE="$APP_DIR/build/app/outputs/bundle/release/app-release.aab"
     OUTPUT_NAME_BASE="pirate-unified-wallet-android"
@@ -132,7 +133,8 @@ else
     APK_MODE="split"
     APK_FILES=()
     if [ "$ANDROID_SPLIT_PER_ABI" = "1" ]; then
-        if ! flutter build apk --release --split-per-abi --target-platform="$ANDROID_TARGET_PLATFORMS"; then
+        if ! flutter build apk --release --split-per-abi --target-platform="$ANDROID_TARGET_PLATFORMS" \
+            --dart-define="PIRATE_RELEASE_TAG=${GITHUB_REF_NAME:-}"; then
             warn "Split APK build failed."
             if [ "$ANDROID_GRADLE_STACKTRACE" = "1" ]; then
                 warn "Retrying split build with Gradle --stacktrace --info..."
@@ -143,7 +145,8 @@ else
         fi
     else
         APK_MODE="arm64"
-        flutter build apk --release --target-platform=android-arm64
+        flutter build apk --release --target-platform=android-arm64 \
+            --dart-define="PIRATE_RELEASE_TAG=${GITHUB_REF_NAME:-}"
     fi
     
     if [ "$APK_MODE" = "split" ]; then

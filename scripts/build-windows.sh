@@ -27,7 +27,8 @@ warn() {
 flutter_build_windows_release() {
     local status=1
     for attempt in 1 2 3; do
-        if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build windows --release; then
+        if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build windows --release \
+            --dart-define="PIRATE_RELEASE_TAG=${GITHUB_REF_NAME:-}"; then
             return 0
         else
             status=$?
@@ -386,12 +387,15 @@ if [ -f "$INSTALLER_OUTPUT_NAME" ]; then
 fi
 sha256sum "$PORTABLE_OUTPUT_NAME" > "$PORTABLE_OUTPUT_NAME.sha256"
 
-# Also publish checksums for top-level runtime executables so in-app
-# verification can compare directly against a running binary (e.g. app.exe).
-while IFS= read -r -d '' exe; do
-    exe_name="$(basename "$exe")"
-    sha256sum "$exe" | awk '{print $1}' > "$OUTPUT_DIR/$exe_name.sha256"
-done < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*.exe" -print0)
+# Record the installed executable separately from distribution-package hashes.
+# The release signing step authenticates this manifest for in-app verification.
+runtime_executable="$RELEASE_DIR/app.exe"
+if [ ! -f "$runtime_executable" ]; then
+    error "Installed Windows executable not found: $runtime_executable"
+fi
+runtime_hash="$(sha256sum "$runtime_executable" | awk '{print $1}')"
+printf '%s  %s\n' "$runtime_hash" 'app.exe' \
+    > "$OUTPUT_DIR/installed-payload-windows.txt"
 
 log "Build complete!"
 if [ -f "$INSTALLER_OUTPUT_NAME" ]; then

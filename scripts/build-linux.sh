@@ -37,7 +37,8 @@ warn() {
 flutter_build_linux_release() {
     local status=1
     for attempt in 1 2 3; do
-        if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build linux --release; then
+        if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build linux --release \
+            --dart-define="PIRATE_RELEASE_TAG=${GITHUB_REF_NAME:-}"; then
             return 0
         else
             status=$?
@@ -229,6 +230,12 @@ python3 "$SCRIPT_DIR/verify_linux_glibc.py" \
 
 OUTPUT_DIR="$PROJECT_ROOT/dist/linux"
 mkdir -p "$OUTPUT_DIR"
+
+runtime_executable="$BUNDLE_DIR/pirate_unified_wallet"
+[ -f "$runtime_executable" ] || error "Installed Linux executable not found: $runtime_executable"
+runtime_hash="$(sha256sum "$runtime_executable" | awk '{print $1}')"
+printf '%s  %s\n' "$runtime_hash" 'pirate_unified_wallet' \
+    > "$OUTPUT_DIR/installed-payload-linux.txt"
 
 build_appimage() {
     log "Creating AppImage..."

@@ -252,7 +252,8 @@ run_xcodebuild_with_retry() {
 
 build_unsigned_flutter_ios_app() {
     log "Preparing Flutter iOS project configuration..."
-    flutter build ios --release --no-codesign --config-only
+    flutter build ios --release --no-codesign --config-only \
+        --dart-define="PIRATE_RELEASE_TAG=${GITHUB_REF_NAME:-}"
 
     local workspace_path="$IOS_DIR/Runner.xcworkspace"
     if [ ! -d "$workspace_path" ]; then
