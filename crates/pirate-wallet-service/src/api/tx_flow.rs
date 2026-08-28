@@ -264,50 +264,60 @@ pub(super) fn auto_select_spend_key_id_for_amount(
     required_total: u64,
     anchors: SpendSelectionAnchors,
 ) -> Result<Option<i64>> {
-    let spendable_keys = repo
-        .get_account_keys(account_id)?
-        .into_iter()
-        .filter(|key| key.spendable && key.sapling_extsk.is_some())
-        .filter_map(|key| key.id)
-        .collect::<HashSet<_>>();
+    let account_keys = repo.get_account_keys(account_id)?;
+    let selectable_notes = load_selectable_notes_for_send(repo, account_id, anchors, None, None)?;
+    Ok(choose_auto_spend_key_id_for_amount(
+        &account_keys,
+        &selectable_notes,
+        required_total,
+    ))
+}
 
-    if spendable_keys.is_empty() {
-        return Ok(None);
+fn account_key_can_spend_note(
+    key: &AccountKey,
+    note: &pirate_core::selection::SelectableNote,
+) -> bool {
+    if !key.spendable {
+        return false;
     }
 
+    match note.note_type {
+        pirate_core::selection::NoteType::Sapling => key.sapling_extsk.is_some(),
+        pirate_core::selection::NoteType::Ironwood => key.orchard_extsk.is_some(),
+    }
+}
+
+pub(super) fn choose_auto_spend_key_id_for_amount(
+    account_keys: &[AccountKey],
+    selectable_notes: &[pirate_core::selection::SelectableNote],
+    required_total: u64,
+) -> Option<i64> {
+    let spendable_keys = account_keys
+        .iter()
+        .filter_map(|key| key.id.map(|key_id| (key_id, key)))
+        .collect::<HashMap<_, _>>();
     let mut totals_by_key = HashMap::<i64, u64>::new();
-    for key_id in spendable_keys {
-        let notes =
-            load_selectable_notes_for_send(repo, account_id, anchors, Some(vec![key_id]), None)?;
-        let total = notes
-            .iter()
-            .fold(0u64, |acc, note| acc.saturating_add(note.value));
-        if total > 0 {
-            totals_by_key.insert(key_id, total);
-        }
-    }
 
-    if totals_by_key.is_empty() {
-        return Ok(None);
+    for note in selectable_notes {
+        let Some(key_id) = note.key_id else {
+            continue;
+        };
+        let Some(key) = spendable_keys.get(&key_id) else {
+            continue;
+        };
+        if !account_key_can_spend_note(key, note) {
+            continue;
+        }
+        let total = totals_by_key.entry(key_id).or_insert(0);
+        *total = total.saturating_add(note.value);
     }
 
     let mut qualifying = totals_by_key
-        .iter()
-        .filter_map(|(key_id, total)| {
-            if *total >= required_total {
-                Some((*key_id, *total))
-            } else {
-                None
-            }
-        })
+        .into_iter()
+        .filter(|(_, total)| *total >= required_total)
         .collect::<Vec<_>>();
-
-    if qualifying.is_empty() {
-        return Ok(None);
-    }
-
     qualifying.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
-    Ok(Some(qualifying[0].0))
+    qualifying.first().map(|(key_id, _)| *key_id)
 }
 
 pub(super) fn note_balances_by_key_id(
@@ -741,15 +751,20 @@ fn build_tx_internal(
         address_ids_filter.as_deref(),
     )?;
     let mut effective_key_ids_filter = key_ids_filter.clone();
+    let mut auto_selectable_notes = None;
     if key_ids_filter.is_none() && address_ids_filter.is_none() {
+        // Choose and build from one stable note snapshot. This also avoids one
+        // full database scan per key group when Auto is selected.
+        let account_keys = repo.get_account_keys(secret.account_id)?;
+        let selectable_notes =
+            load_selectable_notes_for_send(&repo, secret.account_id, anchors, None, None)?;
         let auto_key_id = match resolved_key_id {
             Some(key_id) => Some(key_id),
-            None => auto_select_spend_key_id_for_amount(
-                &repo,
-                secret.account_id,
+            None => choose_auto_spend_key_id_for_amount(
+                &account_keys,
+                &selectable_notes,
                 required_total,
-                anchors,
-            )?,
+            ),
         };
 
         if let Some(key_id) = auto_key_id {
@@ -761,15 +776,35 @@ fn build_tx_internal(
                 required_total
             );
         }
+
+        auto_selectable_notes = Some(match auto_key_id {
+            Some(key_id) => {
+                let selected_key = account_keys
+                    .iter()
+                    .find(|key| key.id == Some(key_id))
+                    .ok_or_else(|| anyhow!("Auto-selected key group not found"))?;
+                selectable_notes
+                    .into_iter()
+                    .filter(|note| {
+                        note.key_id == Some(key_id)
+                            && account_key_can_spend_note(selected_key, note)
+                    })
+                    .collect()
+            }
+            None => selectable_notes,
+        });
     }
 
-    let selectable_notes_raw = load_selectable_notes_for_send(
-        &repo,
-        secret.account_id,
-        anchors,
-        effective_key_ids_filter.clone(),
-        address_ids_filter.clone(),
-    )?;
+    let selectable_notes_raw = match auto_selectable_notes {
+        Some(notes) => notes,
+        None => load_selectable_notes_for_send(
+            &repo,
+            secret.account_id,
+            anchors,
+            effective_key_ids_filter.clone(),
+            address_ids_filter.clone(),
+        )?,
+    };
     let selectable_notes = selectable_notes_raw;
     let available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
     let eligible_note_count = selectable_notes
