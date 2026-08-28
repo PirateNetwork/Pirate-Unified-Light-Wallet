@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "Wisselgeld tonen (geavanceerd)",
   "Show passphrase": "Wachtwoordzin tonen",
   "Signature Asset": "Handtekening asset",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "Handtekeningverificatie in de app wordt ingeschakeld zodra de ondertekeningssleutels openbaar worden gepubliceerd.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "Losse handtekeningen en de officiële openbare sleutel zijn beschikbaar in de bundel met releasemetadata.",
   "Signing transaction...": "Transactie ondertekenen...",
   "Simple ARRR Atomic Swaps": "Eenvoudige ARRR atomic swaps",
   "Simple swap": "Eenvoudige swap",

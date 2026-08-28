@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "显示找零（高级）",
   "Show passphrase": "显示密码",
   "Signature Asset": "签名文件",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "一旦公开发布签名密钥，就会启用应用内签名验证。",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "分离式签名和官方公钥包含在发布元数据包中。",
   "Signing transaction...": "签署交易...",
   "Simple ARRR Atomic Swaps": "简单的 ARRR 原子兑换",
   "Simple swap": "简单兑换",

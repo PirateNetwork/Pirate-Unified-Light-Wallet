@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "おつりを表示（詳細）",
   "Show passphrase": "パスフレーズを表示",
   "Signature Asset": "特徴的なアセット",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "リリース署名キーが公開されると、アプリ内での署名検証が有効になります。",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "分離署名と公式公開鍵は、リリースメタデータバンドルに含まれています。",
   "Signing transaction...": "トランザクションに署名しています...",
   "Simple ARRR Atomic Swaps": "シンプル ARRR アトミックスワップ",
   "Simple swap": "単純な交換",

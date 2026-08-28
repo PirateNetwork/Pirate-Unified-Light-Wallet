@@ -1158,7 +1158,7 @@
   "Show change (advanced)": "Show change (advanced)",
   "Show passphrase": "Show passphrase",
   "Signature Asset": "Signature Asset",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "Signature verification in-app will be enabled once release signing keys are publicly published.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "Detached signatures and the official public key are available in the release metadata bundle.",
   "Signing transaction...": "Signing transaction...",
   "Simple ARRR Atomic Swaps": "Simple ARRR Atomic Swaps",
   "Simple swap": "Simple swap",

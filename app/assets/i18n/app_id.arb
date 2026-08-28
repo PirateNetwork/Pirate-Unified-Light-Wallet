@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "Tampilkan kembalian (lanjutan)",
   "Show passphrase": "Tampilkan frasa sandi",
   "Signature Asset": "Aset Tanda Tangan",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "Verifikasi tanda tangan di dalam aplikasi akan diaktifkan setelah kunci penandatanganan rilis dipublikasikan secara umum.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "Tanda tangan terpisah dan kunci publik resmi tersedia dalam bundel metadata rilis.",
   "Signing transaction...": "Menandatangani transaksi...",
   "Simple ARRR Atomic Swaps": "Atomic Swap ARRR Sederhana",
   "Simple swap": "Swap sederhana",

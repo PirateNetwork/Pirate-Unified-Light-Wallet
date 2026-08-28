@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "Показать сдачу (расширенный режим)",
   "Show passphrase": "Показать парольную фразу",
   "Signature Asset": "Файл подписи",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "Проверка подписи в приложении будет включена, как только ключи подписи выпуска будут публично опубликованы.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "Отделённые подписи и официальный открытый ключ доступны в пакете метаданных выпуска.",
   "Signing transaction...": "Подписание транзакции...",
   "Simple ARRR Atomic Swaps": "Простые атомарные обмены ARRR",
   "Simple swap": "Простой обмен",

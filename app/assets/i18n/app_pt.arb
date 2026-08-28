@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "Mostrar troco (avançado)",
   "Show passphrase": "Mostrar senha",
   "Signature Asset": "Ativo de assinatura",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "A verificação de assinatura no aplicativo será habilitada assim que as chaves de assinatura de lançamento forem publicadas publicamente.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "As assinaturas separadas e a chave pública oficial estão disponíveis no pacote de metadados da versão.",
   "Signing transaction...": "Assinando transação...",
   "Simple ARRR Atomic Swaps": "Swaps atómicos ARRR simples",
   "Simple swap": "Troca simples",

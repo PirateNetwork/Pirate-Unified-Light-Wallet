@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "반환 잔액 표시(고급)",
   "Show passphrase": "암호 표시",
   "Signature Asset": "시그니처 자산",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "릴리스 서명 키가 공개적으로 게시되면 앱 내 서명 확인이 활성화됩니다.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "분리 서명과 공식 공개 키는 릴리스 메타데이터 번들에서 제공됩니다.",
   "Signing transaction...": "거래 서명 중...",
   "Simple ARRR Atomic Swaps": "간편 ARRR 아토믹 스왑",
   "Simple swap": "단순 교환",

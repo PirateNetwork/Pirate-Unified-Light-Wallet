@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "Mostra resto (avanzato)",
   "Show passphrase": "Mostra passphrase",
   "Signature Asset": "Risorsa di firma",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "La verifica della firma in-app sarà abilitata una volta pubblicate pubblicamente le chiavi di firma della versione.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "Le firme separate e la chiave pubblica ufficiale sono disponibili nel pacchetto di metadati della versione.",
   "Signing transaction...": "Firma della transazione...",
   "Simple ARRR Atomic Swaps": "Swap atomici ARRR semplici",
   "Simple swap": "Scambio semplice",

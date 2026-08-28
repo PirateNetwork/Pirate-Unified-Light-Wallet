@@ -972,7 +972,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           if (_signatureAssetName != null) ...[
             SizedBox(height: PSpacing.md),
             Text(
-              'Signature verification in-app will be enabled once release signing keys are publicly published.'
+              'Detached signatures and the official public key are available in the release metadata bundle.'
                   .tr,
               style: PTypography.bodySmall(color: AppColors.textSecondary),
             ),

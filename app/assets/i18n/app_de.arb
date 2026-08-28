@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "Wechselgeld anzeigen (erweitert)",
   "Show passphrase": "Passphrase anzeigen",
   "Signature Asset": "Signatur-Asset",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "Die Signaturüberprüfung in der App wird aktiviert, sobald die Release-Signaturschlüssel öffentlich veröffentlicht werden.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "Separate Signaturen und der offizielle öffentliche Schlüssel sind im Metadatenpaket der Veröffentlichung verfügbar.",
   "Signing transaction...": "Transaktion unterzeichnen...",
   "Simple ARRR Atomic Swaps": "Einfache ARRR Atomic Swaps",
   "Simple swap": "Einfacher Tausch",

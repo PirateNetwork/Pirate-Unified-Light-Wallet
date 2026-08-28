@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "वापसी राशि दिखाएं (उन्नत)",
   "Show passphrase": "पासफ़्रेज़ दिखाएँ",
   "Signature Asset": "हस्ताक्षर संपत्ति",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "रिलीज साइनिंग कुंजी सार्वजनिक रूप से प्रकाशित होने के बाद ऐप में हस्ताक्षर सत्यापन सक्षम हो जाएगा।",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "डिटैच्ड हस्ताक्षर और आधिकारिक सार्वजनिक कुंजी रिलीज़ मेटाडेटा बंडल में उपलब्ध हैं।",
   "Signing transaction...": "लेन-देन पर हस्ताक्षर करना...",
   "Simple ARRR Atomic Swaps": "सरल ARRR एटॉमिक स्वैप",
   "Simple swap": "सरल स्वैप",

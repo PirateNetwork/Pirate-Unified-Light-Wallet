@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "Para üstünü göster (gelişmiş)",
   "Show passphrase": "Parolayı göster",
   "Signature Asset": "İmza dosyası",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "Sürüm imzalama anahtarları herkese açık olarak yayınlandıktan sonra uygulama içi imza doğrulama etkinleştirilecektir.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "Ayrık imzalar ve resmi açık anahtar, sürüm meta verileri paketinde bulunur.",
   "Signing transaction...": "İşlem imzalanıyor...",
   "Simple ARRR Atomic Swaps": "Basit ARRR Atomik Takaslar",
   "Simple swap": "Basit takas",

@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "واپسی کی رقم دکھائیں (جدید)",
   "Show passphrase": "پاسفریز دکھائیں۔",
   "Signature Asset": "دستخطی اثاثہ",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "ایک بار ریلیز کی دستخطی کلیدیں عوامی طور پر شائع ہونے کے بعد دستخطی توثیق ان ایپ کو فعال کر دیا جائے گا۔",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "علیحدہ دستخط اور آفیشل عوامی کلید ریلیز میٹا ڈیٹا بنڈل میں دستیاب ہیں۔",
   "Signing transaction...": "لین دین پر دستخط ہو رہا ہے...",
   "Simple ARRR Atomic Swaps": "سادہ ARRR ایٹمک سواپس",
   "Simple swap": "سادہ تبادلہ",

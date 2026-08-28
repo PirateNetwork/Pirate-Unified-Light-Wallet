@@ -1110,7 +1110,7 @@
   "Show change (advanced)": "إظهار الباقي (متقدم)",
   "Show passphrase": "إظهار عبارة المرور",
   "Signature Asset": "ملف التوقيع",
-  "Signature verification in-app will be enabled once release signing keys are publicly published.": "سيتم تمكين التحقق من التوقيع داخل التطبيق بمجرد نشر مفاتيح توقيع الإصدار بشكل عام.",
+  "Detached signatures and the official public key are available in the release metadata bundle.": "تتوفر التوقيعات المنفصلة والمفتاح العام الرسمي في حزمة بيانات الإصدار.",
   "Signing transaction...": "توقيع المعاملة...",
   "Simple ARRR Atomic Swaps": "مقايضات ذرية بسيطة ARRR",
   "Simple swap": "مبادلة بسيطة",
