@@ -12,6 +12,7 @@ dependencies:
   bitsdojo_window: ^0.1.6
   crypto: ^3.0.7
   cupertino_icons: ^1.0.9
+  dart_pg: ^2.1.0
   decimal: ^3.2.4
   ffi: ^2.2.0
   file_selector: ^1.0.3
@@ -141,6 +142,7 @@ flutter:
   assets:
     - assets/i18n/
     - assets/bip39/
+    - assets/security/
   
   # Fonts (local only)
   fonts:
