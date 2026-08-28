@@ -195,13 +195,33 @@ jobs:
             echo "No existing release metadata bundle found; creating one with the macOS checksum."
           fi
 
-          mkdir -p "$meta_dir/checksums" "$meta_dir/raw/macos-dmg-signed"
+          mkdir -p \
+            "$meta_dir/checksums" \
+            "$meta_dir/public-keys" \
+            "$meta_dir/raw/macos-dmg-signed"
+          cp -f release-signing/README.md "$meta_dir/README.md"
+          cp -f release-signing/pirate-unified-wallet-release-public-key.asc \
+            "$meta_dir/public-keys/"
           cp -f dist/macos/pirate-unified-wallet-macos.dmg.sha256 \
             "$meta_dir/checksums/pirate-unified-wallet-macos.dmg.sha256"
           cp -f dist/macos/pirate-unified-wallet-macos.dmg.sha256 \
             "$meta_dir/raw/macos-dmg-signed/pirate-unified-wallet-macos.dmg.sha256"
           cp -f dist/macos/pirate-unified-wallet-macos.notary.json \
             "$meta_dir/raw/macos-dmg-signed/pirate-unified-wallet-macos.notary.json"
+
+          macos_checksum="$(awk '{print $1}' dist/macos/pirate-unified-wallet-macos.dmg.sha256)"
+          if [ -f "$meta_dir/SHA256SUMS" ]; then
+            awk '$2 != "pirate-unified-wallet-macos.dmg"' \
+              "$meta_dir/SHA256SUMS" > "$meta_dir/SHA256SUMS.tmp"
+          else
+            : > "$meta_dir/SHA256SUMS.tmp"
+          fi
+          printf '%s  %s\n' \
+            "$macos_checksum" \
+            'pirate-unified-wallet-macos.dmg' \
+            >> "$meta_dir/SHA256SUMS.tmp"
+          sort -k2 "$meta_dir/SHA256SUMS.tmp" > "$meta_dir/SHA256SUMS"
+          rm -f "$meta_dir/SHA256SUMS.tmp"
 
           rm -f dist/macos/pirate-unified-wallet-release-metadata.zip
           (cd "$meta_dir" && zip -qr "$GITHUB_WORKSPACE/dist/macos/pirate-unified-wallet-release-metadata.zip" .)
