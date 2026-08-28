@@ -37,6 +37,7 @@ import '../settings/providers/preferences_providers.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 import 'send_fee.dart';
 import 'send_fee_selector.dart';
+import 'widgets/send_error_banner.dart';
 
 /// Maximum memo length in bytes
 const int kMaxMemoBytes = 512;
@@ -331,9 +332,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     final walletId = _walletId;
     if (walletId == null) return;
     try {
-      final keys = await FfiBridge.listKeyGroups(
-        walletId,
-      ).timeout(_spendSourceLoadTimeout);
+      final keys = await FfiBridge.listKeyGroups(walletId)
+          .timeout(_spendSourceLoadTimeout);
       final spendableKeys = keys.where((k) => k.spendable).toList();
       final spendSourceChunks = await Future.wait(
         spendableKeys.map((key) async {
@@ -573,20 +573,6 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     );
   }
 
-  /// Get pending balance from provider
-  double get _pendingBalance {
-    final balanceAsync = ref.watch(balanceStreamProvider);
-    return balanceAsync.when(
-      data: (balance) {
-        if (balance?.pending == null) return 0.0;
-        final pending = balance!.pending;
-        return pending.toDouble() / 100000000.0;
-      },
-      loading: () => 0.0,
-      error: (_, _) => 0.0,
-    );
-  }
-
   double get _availableBalanceForSelection {
     final overall = _availableBalance;
     if (_selectedAddresses.isNotEmpty) {
@@ -595,18 +581,6 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     if (_selectedKey != null) {
       final spendable = _spendableForKey(_selectedKey!.id);
       return _toArrr(spendable);
-    }
-    return overall;
-  }
-
-  double get _pendingBalanceForSelection {
-    final overall = _pendingBalance;
-    if (_selectedAddresses.isNotEmpty) {
-      return _toArrr(_selectedAddressPending());
-    }
-    if (_selectedKey != null) {
-      final pending = _pendingForKey(_selectedKey!.id);
-      return _toArrr(pending);
     }
     return overall;
   }
@@ -826,9 +800,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                 _buildSpendOption(
                                   context,
                                   title: 'Auto (all keys)'.tr,
-                                  subtitle:
-                                      'Let the wallet choose notes automatically.'
-                                          .tr,
+                                  subtitle: 'Let the wallet choose notes automatically.'
+                                      .tr,
                                   selected:
                                       pendingKey == null &&
                                       pendingAddressIds.isEmpty,
@@ -863,16 +836,13 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                   String changeSuffix = '';
                                   if (changeSpendable > BigInt.zero &&
                                       changePending > BigInt.zero) {
-                                    changeSuffix =
-                                        ' • Change {spendable} (+{pending} pending)'
-                                            .trArgs({
-                                              'spendable': _formatArrr(
-                                                changeSpendable,
-                                              ),
-                                              'pending': _formatArrr(
-                                                changePending,
-                                              ),
-                                            });
+                                    changeSuffix = ' • Change {spendable} (+{pending} pending)'
+                                        .trArgs({
+                                          'spendable': _formatArrr(
+                                            changeSpendable,
+                                          ),
+                                          'pending': _formatArrr(changePending),
+                                        });
                                   } else if (changeSpendable > BigInt.zero) {
                                     changeSuffix = ' • Change {amount}'.trArgs({
                                       'amount': _formatArrr(changeSpendable),
@@ -979,17 +949,16 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                     _buildMultiSpendOption(
                                       context,
                                       title: name,
-                                      subtitle:
-                                          'Spendable {balance}{pending} - {kind} • {keyLabel} • {address}'
-                                              .trArgs({
-                                                'balance': balance,
-                                                'pending': pendingSuffix,
-                                                'kind': kind,
-                                                'keyLabel': keyLabel,
-                                                'address': _truncateAddress(
-                                                  address.address,
-                                                ),
-                                              }),
+                                      subtitle: 'Spendable {balance}{pending} - {kind} • {keyLabel} • {address}'
+                                          .trArgs({
+                                            'balance': balance,
+                                            'pending': pendingSuffix,
+                                            'kind': kind,
+                                            'keyLabel': keyLabel,
+                                            'address': _truncateAddress(
+                                              address.address,
+                                            ),
+                                          }),
                                       selected: selected,
                                       onTap: () => toggleAddress(address),
                                     ),
@@ -1344,14 +1313,6 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     return total;
   }
 
-  BigInt _selectedAddressPending() {
-    var total = BigInt.zero;
-    for (final addr in _selectedAddresses) {
-      total += addr.pending;
-    }
-    return total;
-  }
-
   /// Add new output entry
   void _addOutput() {
     if (_outputs.length >= kMaxRecipients) {
@@ -1655,6 +1616,12 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       if (walletId == null) {
         throw StateError('No active wallet');
       }
+
+      // Key/address discovery may reconcile legacy note ownership. Wait for the
+      // in-flight inventory pass so Auto and explicit source selection observe
+      // the same key-group state.
+      await _loadSpendSources();
+      if (!mounted) return;
       final spendability = await FfiBridge.getSpendabilityStatus(walletId);
       if (!spendability.spendable) {
         String message;
@@ -1676,35 +1643,6 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         }
         setState(() {
           _errorMessage = message;
-          _isValidating = false;
-        });
-        return;
-      }
-
-      // Only enforce balance checks once spendability is confirmed. During rescan/sync,
-      // the wallet may not have discovered notes yet; current UX is to block send
-      // with a deterministic spendability reason instead of "insufficient funds".
-      final total = _totalAmount + _calculatedFee;
-      final available = _availableBalanceForSelection;
-      final pending = _pendingBalanceForSelection;
-      if (total > available) {
-        setState(() {
-          if (pending > 0) {
-            _errorMessage =
-                'Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.'
-                    .trArgs({
-                      'needed': total.toStringAsFixed(8),
-                      'available': available.toStringAsFixed(8),
-                      'pending': pending.toStringAsFixed(8),
-                    });
-          } else {
-            _errorMessage =
-                'Insufficient spendable funds: need {needed} ARRR, have {available} ARRR'
-                    .trArgs({
-                      'needed': total.toStringAsFixed(8),
-                      'available': available.toStringAsFixed(8),
-                    });
-          }
           _isValidating = false;
         });
         return;
@@ -1885,9 +1823,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         }
       } on BiometricException catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(e.message)));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(e.message)));
         }
       } catch (_) {
         // Fall through to passphrase check.
@@ -1903,9 +1840,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       final valid = await FfiBridge.verifyAppPassphrase(passphrase);
       if (!valid) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Invalid passphrase.'.tr)));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Invalid passphrase.'.tr)));
         }
         return false;
       }
@@ -2377,7 +2313,7 @@ class _RecipientsStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = totalAmount + calculatedFee;
-    final hasEnough = total <= availableBalance;
+    final estimateSuggestsEnough = total <= availableBalance;
     final spendableAfterFee = availableBalance - calculatedFee;
     final spendableForPercent =
         spendableAfterFee.isFinite && spendableAfterFee > 0
@@ -2538,17 +2474,18 @@ class _RecipientsStep extends StatelessWidget {
               style: AppTypography.mono.copyWith(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
-                color: hasEnough ? AppColors.success : AppColors.error,
+                // The displayed balance is an asynchronous estimate. Only the
+                // Rust builder can authoritatively reject the selected notes.
+                color: estimateSuggestsEnough
+                    ? AppColors.success
+                    : AppColors.textPrimary,
               ),
             ),
           ],
         ),
         if (errorMessage != null) ...[
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            errorMessage!,
-            style: AppTypography.caption.copyWith(color: AppColors.error),
-          ),
+          SendErrorBanner(message: errorMessage!),
         ],
         const SizedBox(height: AppSpacing.lg),
         Semantics(
