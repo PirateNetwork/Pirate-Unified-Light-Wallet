@@ -5,9 +5,26 @@ ARTIFACTS_DIR="${1:-release-artifacts}"
 RELEASE_DIR="${2:-release}"
 META_DIR="${3:-release-meta}"
 DEV_DIR="${4:-release-developer-artifacts}"
+RELEASE_SIGNING_DIR="${RELEASE_SIGNING_DIR:-release-signing}"
 
 rm -rf "$RELEASE_DIR" "$META_DIR" "$DEV_DIR"
-mkdir -p "$RELEASE_DIR" "$META_DIR/raw" "$META_DIR/checksums" "$DEV_DIR"
+mkdir -p \
+  "$RELEASE_DIR" \
+  "$META_DIR/raw" \
+  "$META_DIR/checksums" \
+  "$META_DIR/public-keys" \
+  "$DEV_DIR"
+
+RELEASE_METADATA_README="$RELEASE_SIGNING_DIR/README.md"
+RELEASE_PUBLIC_KEY="$RELEASE_SIGNING_DIR/pirate-unified-wallet-release-public-key.asc"
+
+if [[ ! -f "$RELEASE_METADATA_README" || ! -f "$RELEASE_PUBLIC_KEY" ]]; then
+  echo "Release verification instructions or the public signing key are missing." >&2
+  exit 1
+fi
+
+cp -f "$RELEASE_METADATA_README" "$META_DIR/README.md"
+cp -f "$RELEASE_PUBLIC_KEY" "$META_DIR/public-keys/"
 
 is_true() {
   [[ "${1:-false}" == "true" ]]
@@ -427,10 +444,14 @@ find "$ARTIFACTS_DIR" -type f \( \
 
 # Ensure every top-level release asset has a checksum in the metadata bundle,
 # including grouped developer artifacts and generated Swift package manifests.
+SHA256SUMS_FILE="$META_DIR/SHA256SUMS"
+: > "$SHA256SUMS_FILE"
 find "$RELEASE_DIR" -maxdepth 1 -type f ! -name 'pirate-unified-wallet-release-metadata.zip' -print0 |
+  sort -z |
   while IFS= read -r -d '' file; do
     hash="$(sha256sum "$file" | awk '{print $1}')"
     printf '%s  %s\n' "$hash" "$(basename "$file")" > "$META_DIR/checksums/$(basename "$file").sha256"
+    printf '%s  %s\n' "$hash" "$(basename "$file")" >> "$SHA256SUMS_FILE"
   done
 
 if find "$META_DIR" -type f -print -quit | grep -q .; then
