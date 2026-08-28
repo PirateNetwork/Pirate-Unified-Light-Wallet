@@ -15,15 +15,15 @@ mkdir -p \
   "$META_DIR/public-keys" \
   "$DEV_DIR"
 
-RELEASE_METADATA_README="$RELEASE_SIGNING_DIR/README.md"
-RELEASE_PUBLIC_KEY="$RELEASE_SIGNING_DIR/pirate-unified-wallet-release-public-key.asc"
+RELEASE_METADATA_README="$RELEASE_SIGNING_DIR/README"
+RELEASE_PUBLIC_KEY="$RELEASE_SIGNING_DIR/public_key.asc"
 
 if [[ ! -f "$RELEASE_METADATA_README" || ! -f "$RELEASE_PUBLIC_KEY" ]]; then
   echo "Release verification instructions or the public signing key are missing." >&2
   exit 1
 fi
 
-cp -f "$RELEASE_METADATA_README" "$META_DIR/README.md"
+cp -f "$RELEASE_METADATA_README" "$META_DIR/README"
 cp -f "$RELEASE_PUBLIC_KEY" "$META_DIR/public-keys/"
 
 is_true() {
@@ -436,6 +436,7 @@ find "$ARTIFACTS_DIR" -type f \( \
   -o -name '*.sigstore.bundle' \
   -o -name '*.VERIFY.md' \
   -o -name '*.notary.json' \
+  -o -name 'installed-payload-*.txt' \
   -o -name 'virustotal-*' \
 \) -print0 |
   while IFS= read -r -d '' file; do

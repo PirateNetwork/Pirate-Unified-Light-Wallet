@@ -1639,6 +1639,7 @@ jobs:
             dist/windows/*.exe
             dist/windows/*.zip
             dist/windows/*.sha256
+            dist/windows/installed-payload-windows.txt
 
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1747,6 +1748,7 @@ jobs:
           path: |
             dist/macos/*.dmg
             dist/macos/*.dmg.sha256
+            dist/macos/installed-payload-macos-unsigned.txt
 
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1875,6 +1877,7 @@ jobs:
           path: |
             dist/linux/*.AppImage
             dist/linux/*.AppImage.sha256
+            dist/linux/installed-payload-linux.txt
 
       - name: Upload Flatpak
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -2334,6 +2337,7 @@ jobs:
             dist/macos/pirate-unified-wallet-macos.dmg
             dist/macos/pirate-unified-wallet-macos.dmg.sha256
             dist/macos/pirate-unified-wallet-macos.notary.json
+            dist/macos/installed-payload-macos.txt
           if-no-files-found: error
 
       - name: Upload pending macOS notarization artifact
@@ -2345,6 +2349,7 @@ jobs:
             dist/macos/pirate-unified-wallet-macos-pending-notarization.dmg
             dist/macos/pirate-unified-wallet-macos-pending-notarization.dmg.sha256
             dist/macos/pirate-unified-wallet-macos.notary.json
+            dist/macos/installed-payload-macos.txt
           if-no-files-found: error
 
   sign-ios:
@@ -2528,94 +2533,6 @@ jobs:
             --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
             --apiIssuer "$APP_STORE_CONNECT_API_ISSUER_ID"
 
-  sign-linux:
-    name: Sign - Linux (GPG)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs:
-      - package-linux
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-
-      - name: Check signing secrets
-        id: signing
-        run: |
-          if [ -n "${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}" ] && [ -n "${{ secrets.LINUX_GPG_PASSPHRASE }}" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download AppImage artifacts
-        if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: linux-appimage
-          path: dist/linux
-
-      - name: Download Debian artifacts
-        if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: linux-deb
-          path: dist/linux
-
-      - name: Download Flatpak artifacts
-        if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: linux-flatpak
-          path: dist/linux
-
-      - name: Import GPG key
-        if: steps.signing.outputs.enabled == 'true'
-        env:
-          GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
-        run: |
-          set -euo pipefail
-          expected_fingerprint="E4FB2399AECCF9B9447DED472CE65343401553A6"
-          echo "${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}" | base64 -d | gpg --batch --import
-          gpg --batch --import release-signing/pirate-unified-wallet-release-public-key.asc
-          actual_fingerprint="$(
-            gpg --batch --with-colons --fingerprint "$expected_fingerprint" |
-              awk -F: '$1 == "fpr" { print $10; exit }'
-          )"
-          if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then
-            echo "Imported Linux release key fingerprint does not match the published key." >&2
-            exit 1
-          fi
-
-      - name: Sign Linux artifacts
-        if: steps.signing.outputs.enabled == 'true'
-        env:
-          GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
-          GPG_SIGNING_KEY: E4FB2399AECCF9B9447DED472CE65343401553A6
-        run: |
-          set -euo pipefail
-          signature_dir="dist/linux-signatures"
-          mkdir -p "$signature_dir"
-          while IFS= read -r -d '' file; do
-            gpg --batch --yes --pinentry-mode loopback \
-              --passphrase "$GPG_PASSPHRASE" \
-              --local-user "$GPG_SIGNING_KEY" \
-              --armor --detach-sign "$file"
-            mv -f "$file.asc" "$signature_dir/$(basename "$file").asc"
-          done < <(
-            find dist/linux -type f \( \
-              -name '*.AppImage' -o \
-              -name '*.deb' -o \
-              -name '*.flatpak' \
-            \) -print0
-          )
-
-      - name: Upload Linux signatures
-        if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: linux-signatures
-          path: dist/linux-signatures/*.asc
-          if-no-files-found: error
-
   virustotal-scan:
     name: Security - VirusTotal Scan (Artifacts)
     runs-on: ubuntu-latest
@@ -2630,7 +2547,6 @@ jobs:
       - sign-windows
       - sign-macos
       - sign-ios
-      - sign-linux
     steps:
       - name: Check VirusTotal API key
         id: vt
@@ -2692,7 +2608,6 @@ jobs:
       - sign-windows
       - sign-macos
       - sign-ios
-      - sign-linux
       - virustotal-scan
     steps:
       - name: Checkout tag for release notes
@@ -2718,6 +2633,52 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/collect-github-release-assets.sh release-artifacts release
+
+      - name: Import Pirate Unified Wallet release signing key
+        env:
+          RELEASE_GPG_PRIVATE_KEY_B64: ${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          expected_primary="E4FB2399AECCF9B9447DED472CE65343401553A6"
+          if [ -z "$RELEASE_GPG_PRIVATE_KEY_B64" ]; then
+            echo "LINUX_GPG_PRIVATE_KEY_B64 must contain the Pirate Unified Wallet release key." >&2
+            exit 1
+          fi
+
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY_B64" | base64 -d > "$RUNNER_TEMP/release-signing-key.gpg"
+          gpg --batch --import "$RUNNER_TEMP/release-signing-key.gpg"
+          gpg --batch --import release-signing/public_key.asc
+          rm -f "$RUNNER_TEMP/release-signing-key.gpg"
+
+          mapfile -t public_fingerprints < <(
+            gpg --batch --with-colons --show-keys --fingerprint release-signing/public_key.asc |
+              awk -F: '$1 == "fpr" { print $10 }'
+          )
+          mapfile -t secret_fingerprints < <(
+            gpg --batch --with-colons --list-secret-keys --fingerprint "$expected_primary" |
+              awk -F: '$1 == "fpr" { print $10 }'
+          )
+          if [[ " ${public_fingerprints[*]} " != *" $expected_primary "* ]]; then
+            echo "The repository public key does not match the Pirate Unified Wallet release key." >&2
+            exit 1
+          fi
+          if [[ " ${secret_fingerprints[*]} " != *" $expected_primary "* ]]; then
+            echo "The configured private key cannot sign as the published Pirate release key." >&2
+            exit 1
+          fi
+
+      - name: Create Treasure Chest compatible signature bundle
+        env:
+          GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+          GPG_SIGNING_KEY: E4FB2399AECCF9B9447DED472CE65343401553A6
+        run: |
+          set -euo pipefail
+          chmod +x scripts/create-release-signature-bundle.sh
+          scripts/create-release-signature-bundle.sh \
+            release \
+            "release/signatures-${GITHUB_REF_NAME}.zip" \
+            "$GITHUB_REF_NAME" \
+            "$GPG_SIGNING_KEY"
 
       - name: Build release notes from annotated tag
         run: |

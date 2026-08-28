@@ -62,6 +62,7 @@ jobs:
 
           pending_dmg="$(find "$pending_dir" -type f -name 'pirate-unified-wallet-macos-pending-notarization.dmg' | sort | head -n 1 || true)"
           metadata="$(find "$pending_dir" -type f -name 'pirate-unified-wallet-macos.notary.json' | sort | head -n 1 || true)"
+          payload_manifest="$(find "$pending_dir" -type f -name 'installed-payload-macos.txt' | sort | head -n 1 || true)"
 
           if [ -z "$pending_dmg" ]; then
             echo "Pending notarization DMG was not found in run $RUN_ID." >&2
@@ -73,9 +74,15 @@ jobs:
             find "$pending_dir" -maxdepth 5 -type f -print >&2 || true
             exit 1
           fi
+          if [ -z "$payload_manifest" ]; then
+            echo "Installed macOS payload manifest was not found in run $RUN_ID." >&2
+            find "$pending_dir" -maxdepth 5 -type f -print >&2 || true
+            exit 1
+          fi
 
           cp -f "$pending_dmg" dist/macos/pirate-unified-wallet-macos.dmg
           cp -f "$metadata" dist/macos/pirate-unified-wallet-macos.notary.json
+          cp -f "$payload_manifest" dist/macos/installed-payload-macos.txt
 
       - name: Wait for Apple notarization and staple
         env:
@@ -199,8 +206,8 @@ jobs:
             "$meta_dir/checksums" \
             "$meta_dir/public-keys" \
             "$meta_dir/raw/macos-dmg-signed"
-          cp -f release-signing/README.md "$meta_dir/README.md"
-          cp -f release-signing/pirate-unified-wallet-release-public-key.asc \
+          cp -f release-signing/README "$meta_dir/README"
+          cp -f release-signing/public_key.asc \
             "$meta_dir/public-keys/"
           cp -f dist/macos/pirate-unified-wallet-macos.dmg.sha256 \
             "$meta_dir/checksums/pirate-unified-wallet-macos.dmg.sha256"
@@ -208,6 +215,8 @@ jobs:
             "$meta_dir/raw/macos-dmg-signed/pirate-unified-wallet-macos.dmg.sha256"
           cp -f dist/macos/pirate-unified-wallet-macos.notary.json \
             "$meta_dir/raw/macos-dmg-signed/pirate-unified-wallet-macos.notary.json"
+          cp -f dist/macos/installed-payload-macos.txt \
+            "$meta_dir/raw/macos-dmg-signed/installed-payload-macos.txt"
 
           macos_checksum="$(awk '{print $1}' dist/macos/pirate-unified-wallet-macos.dmg.sha256)"
           if [ -f "$meta_dir/SHA256SUMS" ]; then
@@ -234,8 +243,43 @@ jobs:
             dist/macos/pirate-unified-wallet-macos.dmg
             dist/macos/pirate-unified-wallet-macos.dmg.sha256
             dist/macos/pirate-unified-wallet-macos.notary.json
+            dist/macos/installed-payload-macos.txt
             dist/macos/pirate-unified-wallet-release-metadata.zip
           if-no-files-found: error
+
+      - name: Re-sign the completed release inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_PRIVATE_KEY_B64: ${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}
+          GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+          GPG_SIGNING_KEY: E4FB2399AECCF9B9447DED472CE65343401553A6
+        run: |
+          set -euo pipefail
+          if [ -z "$RELEASE_GPG_PRIVATE_KEY_B64" ]; then
+            echo "LINUX_GPG_PRIVATE_KEY_B64 must contain the Pirate Unified Wallet release key." >&2
+            exit 1
+          fi
+
+          release_dir="$RUNNER_TEMP/release-resign"
+          rm -rf "$release_dir"
+          mkdir -p "$release_dir"
+          gh release download "$RELEASE_TAG" --dir "$release_dir"
+          rm -f "$release_dir"/signatures-*.zip
+          cp -f dist/macos/pirate-unified-wallet-macos.dmg "$release_dir/"
+          cp -f dist/macos/pirate-unified-wallet-release-metadata.zip "$release_dir/"
+
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY_B64" | base64 -d > "$RUNNER_TEMP/release-signing-key.gpg"
+          gpg --batch --import "$RUNNER_TEMP/release-signing-key.gpg"
+          gpg --batch --import release-signing/public_key.asc
+          rm -f "$RUNNER_TEMP/release-signing-key.gpg"
+
+          chmod +x scripts/create-release-signature-bundle.sh
+          scripts/create-release-signature-bundle.sh \
+            "$release_dir" \
+            "$release_dir/signatures-${RELEASE_TAG}.zip" \
+            "$RELEASE_TAG" \
+            "$GPG_SIGNING_KEY"
+          cp -f "$release_dir/signatures-${RELEASE_TAG}.zip" dist/macos/
 
       - name: Publish completed macOS DMG to release
         env:
@@ -245,6 +289,7 @@ jobs:
           gh release upload "$RELEASE_TAG" \
             dist/macos/pirate-unified-wallet-macos.dmg \
             dist/macos/pirate-unified-wallet-release-metadata.zip \
+            "dist/macos/signatures-${RELEASE_TAG}.zip" \
             --clobber
           {
             echo "## macOS notarization completed"
