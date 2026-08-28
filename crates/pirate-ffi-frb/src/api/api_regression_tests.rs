@@ -1,8 +1,9 @@
 use super::tx_flow::{
-    add_pending_change, auto_select_spend_key_id_for_amount, choose_multi_key_change_sink_key_id,
-    clear_pending_changes, has_pending_changes, infer_contributing_key_ids_for_amount,
-    normalize_filter_ids, note_balances_by_key_id, resolve_pending_change, resolve_spend_key_id,
-    txid_hex_variants_from_bytes, SpendSelectionAnchors,
+    add_pending_change, auto_select_spend_key_id_for_amount, choose_auto_spend_key_id_for_amount,
+    choose_multi_key_change_sink_key_id, clear_pending_changes, has_pending_changes,
+    infer_contributing_key_ids_for_amount, normalize_filter_ids, note_balances_by_key_id,
+    resolve_pending_change, resolve_spend_key_id, txid_hex_variants_from_bytes,
+    SpendSelectionAnchors,
 };
 use super::*;
 use incrementalmerkletree::Retention;
@@ -463,6 +464,62 @@ fn test_auto_select_ignores_unspendable_keys() {
         auto_select_spend_key_id_for_amount(&repo, account_id, 30, test_selection_anchors(1_000))
             .unwrap(),
         Some(key_spendable)
+    );
+}
+
+#[test]
+fn test_auto_select_uses_one_pool_capability_aware_note_inventory() {
+    let (db, account_id) = setup_repo();
+    let repo = Repository::new(&db);
+
+    let sapling_key = insert_account_key(
+        &repo,
+        account_id,
+        KeyType::Seed,
+        true,
+        true,
+        false,
+        "sapling",
+    );
+    let ironwood_key = insert_account_key(
+        &repo,
+        account_id,
+        KeyType::Seed,
+        true,
+        false,
+        true,
+        "ironwood",
+    );
+    let locked_key = insert_account_key(
+        &repo,
+        account_id,
+        KeyType::ImportSpend,
+        false,
+        true,
+        true,
+        "locked",
+    );
+    let keys = repo.get_account_keys(account_id).unwrap();
+    let notes = vec![
+        SelectableNote::new(2_000, vec![1], 10, vec![1], 0).with_key_id(Some(sapling_key)),
+        SelectableNote::new_ironwood(1_400, vec![2], 10, vec![2], 0)
+            .with_key_id(Some(ironwood_key)),
+        // The Ironwood-only key cannot spend this Sapling note.
+        SelectableNote::new(9_000, vec![3], 10, vec![3], 0).with_key_id(Some(ironwood_key)),
+        SelectableNote::new(20_000, vec![4], 10, vec![4], 0).with_key_id(Some(locked_key)),
+    ];
+
+    assert_eq!(
+        choose_auto_spend_key_id_for_amount(&keys, &notes, 1_300),
+        Some(ironwood_key)
+    );
+    assert_eq!(
+        choose_auto_spend_key_id_for_amount(&keys, &notes, 1_500),
+        Some(sapling_key)
+    );
+    assert_eq!(
+        choose_auto_spend_key_id_for_amount(&keys, &notes, 2_100),
+        None
     );
 }
 
