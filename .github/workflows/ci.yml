@@ -2535,6 +2535,8 @@ jobs:
     needs:
       - package-linux
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
       - name: Check signing secrets
         id: signing
         run: |
@@ -2570,26 +2572,49 @@ jobs:
         env:
           GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
         run: |
+          set -euo pipefail
+          expected_fingerprint="E4FB2399AECCF9B9447DED472CE65343401553A6"
           echo "${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}" | base64 -d | gpg --batch --import
+          gpg --batch --import release-signing/pirate-unified-wallet-release-public-key.asc
+          actual_fingerprint="$(
+            gpg --batch --with-colons --fingerprint "$expected_fingerprint" |
+              awk -F: '$1 == "fpr" { print $10; exit }'
+          )"
+          if [[ "$actual_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "Imported Linux release key fingerprint does not match the published key." >&2
+            exit 1
+          fi
 
       - name: Sign Linux artifacts
         if: steps.signing.outputs.enabled == 'true'
         env:
           GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+          GPG_SIGNING_KEY: E4FB2399AECCF9B9447DED472CE65343401553A6
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          for file in dist/linux/*.AppImage dist/linux/*.deb dist/linux/*.flatpak; do
-            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign "$file"
-          done
+          signature_dir="dist/linux-signatures"
+          mkdir -p "$signature_dir"
+          while IFS= read -r -d '' file; do
+            gpg --batch --yes --pinentry-mode loopback \
+              --passphrase "$GPG_PASSPHRASE" \
+              --local-user "$GPG_SIGNING_KEY" \
+              --armor --detach-sign "$file"
+            mv -f "$file.asc" "$signature_dir/$(basename "$file").asc"
+          done < <(
+            find dist/linux -type f \( \
+              -name '*.AppImage' -o \
+              -name '*.deb' -o \
+              -name '*.flatpak' \
+            \) -print0
+          )
 
       - name: Upload Linux signatures
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: linux-signatures
-          path: dist/linux/*.asc
-          if-no-files-found: warn
+          path: dist/linux-signatures/*.asc
+          if-no-files-found: error
 
   virustotal-scan:
     name: Security - VirusTotal Scan (Artifacts)
