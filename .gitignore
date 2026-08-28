@@ -17,6 +17,7 @@ id_ecdsa*
 id_ed25519*
 *.asc
 *.gpg
+!/release-signing/pirate-unified-wallet-release-public-key.asc
 secrets.json
 .env.local
 .env.*.local
