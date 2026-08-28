@@ -197,7 +197,7 @@ pub struct DnsSettings {
 impl Default for DnsSettings {
     fn default() -> Self {
         Self {
-            provider: StoredDnsProvider::CloudflareDoH,
+            provider: StoredDnsProvider::System,
             custom_doh_url: None,
             tunnel_dns: true,
         }
@@ -219,7 +219,7 @@ pub enum StoredDnsProvider {
     /// Custom DoH
     #[serde(rename = "custom_doh")]
     CustomDoH,
-    /// System (not recommended)
+    /// Operating system resolver
     #[serde(rename = "system", alias = "dnscrypt")]
     System,
 }

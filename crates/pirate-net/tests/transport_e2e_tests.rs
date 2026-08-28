@@ -179,14 +179,13 @@ async fn test_dns_tunneling() {
 }
 
 #[tokio::test]
-async fn test_dns_privacy_status() {
-    // CloudflareDoH is private
-    assert!(DnsProvider::CloudflareDoH.is_private());
-    assert!(DnsProvider::Quad9DoH.is_private());
-    assert!(DnsProvider::GoogleDoH.is_private());
+async fn test_dns_transport_encryption_status() {
+    assert!(DnsProvider::CloudflareDoH.uses_encrypted_transport());
+    assert!(DnsProvider::Quad9DoH.uses_encrypted_transport());
+    assert!(DnsProvider::GoogleDoH.uses_encrypted_transport());
 
-    // System DNS is NOT private
-    assert!(!DnsProvider::System.is_private());
+    // The operating system, VPN, or local network manages this transport.
+    assert!(!DnsProvider::System.uses_encrypted_transport());
 }
 
 #[test]
@@ -201,5 +200,5 @@ fn test_transport_mode_names() {
 fn test_dns_provider_names() {
     assert_eq!(DnsProvider::CloudflareDoH.name(), "Cloudflare (1.1.1.1)");
     assert_eq!(DnsProvider::Quad9DoH.name(), "Quad9 (9.9.9.9)");
-    assert_eq!(DnsProvider::System.name(), "System (Not Private)");
+    assert_eq!(DnsProvider::System.name(), "System");
 }

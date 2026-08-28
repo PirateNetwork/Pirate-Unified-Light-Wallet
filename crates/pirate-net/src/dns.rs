@@ -1,6 +1,7 @@
 //! DNS resolution via DoH or system resolver.
 //!
-//! Provides privacy-preserving DNS resolution to prevent leaks when possible.
+//! Direct connections use the operating system resolver by default. Explicit
+//! DNS-over-HTTPS providers encrypt transport to a third-party resolver.
 
 use crate::debug_log::log_debug_event;
 use crate::Result;
@@ -18,7 +19,7 @@ pub enum DnsProvider {
     GoogleDoH,
     /// Custom DoH endpoint
     CustomDoH(String),
-    /// System resolver (NOT RECOMMENDED - may leak)
+    /// Operating system resolver (including device, VPN, and network policy)
     System,
 }
 
@@ -41,12 +42,15 @@ impl DnsProvider {
             Self::Quad9DoH => "Quad9 (9.9.9.9)",
             Self::GoogleDoH => "Google (8.8.8.8)",
             Self::CustomDoH(_) => "Custom DoH",
-            Self::System => "System (Not Private)",
+            Self::System => "System",
         }
     }
 
-    /// Check if provider is privacy-preserving
-    pub fn is_private(&self) -> bool {
+    /// Whether queries use an HTTPS connection to a designated resolver.
+    ///
+    /// This describes transport encryption, not anonymity: the resolver can
+    /// still observe the requested hostname and connecting IP address.
+    pub fn uses_encrypted_transport(&self) -> bool {
         !matches!(self, Self::System)
     }
 }
@@ -65,7 +69,7 @@ pub struct DnsConfig {
 impl Default for DnsConfig {
     fn default() -> Self {
         Self {
-            provider: DnsProvider::CloudflareDoH,
+            provider: DnsProvider::System,
             tunnel_dns: true,
             socks_proxy: Some("socks5h://127.0.0.1:9050".to_string()),
         }
@@ -82,10 +86,6 @@ impl DnsResolver {
     /// Create new DNS resolver
     pub fn new(config: DnsConfig) -> Self {
         info!("Creating DNS resolver: {:?}", config.provider.name());
-
-        if !config.provider.is_private() {
-            warn!("DNS resolver is using system DNS - privacy may be compromised!");
-        }
 
         Self { config }
     }
@@ -105,7 +105,6 @@ impl DnsResolver {
         );
 
         if matches!(&self.config.provider, DnsProvider::System) {
-            warn!("Using system DNS for {}: Privacy not guaranteed!", hostname);
             Self::resolve_system_owned(hostname).await
         } else if self.config.provider.doh_url().is_some() {
             Self::resolve_doh_owned(self.config, hostname).await
@@ -126,23 +125,24 @@ impl DnsResolver {
 
         // Build HTTP client
         let client = if config.tunnel_dns {
-            if let Some(proxy) = config.socks_proxy {
-                let proxy_url = if proxy.contains("://") {
-                    proxy.clone()
-                } else {
-                    format!("socks5h://{}", proxy)
-                };
-                debug!("Tunneling DNS through SOCKS proxy: {}", proxy_url);
-                reqwest::Client::builder()
-                    .proxy(
-                        reqwest::Proxy::all(proxy_url)
-                            .map_err(|e| crate::Error::Network(format!("Proxy error: {}", e)))?,
-                    )
-                    .build()
-                    .map_err(|e| crate::Error::Network(format!("HTTP client error: {}", e)))?
+            let proxy = config.socks_proxy.ok_or_else(|| {
+                crate::Error::Network(
+                    "DNS tunneling was requested without a SOCKS proxy".to_string(),
+                )
+            })?;
+            let proxy_url = if proxy.contains("://") {
+                proxy
             } else {
-                reqwest::Client::new()
-            }
+                format!("socks5h://{}", proxy)
+            };
+            debug!("Tunneling DNS through SOCKS proxy: {}", proxy_url);
+            reqwest::Client::builder()
+                .proxy(
+                    reqwest::Proxy::all(proxy_url)
+                        .map_err(|e| crate::Error::Network(format!("Proxy error: {}", e)))?,
+                )
+                .build()
+                .map_err(|e| crate::Error::Network(format!("HTTP client error: {}", e)))?
         } else {
             reqwest::Client::new()
         };
@@ -150,9 +150,9 @@ impl DnsResolver {
         let mut addrs = Vec::new();
 
         for record_type in ["A", "AAAA"] {
-            let query_url = format!("{}?name={}&type={}", doh_url, hostname, record_type);
             let response = client
-                .get(&query_url)
+                .get(&doh_url)
+                .query(&[("name", hostname.as_str()), ("type", record_type)])
                 .header("Accept", "application/dns-json")
                 .send()
                 .await
@@ -178,24 +178,20 @@ impl DnsResolver {
         }
 
         if addrs.is_empty() {
-            warn!(
-                "DoH returned no IPs for {}, falling back to system resolver",
+            return Err(crate::Error::Network(format!(
+                "DoH returned no usable addresses for {}",
                 hostname
-            );
-            return Self::resolve_system_owned(hostname).await;
+            )));
         }
 
         Ok(addrs)
     }
 
-    /// Resolve via system resolver (NOT PRIVATE)
+    /// Resolve through the operating system's configured DNS policy.
     async fn resolve_system_owned(hostname: String) -> Result<Vec<IpAddr>> {
         use tokio::net::lookup_host;
 
-        warn!(
-            "Using system DNS for {} - this may leak information!",
-            hostname
-        );
+        debug!("Resolving {} with the operating system resolver", hostname);
         log_debug_event(
             "dns.rs:DnsResolver::resolve_system",
             "dns_system_resolve",
@@ -224,9 +220,9 @@ impl DnsResolver {
         &self.config.provider
     }
 
-    /// Check if DNS is tunneled
+    /// Whether app-managed DoH is configured to traverse a SOCKS proxy.
     pub fn is_tunneled(&self) -> bool {
-        self.config.tunnel_dns
+        self.config.provider.uses_encrypted_transport() && self.config.tunnel_dns
     }
 }
 
@@ -279,23 +275,23 @@ mod tests {
     }
 
     #[test]
-    fn test_dns_privacy() {
-        assert!(DnsProvider::CloudflareDoH.is_private());
-        assert!(DnsProvider::Quad9DoH.is_private());
-        assert!(!DnsProvider::System.is_private());
+    fn test_dns_transport_description() {
+        assert!(DnsProvider::CloudflareDoH.uses_encrypted_transport());
+        assert!(DnsProvider::Quad9DoH.uses_encrypted_transport());
+        assert!(!DnsProvider::System.uses_encrypted_transport());
     }
 
     #[test]
     fn test_dns_config_default() {
         let config = DnsConfig::default();
-        assert!(config.provider.is_private());
+        assert_eq!(config.provider, DnsProvider::System);
         assert!(config.tunnel_dns);
     }
 
     #[tokio::test]
     async fn test_dns_resolver_creation() {
         let resolver = DnsResolver::new(DnsConfig::default());
-        assert_eq!(resolver.provider().name(), "Cloudflare (1.1.1.1)");
-        assert!(resolver.is_tunneled());
+        assert_eq!(resolver.provider().name(), "System");
+        assert!(!resolver.is_tunneled());
     }
 }

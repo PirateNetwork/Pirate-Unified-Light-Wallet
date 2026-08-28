@@ -43,35 +43,48 @@ async fn test_dns_tunneling_configuration() {
 }
 
 #[tokio::test]
-async fn test_system_dns_is_not_private() {
-    // System DNS is NOT private (can leak)
-    assert!(!DnsProvider::System.is_private());
+async fn test_dns_provider_transport_encryption() {
+    // The operating system decides how system DNS is transported.
+    assert!(!DnsProvider::System.uses_encrypted_transport());
 
-    // DoH providers ARE private
-    assert!(DnsProvider::CloudflareDoH.is_private());
-    assert!(DnsProvider::Quad9DoH.is_private());
-    assert!(DnsProvider::GoogleDoH.is_private());
+    // These providers use HTTPS for the app-to-resolver hop.
+    assert!(DnsProvider::CloudflareDoH.uses_encrypted_transport());
+    assert!(DnsProvider::Quad9DoH.uses_encrypted_transport());
+    assert!(DnsProvider::GoogleDoH.uses_encrypted_transport());
 }
 
 #[tokio::test]
-async fn test_dns_provider_privacy_status() {
+async fn test_dns_provider_encrypted_transport_status() {
     let test_cases = vec![
         (
             DnsProvider::CloudflareDoH,
             true,
-            "Cloudflare DoH should be private",
+            "Cloudflare DoH should use encrypted transport",
         ),
-        (DnsProvider::Quad9DoH, true, "Quad9 DoH should be private"),
-        (DnsProvider::GoogleDoH, true, "Google DoH should be private"),
+        (
+            DnsProvider::Quad9DoH,
+            true,
+            "Quad9 DoH should use encrypted transport",
+        ),
+        (
+            DnsProvider::GoogleDoH,
+            true,
+            "Google DoH should use encrypted transport",
+        ),
         (
             DnsProvider::System,
             false,
-            "System DNS should NOT be private",
+            "System DNS transport is managed outside the app",
         ),
     ];
 
-    for (provider, expected_private, msg) in test_cases {
-        assert_eq!(provider.is_private(), expected_private, "{}", msg);
+    for (provider, expected_encrypted_transport, msg) in test_cases {
+        assert_eq!(
+            provider.uses_encrypted_transport(),
+            expected_encrypted_transport,
+            "{}",
+            msg
+        );
     }
 }
 
@@ -85,11 +98,11 @@ fn test_dns_leak_prevention_checklist() {
         .unwrap()
         .starts_with("https://"));
 
-    // - 2. DoH providers are marked as private
-    assert!(DnsProvider::CloudflareDoH.is_private());
+    // - 2. DoH providers report app-managed encrypted transport
+    assert!(DnsProvider::CloudflareDoH.uses_encrypted_transport());
 
-    // - 3. System DNS is marked as NOT private
-    assert!(!DnsProvider::System.is_private());
+    // - 3. System DNS transport is managed by the operating system
+    assert!(!DnsProvider::System.uses_encrypted_transport());
 
     // - 4. DNS tunneling is configurable
     let config = DnsConfig {
@@ -233,8 +246,8 @@ fn test_dns_encryption_end_to_end() {
         // Verify HTTPS (encrypted)
         assert!(url.starts_with("https://"));
 
-        // Verify provider is marked as private
-        assert!(provider.is_private());
+        // Verify the app-to-resolver hop uses encrypted transport
+        assert!(provider.uses_encrypted_transport());
     }
 }
 
@@ -250,13 +263,13 @@ fn test_custom_doh_endpoint() {
         "https://my-private-doh.example.com/dns-query"
     );
 
-    // Custom DoH should be private
-    assert!(custom_provider.is_private());
+    // Custom DoH uses encrypted transport
+    assert!(custom_provider.uses_encrypted_transport());
 }
 
-/// Integration test: Full DNS resolution flow with privacy
+/// Integration test: full tunneled DNS-over-HTTPS configuration
 #[tokio::test]
-async fn test_private_dns_resolution_flow() {
+async fn test_tunneled_doh_resolution_flow() {
     let config = DnsConfig {
         provider: DnsProvider::CloudflareDoH,
         tunnel_dns: true,
@@ -268,7 +281,7 @@ async fn test_private_dns_resolution_flow() {
     // Verify configuration
     assert_eq!(resolver.provider().name(), "Cloudflare (1.1.1.1)");
     assert!(resolver.is_tunneled());
-    assert!(resolver.provider().is_private());
+    assert!(resolver.provider().uses_encrypted_transport());
 
     // Resolution would happen here (requires network)
     // let ips = resolver.resolve("example.com").await.unwrap();
