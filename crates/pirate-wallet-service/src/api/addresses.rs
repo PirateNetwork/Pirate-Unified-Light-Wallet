@@ -555,6 +555,29 @@ fn address_matches_type(address: &str, address_type: AddressType) -> bool {
     }
 }
 
+/// True unless the repository already attributes `address` to a different key group.
+///
+/// An address recorded under another key group - for example one stored by a
+/// spending-key import - is derived from that group's key material rather than from the
+/// key this scan walks, and it already has a persisted row, so this scan needs neither
+/// to discover nor to record it. Counting it as still-to-be-discovered leaves the scan
+/// unable to reach its match count, so it runs to the hard limit on every call.
+/// Unknown addresses and lookup failures are retained instead: discovering them is what
+/// this scan is for, and uncertainty must not shrink the expected match count.
+fn address_may_belong_to_key(
+    repo: &Repository<'_>,
+    account_id: i64,
+    key_id: i64,
+    address: &str,
+) -> bool {
+    match repo.get_address_by_string(account_id, address) {
+        Ok(Some(record)) => record.key_id.is_none_or(|recorded| recorded == key_id),
+        // An unknown address is exactly what this scan exists to discover, and a lookup
+        // failure must not silently shrink the expected match count.
+        Ok(None) | Err(_) => true,
+    }
+}
+
 fn scan_sequential_addresses<F>(
     context: &mut SequentialAddressScan<'_>,
     mut derive_address: F,
@@ -566,6 +589,9 @@ where
         .balances_by_address
         .keys()
         .filter(|address| address_matches_type(address, context.address_type))
+        .filter(|address| {
+            address_may_belong_to_key(context.repo, context.account_id, context.key_id, address)
+        })
         .count();
     let mut matched_addresses = HashSet::new();
     let mut gap_after_match = 0u32;
@@ -660,4 +686,284 @@ fn decode_orchard_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8
         return Some(address);
     }
     None
+}
+
+#[cfg(test)]
+mod sequential_address_scan_tests {
+    use super::*;
+    use pirate_storage_sqlite::{
+        Account, AccountKey, Address, AddressScope, ColorTag, Database, EncryptionAlgorithm,
+        EncryptionKey, KeyScope, KeyType, MasterKey,
+    };
+
+    fn setup_repo() -> (Database, i64) {
+        let path = std::env::temp_dir().join(format!(
+            "pirate-address-scan-regression-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let salt = pirate_storage_sqlite::generate_salt();
+        let key = EncryptionKey::from_passphrase("test-passphrase", &salt).unwrap();
+        let master_key = MasterKey::generate(EncryptionAlgorithm::ChaCha20Poly1305);
+        let db = Database::open(path, &key, master_key).unwrap();
+        let account_id = Repository::new(&db)
+            .insert_account(&Account {
+                id: None,
+                name: "test-account".to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            })
+            .unwrap();
+        (db, account_id)
+    }
+
+    fn insert_account_key(
+        repo: &Repository,
+        account_id: i64,
+        key_type: KeyType,
+        key_byte: u8,
+        label: &str,
+    ) -> i64 {
+        let key = AccountKey {
+            id: None,
+            account_id,
+            key_type,
+            key_scope: KeyScope::Account,
+            label: Some(label.to_string()),
+            birthday_height: 1,
+            created_at: chrono::Utc::now().timestamp(),
+            spendable: true,
+            sapling_extsk: Some(vec![key_byte; 169]),
+            sapling_dfvk: None,
+            orchard_extsk: None,
+            orchard_fvk: None,
+            encrypted_mnemonic: None,
+        };
+        let encrypted = repo.encrypt_account_key_fields(&key).unwrap();
+        repo.upsert_account_key(&encrypted).unwrap()
+    }
+
+    /// Regression coverage for a sequential address scan that could never finish its work.
+    ///
+    /// `list_address_balances` walks a key group's addresses in diversifier order to find
+    /// the index of every address holding a balance. It stops once it has matched as many
+    /// addresses as the balance map holds for that address type. An address belonging to a
+    /// different key group - one added by a spending-key import - is derived from that
+    /// group's key material and can never appear in this walk, so counting it as an
+    /// expected match left the scan with a target it could not reach: no match ever
+    /// occurred, the gap counter (which only runs after a first match) never advanced, and
+    /// the walk ran to `ADDRESS_SCAN_HARD_LIMIT` on every balance query. Recovering a
+    /// wallet by importing a spending key is exactly the case that leaves all of a
+    /// wallet's balance on such an address.
+    #[test]
+    fn sequential_address_scan_skips_balances_owned_by_another_key_group() {
+        let (db, account_id) = setup_repo();
+        let repo = Repository::new(&db);
+        let own_key_id = insert_account_key(&repo, account_id, KeyType::Seed, 0x11, "own-seed-key");
+        let imported_key_id = insert_account_key(
+            &repo,
+            account_id,
+            KeyType::ImportSpend,
+            0x22,
+            "imported-spending-key",
+        );
+
+        // Stored the way a spending-key import records its verified address: under the
+        // imported key group, holding the only balance this wallet has.
+        let imported_address = "zs1imported-address-owned-by-another-key-group".to_string();
+        repo.upsert_address(&Address {
+            id: None,
+            key_id: Some(imported_key_id),
+            account_id,
+            diversifier_index: 0,
+            address: imported_address.clone(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at: chrono::Utc::now().timestamp(),
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        })
+        .unwrap();
+
+        let mut balances_by_address = HashMap::new();
+        balances_by_address.insert(imported_address, (123_456_789u64, 123_456_789u64, 0u64));
+        let mut scanned = HashMap::new();
+        let mut context = SequentialAddressScan {
+            repo: &repo,
+            account_id,
+            key_id: own_key_id,
+            address_type: AddressType::Sapling,
+            balances_by_address: &balances_by_address,
+            scanned: &mut scanned,
+            created_at: chrono::Utc::now().timestamp(),
+        };
+
+        let mut derived_indices = 0u32;
+        scan_sequential_addresses(&mut context, |index| {
+            derived_indices += 1;
+            Some(format!("zs1own{:04}", index))
+        })
+        .unwrap();
+
+        assert_eq!(
+            derived_indices, 1,
+            "the scan must not keep deriving addresses in search of a balance that belongs \
+             to a different key group"
+        );
+    }
+
+    /// The same scan must still discover an address of its own key group that the
+    /// repository has not recorded yet, which is the case it exists to serve.
+    #[test]
+    fn sequential_address_scan_still_discovers_its_own_unrecorded_address() {
+        let (db, account_id) = setup_repo();
+        let repo = Repository::new(&db);
+        let own_key_id = insert_account_key(&repo, account_id, KeyType::Seed, 0x11, "own-seed-key");
+
+        let own_address = "zs1own0003".to_string();
+        let mut balances_by_address = HashMap::new();
+        balances_by_address.insert(own_address.clone(), (5u64, 5u64, 0u64));
+        let mut scanned = HashMap::new();
+        let mut context = SequentialAddressScan {
+            repo: &repo,
+            account_id,
+            key_id: own_key_id,
+            address_type: AddressType::Sapling,
+            balances_by_address: &balances_by_address,
+            scanned: &mut scanned,
+            created_at: chrono::Utc::now().timestamp(),
+        };
+
+        let mut derived_indices = 0u32;
+        scan_sequential_addresses(&mut context, |index| {
+            derived_indices += 1;
+            Some(format!("zs1own{:04}", index))
+        })
+        .unwrap();
+
+        assert_eq!(
+            derived_indices, 4,
+            "the scan should walk indices 0..=3 and stop once it matches the only balance"
+        );
+        assert_eq!(
+            scanned.get(&own_address).copied(),
+            Some(3),
+            "the discovered address should be recorded at its derivation index"
+        );
+        assert!(
+            repo.get_address_by_string(account_id, &own_address)
+                .unwrap()
+                .is_some(),
+            "the discovered address should be persisted for later balance queries"
+        );
+    }
+
+    /// Scanning the imported group itself must still count and match its own address:
+    /// that group's key material is exactly what this scan derives from.
+    #[test]
+    fn sequential_address_scan_matches_the_imported_groups_own_address() {
+        let (db, account_id) = setup_repo();
+        let repo = Repository::new(&db);
+        let imported_key_id = insert_account_key(
+            &repo,
+            account_id,
+            KeyType::ImportSpend,
+            0x22,
+            "imported-spending-key",
+        );
+
+        let imported_address = "zs1own0000".to_string();
+        repo.upsert_address(&Address {
+            id: None,
+            key_id: Some(imported_key_id),
+            account_id,
+            diversifier_index: 0,
+            address: imported_address.clone(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at: chrono::Utc::now().timestamp(),
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        })
+        .unwrap();
+
+        let mut balances_by_address = HashMap::new();
+        balances_by_address.insert(imported_address.clone(), (7u64, 7u64, 0u64));
+        let mut scanned = HashMap::new();
+        let mut context = SequentialAddressScan {
+            repo: &repo,
+            account_id,
+            key_id: imported_key_id,
+            address_type: AddressType::Sapling,
+            balances_by_address: &balances_by_address,
+            scanned: &mut scanned,
+            created_at: chrono::Utc::now().timestamp(),
+        };
+
+        scan_sequential_addresses(&mut context, |index| Some(format!("zs1own{:04}", index)))
+            .unwrap();
+
+        assert_eq!(
+            scanned.get(&imported_address).copied(),
+            Some(0),
+            "a scan over the imported group must still match that group's own address"
+        );
+    }
+
+    /// With one balance owned by another key group and one on this key's own
+    /// undiscovered address, the scan must still stop as soon as it matches its own.
+    #[test]
+    fn sequential_address_scan_stops_after_matching_only_its_own_balance() {
+        let (db, account_id) = setup_repo();
+        let repo = Repository::new(&db);
+        let own_key_id = insert_account_key(&repo, account_id, KeyType::Seed, 0x11, "own-seed-key");
+        let imported_key_id = insert_account_key(
+            &repo,
+            account_id,
+            KeyType::ImportSpend,
+            0x22,
+            "imported-spending-key",
+        );
+
+        let imported_address = "zs1imported-address-owned-by-another-key-group".to_string();
+        repo.upsert_address(&Address {
+            id: None,
+            key_id: Some(imported_key_id),
+            account_id,
+            diversifier_index: 0,
+            address: imported_address.clone(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at: chrono::Utc::now().timestamp(),
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        })
+        .unwrap();
+
+        let own_address = "zs1own0002".to_string();
+        let mut balances_by_address = HashMap::new();
+        balances_by_address.insert(imported_address, (123_456_789u64, 123_456_789u64, 0u64));
+        balances_by_address.insert(own_address.clone(), (5u64, 5u64, 0u64));
+        let mut scanned = HashMap::new();
+        let mut context = SequentialAddressScan {
+            repo: &repo,
+            account_id,
+            key_id: own_key_id,
+            address_type: AddressType::Sapling,
+            balances_by_address: &balances_by_address,
+            scanned: &mut scanned,
+            created_at: chrono::Utc::now().timestamp(),
+        };
+
+        let mut derived_indices = 0u32;
+        scan_sequential_addresses(&mut context, |index| {
+            derived_indices += 1;
+            Some(format!("zs1own{:04}", index))
+        })
+        .unwrap();
+
+        assert_eq!(
+            derived_indices, 3,
+            "the scan should walk indices 0..=2 and stop once its own balance is matched"
+        );
+        assert_eq!(scanned.get(&own_address).copied(), Some(2));
+    }
 }
