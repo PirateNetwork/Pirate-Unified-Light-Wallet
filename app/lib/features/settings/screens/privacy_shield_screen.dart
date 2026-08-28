@@ -26,7 +26,7 @@ import '../../../core/i18n/arb_text_localizer.dart';
 /// Allows users to configure:
 /// - Transport mode (Tor/SOCKS5/Direct)
 /// - SOCKS5 proxy settings
-/// - DNS resolver
+/// - Name-resolution behavior for the selected transport
 /// - Test node connection
 class PrivacyShieldScreen extends ConsumerStatefulWidget {
   const PrivacyShieldScreen({super.key});
@@ -77,7 +77,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
     final transportMode = transportConfig.mode;
-    final dnsProvider = transportConfig.dnsProvider;
     final socks5Config = transportConfig.socks5Config;
     final torBridgeConfig = transportConfig.torBridge;
     if (!_torBridgeFieldsInitialized) {
@@ -153,10 +152,10 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               const SizedBox(height: PirateSpacing.lg),
             ],
 
-            // DNS Resolver
-            _buildSectionTitle('DNS Resolver'.tr),
+            // Name resolution follows the active transport automatically.
+            _buildSectionTitle('Name resolution'.tr),
             const SizedBox(height: 8),
-            _buildDnsSelector(context, ref, dnsProvider),
+            _buildNameResolutionCard(transportMode),
 
             const SizedBox(height: PirateSpacing.xl),
 
@@ -1033,81 +1032,81 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     await _applyTorBridgeSettings(ref);
   }
 
-  Widget _buildDnsSelector(
-    BuildContext context,
-    WidgetRef ref,
-    String currentProvider,
-  ) {
-    return PCard(
-      child: Column(
-        children: [
-          _buildDnsOption(
-            ref,
-            'cloudflare_doh',
-            'Cloudflare (1.1.1.1)',
-            currentProvider,
-          ),
-          Divider(height: 1, color: AppColors.borderDefault),
-          _buildDnsOption(ref, 'quad9_doh', 'Quad9 (9.9.9.9)', currentProvider),
-          Divider(height: 1, color: AppColors.borderDefault),
-          _buildDnsOption(
-            ref,
-            'google_doh',
-            'Google (8.8.8.8)',
-            currentProvider,
-          ),
-          Divider(height: 1, color: AppColors.borderDefault),
-          _buildDnsOption(
-            ref,
-            'system',
-            'System (Not Private)'.tr,
-            currentProvider,
-          ),
-        ],
+  Widget _buildNameResolutionCard(String transportMode) {
+    final (icon, title, description) = switch (transportMode) {
+      'tor' => (
+        Icons.hub_outlined,
+        'Resolved inside Tor'.tr,
+        'Server names are resolved through Tor. Your device DNS is not used for wallet traffic.'
+            .tr,
       ),
-    );
-  }
+      'i2p' => (
+        Icons.route_outlined,
+        'Handled by I2P'.tr,
+        'I2P destinations are resolved inside the I2P network.'.tr,
+      ),
+      'socks5' => (
+        Icons.swap_horiz_rounded,
+        'Resolved by your proxy'.tr,
+        'Server names are sent to the configured SOCKS5 proxy for resolution.'
+            .tr,
+      ),
+      _ => (
+        Icons.dns_outlined,
+        'Uses device DNS settings'.tr,
+        'Direct connections follow the DNS settings from your device, VPN, or network.'
+            .tr,
+      ),
+    };
 
-  Widget _buildDnsOption(
-    WidgetRef ref,
-    String provider,
-    String label,
-    String currentProvider,
-  ) {
-    final isSelected = provider == currentProvider;
-
-    return InkWell(
-      onTap: () {
-        ref.read(transportConfigProvider.notifier).setDnsProvider(provider);
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: PirateSpacing.md,
-          vertical: PirateSpacing.sm,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isSelected
-                      ? AppColors.accentPrimary
-                      : AppColors.textPrimary,
-                  fontSize: 14,
+    return Semantics(
+      container: true,
+      label: '$title. $description',
+      child: PCard(
+        child: ExcludeSemantics(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.accentPrimary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: AppColors.accentPrimary, size: 22),
+              ),
+              const SizedBox(width: PirateSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: PirateSpacing.xs),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            if (isSelected)
-              Icon(Icons.check, color: AppColors.accentPrimary, size: 20),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
-
   Future<void> _testNodeConnection(BuildContext context, WidgetRef ref) async {
     final generation = ++_connectionTestGeneration;
     final testedMode = ref.read(transportConfigProvider).mode.toLowerCase();

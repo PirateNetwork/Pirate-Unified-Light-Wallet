@@ -281,7 +281,7 @@ class TransportConfig {
               parsedI2pEndpoint;
     return TransportConfig(
       mode: json['mode'] as String? ?? 'tor',
-      dnsProvider: json['dns_provider'] as String? ?? 'cloudflare_doh',
+      dnsProvider: json['dns_provider'] as String? ?? 'system',
       socks5Config: Map<String, String?>.from(json['socks5'] as Map? ?? {}),
       i2pEndpoint: storedI2pEndpoint == null || storedI2pEndpoint.isEmpty
           ? endpoints.kDefaultI2pLightdUrl
@@ -325,7 +325,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   static const String _storageNonI2pAutoKey = 'transport_non_i2p_auto_v1';
   static const TransportConfig _defaultConfig = TransportConfig(
     mode: 'tor',
-    dnsProvider: 'cloudflare_doh',
+    dnsProvider: 'system',
     socks5Config: {
       'host': 'localhost',
       'port': '1080',
