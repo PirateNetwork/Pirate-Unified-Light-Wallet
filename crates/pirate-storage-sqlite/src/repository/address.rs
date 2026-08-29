@@ -287,6 +287,33 @@ pub(super) fn upsert_address(repo: &Repository<'_>, address: &Address) -> Result
     Ok(())
 }
 
+pub(super) fn repair_address_ownership(repo: &Repository<'_>, address: &Address) -> Result<()> {
+    let key_id = address.key_id.ok_or_else(|| {
+        Error::Validation("Address ownership repair requires a key group".to_string())
+    })?;
+    let index = address.diversifier_index_88.ok_or_else(|| {
+        Error::Validation("Address ownership repair requires a ZIP-32 index".to_string())
+    })?;
+    let changed = repo.db.conn().execute(
+        "UPDATE addresses SET key_id = ?1, address_type = ?2, address_scope = ?3, diversifier_index_be = ?4
+         WHERE account_id = ?5 AND address = ?6",
+        params![
+            key_id,
+            address_type_str(address.address_type),
+            address_scope_str(address.address_scope),
+            encode_diversifier_index_be(index).to_vec(),
+            address.account_id,
+            &address.address,
+        ],
+    )?;
+    if changed != 1 {
+        return Err(Error::Storage(
+            "Address ownership repair target is unavailable".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn get_address_by_string(
     repo: &Repository<'_>,
     account_id: i64,

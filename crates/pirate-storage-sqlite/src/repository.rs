@@ -3838,6 +3838,11 @@ impl<'a> Repository<'a> {
         address::upsert_address(self, address)
     }
 
+    /// Repairs ownership metadata after the caller proves it with a full viewing key.
+    pub fn repair_address_ownership(&self, address: &Address) -> Result<()> {
+        address::repair_address_ownership(self, address)
+    }
+
     /// Atomically allocates the next diversifier index for a key group, scope,
     /// and shielded pool, then persists whatever `build` derives - see
     /// `address::allocate_next_diversified_address` for why this needs to
@@ -8072,6 +8077,61 @@ mod tests {
             .unwrap();
         assert_eq!(default_lookup.address, external.address);
         assert_eq!(default_lookup.address_scope, AddressScope::External);
+    }
+
+    #[test]
+    fn address_ownership_repair_changes_only_proven_ownership_fields() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Ownership repair".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let original = Address {
+            id: None,
+            key_id: None,
+            account_id,
+            diversifier_index: 12,
+            diversifier_index_88: None,
+            address: "zs1ownershiprepair00000000000000000000000000000000000000000".to_string(),
+            address_type: AddressType::Sapling,
+            label: Some("Savings".to_string()),
+            created_at: 123,
+            color_tag: ColorTag::Blue,
+            address_scope: AddressScope::External,
+        };
+        repo.upsert_address(&original).unwrap();
+
+        let mut repaired = original.clone();
+        repaired.key_id = Some(99);
+        repaired.diversifier_index = u32::MAX;
+        repaired.diversifier_index_88 = Some([9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1]);
+        repaired.address_type = AddressType::Ironwood;
+        repaired.label = None;
+        repaired.created_at = 999;
+        repaired.color_tag = ColorTag::Red;
+        repaired.address_scope = AddressScope::Internal;
+        repo.repair_address_ownership(&repaired).unwrap();
+
+        let stored = repo
+            .get_address_by_string(account_id, &original.address)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.key_id, Some(99));
+        assert_eq!(stored.address_type, AddressType::Ironwood);
+        assert_eq!(stored.address_scope, AddressScope::Internal);
+        assert_eq!(stored.diversifier_index_88, repaired.diversifier_index_88);
+        assert_eq!(stored.diversifier_index, 12);
+        assert_eq!(stored.label.as_deref(), Some("Savings"));
+        assert_eq!(stored.created_at, 123);
+        assert_eq!(stored.color_tag, ColorTag::Blue);
+
+        let mut unavailable = repaired;
+        unavailable.address = "zs1missingownershiptarget".to_string();
+        assert!(repo.repair_address_ownership(&unavailable).is_err());
     }
 
     #[test]
