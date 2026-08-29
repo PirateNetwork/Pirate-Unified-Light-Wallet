@@ -74,25 +74,36 @@ pub(super) fn get_next_diversifier_index_for_scope_and_type(
     scope: AddressScope,
     address_type: AddressType,
 ) -> Result<u32> {
-    let max_index: Option<i64> = repo.db.conn().query_row(
-        "SELECT MAX(diversifier_index) FROM addresses
-         WHERE account_id = ?1 AND key_id = ?2 AND address_scope = ?3 AND address_type = ?4",
+    let mut statement = repo.db.conn().prepare(
+        "SELECT DISTINCT diversifier_index FROM addresses
+         WHERE account_id = ?1 AND key_id = ?2 AND address_scope = ?3 AND address_type = ?4
+         ORDER BY diversifier_index",
+    )?;
+    let rows = statement.query_map(
         params![
             account_id,
             key_id,
             address_scope_str(scope),
             address_type_str(address_type)
         ],
-        |row| row.get(0),
+        |row| row.get::<_, i64>(0),
     )?;
 
-    match max_index {
-        None => Ok(0),
-        Some(value) => u32::try_from(value)
-            .map_err(|_| Error::Validation("Stored address sequence is invalid".to_string()))?
+    let mut next = 0_u32;
+    for row in rows {
+        let stored = u32::try_from(row?)
+            .map_err(|_| Error::Validation("Stored address sequence is invalid".to_string()))?;
+        if stored < next {
+            continue;
+        }
+        if stored > next {
+            return Ok(next);
+        }
+        next = next
             .checked_add(1)
-            .ok_or_else(|| Error::Validation("Address sequence is exhausted".to_string())),
+            .ok_or_else(|| Error::Validation("Address sequence is exhausted".to_string()))?;
     }
+    Ok(next)
 }
 
 fn get_next_diversifier_index_88_for_scope_and_type(
@@ -249,6 +260,33 @@ pub(super) fn upsert_address(repo: &Repository<'_>, address: &Address) -> Result
                 .map(|value| value.to_vec()),
         ],
     )?;
+    Ok(())
+}
+
+pub(super) fn repair_address_ownership(repo: &Repository<'_>, address: &Address) -> Result<()> {
+    let key_id = address.key_id.ok_or_else(|| {
+        Error::Validation("Address ownership repair requires a key group".to_string())
+    })?;
+    let index = address.diversifier_index_88.ok_or_else(|| {
+        Error::Validation("Address ownership repair requires a ZIP-32 index".to_string())
+    })?;
+    let changed = repo.db.conn().execute(
+        "UPDATE addresses SET key_id = ?1, address_type = ?2, address_scope = ?3, diversifier_index_be = ?4
+         WHERE account_id = ?5 AND address = ?6",
+        params![
+            key_id,
+            address_type_str(address.address_type),
+            address_scope_str(address.address_scope),
+            encode_diversifier_index_be(index).to_vec(),
+            address.account_id,
+            &address.address,
+        ],
+    )?;
+    if changed != 1 {
+        return Err(Error::Storage(
+            "Address ownership repair target is unavailable".to_string(),
+        ));
+    }
     Ok(())
 }
 
