@@ -23,7 +23,7 @@ use hex;
 use orchard::note_encryption::IronwoodDomain;
 use parking_lot::RwLock;
 use pirate_core::keys::{
-    ironwood_extsk_hrp_for_network, ExtendedFullViewingKey, ExtendedSpendingKey,
+    ironwood_extsk_hrp_for_network, DiversifierScope, ExtendedFullViewingKey, ExtendedSpendingKey,
     IronwoodExtendedFullViewingKey, IronwoodExtendedSpendingKey, IronwoodPaymentAddress,
     PaymentAddress,
 };
@@ -2152,6 +2152,33 @@ pub fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEndpoint>
     endpoint::get_lightd_endpoint_config(wallet_id)
 }
 
+fn stored_address_is_owned(
+    address: &StoredAddress,
+    prefix_network: NetworkType,
+    sapling_fvk: &ExtendedFullViewingKey,
+    ironwood_fvk: &IronwoodExtendedFullViewingKey,
+) -> bool {
+    let scope = match address.address_scope {
+        StoredAddressScope::External => DiversifierScope::External,
+        StoredAddressScope::Internal => DiversifierScope::Internal,
+    };
+
+    match address.address_type {
+        AddressType::Sapling => {
+            PaymentAddress::decode_for_network(prefix_network, &address.address)
+                .ok()
+                .and_then(|decoded| sapling_fvk.diversifier_index(&decoded))
+                .is_some_and(|(_, recovered_scope)| recovered_scope == scope)
+        }
+        AddressType::Ironwood => {
+            IronwoodPaymentAddress::decode_for_network(prefix_network, &address.address)
+                .ok()
+                .and_then(|decoded| ironwood_fvk.diversifier_index(&decoded, scope))
+                .is_some()
+        }
+    }
+}
+
 fn infer_key_network_type_from_addresses(
     mnemonic: &str,
     mnemonic_language: MnemonicLanguage,
@@ -2204,17 +2231,7 @@ fn infer_key_network_type_from_addresses(
 
         let mut matches = 0usize;
         for addr in &addresses {
-            let derived = match addr.address_type {
-                AddressType::Ironwood => {
-                    let orchard_addr = orchard_fvk.address_at(addr.diversifier_index);
-                    orchard_addr.encode_for_network(prefix_network)?
-                }
-                AddressType::Sapling => {
-                    let payment_addr = sapling_fvk.derive_address(addr.diversifier_index);
-                    payment_addr.encode_for_network(prefix_network)
-                }
-            };
-            if derived == addr.address {
+            if stored_address_is_owned(addr, prefix_network, &sapling_fvk, &orchard_fvk) {
                 matches += 1;
             }
         }
@@ -4235,6 +4252,97 @@ pub async fn qortal_redeem_p2sh(
 ) -> Result<String> {
     qortal_p2sh::qortal_redeem_p2sh(wallet_id, request).await
 }
+
+#[cfg(test)]
+mod stored_address_ownership_tests {
+    use super::*;
+
+    const MNEMONIC: &str =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+    fn viewing_keys() -> (ExtendedFullViewingKey, IronwoodExtendedFullViewingKey) {
+        let sapling =
+            ExtendedSpendingKey::from_mnemonic_with_account(MNEMONIC, NetworkType::Mainnet, 0)
+                .unwrap()
+                .to_extended_fvk();
+        let seed = ExtendedSpendingKey::seed_bytes_from_mnemonic(MNEMONIC).unwrap();
+        let network = Network::from_type(NetworkType::Mainnet);
+        let ironwood = IronwoodExtendedSpendingKey::master(&seed)
+            .unwrap()
+            .derive_account(network.coin_type, 0)
+            .unwrap()
+            .to_extended_fvk();
+        (sapling, ironwood)
+    }
+
+    fn stored_address(
+        address: String,
+        address_type: AddressType,
+        address_scope: StoredAddressScope,
+    ) -> StoredAddress {
+        StoredAddress {
+            id: None,
+            key_id: Some(1),
+            account_id: 1,
+            diversifier_index: 7,
+            diversifier_index_88: None,
+            address,
+            address_type,
+            label: None,
+            created_at: 1,
+            color_tag: DbColorTag::None,
+            address_scope,
+        }
+    }
+
+    #[test]
+    fn sapling_ownership_does_not_depend_on_the_display_sequence() {
+        let (sapling_fvk, ironwood_fvk) = viewing_keys();
+        let index_above_u32 = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0];
+        let (_, address) = sapling_fvk
+            .find_address_from_index(index_above_u32)
+            .unwrap();
+        let stored = stored_address(
+            address.encode_for_network(NetworkType::Mainnet),
+            AddressType::Sapling,
+            StoredAddressScope::External,
+        );
+
+        assert!(stored_address_is_owned(
+            &stored,
+            NetworkType::Mainnet,
+            &sapling_fvk,
+            &ironwood_fvk,
+        ));
+    }
+
+    #[test]
+    fn ironwood_ownership_requires_the_stored_scope() {
+        let (sapling_fvk, ironwood_fvk) = viewing_keys();
+        let index = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+        let address = ironwood_fvk
+            .address_at_internal_index(index)
+            .encode_for_network(NetworkType::Mainnet)
+            .unwrap();
+        let mut stored =
+            stored_address(address, AddressType::Ironwood, StoredAddressScope::Internal);
+
+        assert!(stored_address_is_owned(
+            &stored,
+            NetworkType::Mainnet,
+            &sapling_fvk,
+            &ironwood_fvk,
+        ));
+        stored.address_scope = StoredAddressScope::External;
+        assert!(!stored_address_is_owned(
+            &stored,
+            NetworkType::Mainnet,
+            &sapling_fvk,
+            &ironwood_fvk,
+        ));
+    }
+}
+
 #[cfg(test)]
 mod api_regression_tests;
 #[cfg(test)]
