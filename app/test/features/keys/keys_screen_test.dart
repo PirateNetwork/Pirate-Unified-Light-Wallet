@@ -21,6 +21,7 @@ Widget _testApp({double textScale = 1}) {
       decoyModeProvider.overrideWith(_DecoyMode.new),
     ],
     child: MaterialApp(
+      theme: ThemeData(splashFactory: NoSplash.splashFactory),
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context)
             .copyWith(textScaler: TextScaler.linear(textScale)),

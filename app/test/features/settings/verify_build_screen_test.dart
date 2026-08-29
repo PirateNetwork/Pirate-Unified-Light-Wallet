@@ -37,7 +37,7 @@ Future<void> _pumpScreen(WidgetTester tester, Size size) async {
     ProviderScope(
       overrides: [allowGithubApisProvider.overrideWithValue(true)],
       child: MaterialApp(
-        theme: ThemeData.dark(),
+        theme: ThemeData.dark().copyWith(splashFactory: NoSplash.splashFactory),
         home: VerifyBuildScreen(
           buildInfoLoader: () async => _buildInfo,
           releaseVerifier: (_, _) async => _verifiedResult,
