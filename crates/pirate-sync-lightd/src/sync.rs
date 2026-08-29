@@ -10671,7 +10671,7 @@ impl StorageSink {
                 color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
                 address_scope: note.address_scope,
             };
-            let _ = repo.upsert_address(&address_record);
+            repo.upsert_address(&address_record)?;
             let address_id = repo
                 .get_address_by_string(self.account_id, &address_string)?
                 .and_then(|addr| addr.id);

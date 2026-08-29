@@ -88,17 +88,21 @@ pub(super) fn backfill_full_diversifier_indices(
     keys: &AddressViewingKeys,
 ) -> Result<()> {
     for mut address in repo.get_addresses_by_key(account_id, keys.key_id)? {
-        if address.diversifier_index_88.is_some() {
-            continue;
-        }
         let Some((index, scope)) =
             recover_address_index(&address.address, address.address_type, network, keys)
         else {
             continue;
         };
+        if address.key_id == Some(keys.key_id)
+            && address.diversifier_index_88 == Some(index)
+            && address.address_scope == scope
+        {
+            continue;
+        }
+        address.key_id = Some(keys.key_id);
         address.diversifier_index_88 = Some(index);
         address.address_scope = scope;
-        repo.upsert_address(&address)?;
+        repo.repair_address_ownership(&address)?;
     }
     Ok(())
 }
@@ -358,6 +362,7 @@ pub(super) fn list_address_balances(
             recover_address_index(&address_string, address_type, network_type, keys)
                 .map(|(index, scope)| (keys.key_id, index, scope))
         });
+        let mut note_key_changed = false;
         if let Some((owner_key_id, index, scope)) = recovered {
             let address_record = pirate_storage_sqlite::Address {
                 id: existing.as_ref().and_then(|address| address.id),
@@ -380,14 +385,29 @@ pub(super) fn list_address_balances(
                 color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
                 address_scope: scope,
             };
-            repo.upsert_address(&address_record)?;
-            note.key_id = Some(owner_key_id);
+            let address_changed = existing.as_ref().is_none_or(|address| {
+                address.key_id != Some(owner_key_id)
+                    || address.address_type != address_type
+                    || address.address_scope != scope
+                    || address.diversifier_index_88 != Some(index)
+            });
+            if address_changed {
+                if existing.is_some() {
+                    repo.repair_address_ownership(&address_record)?;
+                } else {
+                    repo.upsert_address(&address_record)?;
+                }
+            }
+            note_key_changed = note.key_id != Some(owner_key_id);
+            if note_key_changed {
+                note.key_id = Some(owner_key_id);
+            }
         }
         if let Some(addr) = repo
             .get_address_by_string(secret.account_id, &address_string)?
             .and_then(|addr| addr.id)
         {
-            if note.address_id != Some(addr) || recovered.is_some() {
+            if note.address_id != Some(addr) || note_key_changed {
                 note.address_id = Some(addr);
                 repo.update_note_by_id(note)?;
             }
