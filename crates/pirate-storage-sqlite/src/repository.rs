@@ -2168,6 +2168,7 @@ impl<'a> Repository<'a> {
         if address.id.is_some()
             || address.key_id.is_some()
             || address.account_id != key.account_id
+            || address.diversifier_index_88.is_none()
             || address.address_scope != AddressScope::External
             || (sapling_only && address.address_type != AddressType::Sapling)
             || (ironwood_only && address.address_type != AddressType::Ironwood)
@@ -2243,9 +2244,16 @@ impl<'a> Repository<'a> {
                     (key_id, false, key.birthday_height, true)
                 };
 
-            let existing_address: Option<(i64, Option<i64>, i64, String, String)> = conn
+            let mut verified_index_be = address.diversifier_index_88.ok_or_else(|| {
+                Error::Validation("Verified spending-key address has no ZIP-32 index".to_string())
+            })?;
+            verified_index_be.reverse();
+            let verified_index_be = verified_index_be.to_vec();
+
+            type ExistingVerifiedAddress = (i64, Option<i64>, i64, String, String, Option<Vec<u8>>);
+            let existing_address: Option<ExistingVerifiedAddress> = conn
                 .query_row(
-                    "SELECT account_id, key_id, diversifier_index, address_type, address_scope FROM addresses WHERE address = ?1",
+                    "SELECT account_id, key_id, diversifier_index, address_type, address_scope, diversifier_index_be FROM addresses WHERE address = ?1",
                     [&address.address],
                     |row| {
                         Ok((
@@ -2254,18 +2262,20 @@ impl<'a> Repository<'a> {
                             row.get(2)?,
                             row.get(3)?,
                             row.get(4)?,
+                            row.get(5)?,
                         ))
                     },
                 )
                 .optional()?;
             let address_exists = existing_address.is_some();
             let expected_address_type = if sapling_only { "Sapling" } else { "Orchard" };
-            let address_scan_changed = if let Some((
+            let (address_storage_changed, address_sequence) = if let Some((
                 account_id,
                 existing_key_id,
                 diversifier_index,
                 address_type,
                 address_scope,
+                existing_index_be,
             )) = existing_address
             {
                 if account_id != key.account_id || existing_key_id.is_some_and(|id| id != key_id) {
@@ -2273,44 +2283,61 @@ impl<'a> Repository<'a> {
                         "Verified address is already assigned to another key".to_string(),
                     ));
                 }
-                existing_key_id != Some(key_id)
-                    || diversifier_index != i64::from(address.diversifier_index)
+                if existing_index_be
+                    .as_deref()
+                    .is_some_and(|stored| stored != verified_index_be.as_slice())
+                {
+                    return Err(Error::Validation(
+                        "Verified address has a conflicting ZIP-32 index".to_string(),
+                    ));
+                }
+                let storage_changed = existing_key_id != Some(key_id)
                     || address_type != expected_address_type
                     || address_scope != "external"
+                    || existing_index_be.is_none();
+                (storage_changed, diversifier_index)
             } else {
-                true
+                let sequence = address::get_next_diversifier_index_for_scope_and_type(
+                    self,
+                    key.account_id,
+                    key_id,
+                    AddressScope::External,
+                    address.address_type,
+                )?;
+                (true, i64::from(sequence))
             };
 
-            if address_scan_changed {
+            if address_storage_changed {
                 if address_exists {
                     conn.execute(
-                        "UPDATE addresses SET account_id = ?1, key_id = ?2, diversifier_index = ?3, address_type = ?4, address_scope = 'external' WHERE address = ?5",
+                        "UPDATE addresses SET account_id = ?1, key_id = ?2, address_type = ?3, address_scope = 'external', diversifier_index_be = ?4 WHERE address = ?5",
                         params![
                             key.account_id,
                             key_id,
-                            i64::from(address.diversifier_index),
                             expected_address_type,
+                            &verified_index_be,
                             &address.address,
                         ],
                     )?;
                 } else {
                     conn.execute(
-                        "INSERT INTO addresses (account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'external')",
+                        "INSERT INTO addresses (account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope, diversifier_index_be) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'external', ?9)",
                         params![
                             key.account_id,
                             key_id,
-                            i64::from(address.diversifier_index),
+                            address_sequence,
                             &address.address,
                             expected_address_type,
                             &address.label,
                             address.created_at,
                             address.color_tag.as_u8() as i64,
+                            &verified_index_be,
                         ],
                     )?;
                 }
             }
 
-            if key_scan_changed || address_scan_changed {
+            if key_scan_changed {
                 // A full replay from the imported key's birthday supersedes any
                 // narrower witness-repair range that was already queued. Merge
                 // with an earlier pending import so request order cannot raise
@@ -6061,7 +6088,7 @@ mod tests {
             key_id: None,
             account_id,
             diversifier_index: 0,
-            diversifier_index_88: None,
+            diversifier_index_88: Some([2; 11]),
             address: value.to_string(),
             address_type: AddressType::Sapling,
             label: None,
@@ -6095,7 +6122,7 @@ mod tests {
             key_id: None,
             account_id,
             diversifier_index: 3,
-            diversifier_index_88: None,
+            diversifier_index_88: Some([3; 11]),
             address: value.to_string(),
             address_type: AddressType::Ironwood,
             label: None,
@@ -6192,6 +6219,217 @@ mod tests {
     }
 
     #[test]
+    fn verified_import_persists_full_cursor_without_trusting_legacy_sequence() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Verified cursor import".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let mut address = verified_sapling_address(account_id, "zs1verified-cursor");
+        address.diversifier_index = u32::MAX;
+        address.diversifier_index_88 = Some([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+        let first = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x32, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert!(!first.1);
+        assert!(first.3);
+        let first_generation = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap()
+            .key_import_generation;
+
+        let stored = repo
+            .get_address_by_string(account_id, &address.address)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.diversifier_index, 0);
+        assert_eq!(
+            stored.diversifier_index_88,
+            Some([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        );
+        assert_eq!(
+            repo.get_next_diversifier_index_for_scope_and_type(
+                account_id,
+                first.0,
+                AddressScope::External,
+                AddressType::Sapling,
+            )
+            .unwrap(),
+            1
+        );
+
+        db.conn()
+            .execute(
+                "UPDATE spendability_state SET spendable = 1, rescan_required = 0, required_rescan_from_height = 0, reason_code = 'READY' WHERE id = 1",
+                [],
+            )
+            .unwrap();
+
+        // Caller sequence metadata is neither an ownership proof nor an
+        // allocation cursor. A retry must not rewrite storage or reopen replay.
+        address.diversifier_index = 1;
+        let changed_metadata_retry = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x32, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert!(changed_metadata_retry.1);
+        assert!(!changed_metadata_retry.3);
+        assert_eq!(
+            crate::SpendabilityStateStorage::new(&db)
+                .load_state()
+                .unwrap()
+                .key_import_generation,
+            first_generation
+        );
+        assert_eq!(
+            repo.get_address_by_string(account_id, &address.address)
+                .unwrap()
+                .unwrap()
+                .diversifier_index,
+            0
+        );
+
+        // Repair missing cursor metadata without changing the established
+        // display sequence or making already-scanned key material unspendable.
+        db.conn()
+            .execute(
+                "UPDATE addresses SET diversifier_index = ?1, diversifier_index_be = NULL WHERE address = ?2",
+                rusqlite::params![i64::from(u32::MAX), &address.address],
+            )
+            .unwrap();
+        let cursor_repair = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x32, 500),
+                &address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert!(cursor_repair.1);
+        assert!(!cursor_repair.3);
+        let repaired = repo
+            .get_address_by_string(account_id, &address.address)
+            .unwrap()
+            .unwrap();
+        assert_eq!(repaired.diversifier_index, u32::MAX);
+        assert_eq!(
+            repaired.diversifier_index_88,
+            Some([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        );
+        assert_eq!(
+            repo.get_next_diversifier_index_for_scope_and_type(
+                account_id,
+                first.0,
+                AddressScope::External,
+                AddressType::Sapling,
+            )
+            .unwrap(),
+            0
+        );
+        let repaired_state = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert_eq!(repaired_state.key_import_generation, first_generation);
+        assert!(repaired_state.spendable);
+        assert!(!repaired_state.rescan_required);
+
+        let mut conflicting = address.clone();
+        conflicting.diversifier_index_88 = Some([10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
+        let error = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x32, 500),
+                &conflicting,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("conflicting ZIP-32 index"));
+        let after_conflict = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert_eq!(after_conflict.key_import_generation, first_generation);
+        assert!(after_conflict.spendable);
+        assert!(!after_conflict.rescan_required);
+    }
+
+    #[test]
+    fn verified_import_allocates_stable_sequences_for_multiple_addresses() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Verified multi-address import".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let first_address = verified_sapling_address(account_id, "zs1verified-first");
+        let first = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x33, 500),
+                &first_address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert!(!first.1);
+        assert!(first.3);
+
+        db.conn()
+            .execute(
+                "UPDATE spendability_state SET spendable = 1, rescan_required = 0, required_rescan_from_height = 0, reason_code = 'READY' WHERE id = 1",
+                [],
+            )
+            .unwrap();
+        let first_generation = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap()
+            .key_import_generation;
+
+        let mut second_address = verified_sapling_address(account_id, "zs1verified-second");
+        second_address.diversifier_index = u32::MAX;
+        second_address.diversifier_index_88 = Some([4; 11]);
+        let second = repo
+            .import_verified_spending_key(
+                &verified_sapling_import(account_id, 0x33, 500),
+                &second_address,
+                "ERR_RESCAN_REQUIRED",
+            )
+            .unwrap();
+        assert_eq!(second.0, first.0);
+        assert!(second.1);
+        assert!(!second.3);
+        assert_eq!(
+            repo.get_address_by_string(account_id, &first_address.address)
+                .unwrap()
+                .unwrap()
+                .diversifier_index,
+            0
+        );
+        let stored_second = repo
+            .get_address_by_string(account_id, &second_address.address)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored_second.diversifier_index, 1);
+        assert_eq!(stored_second.diversifier_index_88, Some([4; 11]));
+        let ready_state = crate::SpendabilityStateStorage::new(&db)
+            .load_state()
+            .unwrap();
+        assert_eq!(ready_state.key_import_generation, first_generation);
+        assert!(ready_state.spendable);
+        assert!(!ready_state.rescan_required);
+    }
+
+    #[test]
     fn verified_ironwood_import_is_idempotent_and_preserves_ready_state() {
         let db = test_db();
         let repo = Repository::new(&db);
@@ -6217,7 +6455,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(stored.key_id, Some(first.0));
-        assert_eq!(stored.diversifier_index, 3);
+        assert_eq!(stored.diversifier_index, 0);
         assert_eq!(stored.address_type, AddressType::Ironwood);
 
         db.conn()
@@ -6382,7 +6620,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(stored.key_id, Some(first.0));
-        assert_eq!(stored.diversifier_index, 0);
+        assert_eq!(stored.diversifier_index, 7);
         assert_eq!(stored.address_type, AddressType::Sapling);
         assert_eq!(stored.address_scope, AddressScope::External);
     }
@@ -7915,6 +8153,77 @@ mod tests {
         assert!(repo
             .set_address_archived(other_account_id, address_id, true)
             .is_err());
+    }
+
+    #[test]
+    fn next_address_sequence_uses_max_path_and_recovers_poisoned_maximum() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Address sequence recovery".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let key_id = 42_i64;
+
+        for (sequence, address) in [(3, "zs1sequence-three"), (5, "zs1sequence-five")] {
+            repo.upsert_address(&Address {
+                id: None,
+                key_id: Some(key_id),
+                account_id,
+                diversifier_index: sequence,
+                diversifier_index_88: None,
+                address: address.to_string(),
+                address_type: AddressType::Sapling,
+                label: None,
+                created_at: 1,
+                color_tag: ColorTag::None,
+                address_scope: AddressScope::External,
+            })
+            .unwrap();
+        }
+
+        // Ordinary allocation preserves the established monotonically
+        // increasing display sequence without searching historical gaps.
+        assert_eq!(
+            repo.get_next_diversifier_index_for_scope_and_type(
+                account_id,
+                key_id,
+                AddressScope::External,
+                AddressType::Sapling,
+            )
+            .unwrap(),
+            6
+        );
+
+        repo.upsert_address(&Address {
+            id: None,
+            key_id: Some(key_id),
+            account_id,
+            diversifier_index: u32::MAX,
+            diversifier_index_88: None,
+            address: "zs1sequence-poisoned-max".to_string(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at: 1,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        })
+        .unwrap();
+
+        // Only the exceptional maximum value activates gap recovery.
+        assert_eq!(
+            repo.get_next_diversifier_index_for_scope_and_type(
+                account_id,
+                key_id,
+                AddressScope::External,
+                AddressType::Sapling,
+            )
+            .unwrap(),
+            0
+        );
     }
 
     #[test]

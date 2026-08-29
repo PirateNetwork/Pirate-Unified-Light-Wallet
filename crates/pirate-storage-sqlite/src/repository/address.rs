@@ -86,13 +86,48 @@ pub(super) fn get_next_diversifier_index_for_scope_and_type(
         |row| row.get(0),
     )?;
 
-    match max_index {
-        None => Ok(0),
-        Some(value) => u32::try_from(value)
-            .map_err(|_| Error::Validation("Stored address sequence is invalid".to_string()))?
-            .checked_add(1)
-            .ok_or_else(|| Error::Validation("Address sequence is exhausted".to_string())),
+    let Some(max_index) = max_index else {
+        return Ok(0);
+    };
+    let max_index = u32::try_from(max_index)
+        .map_err(|_| Error::Validation("Stored address sequence is invalid".to_string()))?;
+    if max_index < u32::MAX {
+        return Ok(max_index + 1);
     }
+
+    // A legacy caller may have supplied u32::MAX as display metadata. Keep
+    // ordinary allocation on the constant-time MAX + 1 path and search for a
+    // free display sequence only for this exceptional poisoned-maximum case.
+    let mut statement = repo.db.conn().prepare(
+        "SELECT DISTINCT diversifier_index FROM addresses
+         WHERE account_id = ?1 AND key_id = ?2 AND address_scope = ?3 AND address_type = ?4
+         ORDER BY diversifier_index",
+    )?;
+    let rows = statement.query_map(
+        params![
+            account_id,
+            key_id,
+            address_scope_str(scope),
+            address_type_str(address_type)
+        ],
+        |row| row.get::<_, i64>(0),
+    )?;
+
+    let mut lowest_free = 0_u32;
+    for row in rows {
+        let stored = u32::try_from(row?)
+            .map_err(|_| Error::Validation("Stored address sequence is invalid".to_string()))?;
+        if stored < lowest_free {
+            continue;
+        }
+        if stored > lowest_free {
+            return Ok(lowest_free);
+        }
+        lowest_free = lowest_free
+            .checked_add(1)
+            .ok_or_else(|| Error::Validation("Address sequence is exhausted".to_string()))?;
+    }
+    Ok(lowest_free)
 }
 
 fn get_next_diversifier_index_88_for_scope_and_type(
