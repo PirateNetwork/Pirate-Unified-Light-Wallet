@@ -71,6 +71,7 @@ const HISTORICAL_STRIPE_MAX_SOURCES: usize = 3;
 const HISTORICAL_STRIPE_HANDOFF_BYTES: u64 = 4 * 1024 * 1024;
 const HISTORICAL_STRIPE_SOURCE_FAILURES: u32 = 2;
 const ENDPOINT_POOL_TIP_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+const COMPACT_CACHE_MAX_NODE_LAG: u64 = 24;
 
 fn write_endpoint_pool_debug_event(id: &str, message: &str, data: &str) {
     pirate_core::debug_log::with_locked_file(|file| {
@@ -1495,6 +1496,62 @@ fn eligible_candidate_order(state: &EndpointPoolState, minimum_tip: u64) -> Vec<
     candidates
 }
 
+fn validate_compact_cache_tip(
+    info: &proto::LightdInfo,
+    advertised_tip: &BlockId,
+    compact_tip: &proto::CompactBlock,
+) -> Result<()> {
+    if advertised_tip.height == 0 {
+        return Err(Error::Connection(
+            "lightwalletd compact cache reported an empty tip".to_string(),
+        ));
+    }
+    if advertised_tip.hash.len() != 32 {
+        return Err(Error::Connection(format!(
+            "lightwalletd compact-cache tip hash is {} bytes, expected 32",
+            advertised_tip.hash.len()
+        )));
+    }
+
+    let reported_network_height = info.block_height.max(info.estimated_height);
+    if reported_network_height > 0
+        && advertised_tip
+            .height
+            .saturating_add(COMPACT_CACHE_MAX_NODE_LAG)
+            < reported_network_height
+    {
+        return Err(Error::Connection(format!(
+            "lightwalletd compact cache is not ready: tip {} trails reported network height {}",
+            advertised_tip.height, reported_network_height
+        )));
+    }
+    if compact_tip.height != advertised_tip.height {
+        return Err(Error::Connection(format!(
+            "lightwalletd returned compact block {} for advertised tip {}",
+            compact_tip.height, advertised_tip.height
+        )));
+    }
+    if compact_tip.hash.len() != 32 {
+        return Err(Error::Connection(format!(
+            "lightwalletd compact block hash is {} bytes, expected 32",
+            compact_tip.hash.len()
+        )));
+    }
+    if compact_tip.hash != advertised_tip.hash {
+        return Err(Error::Connection(
+            "lightwalletd compact block does not match its advertised tip hash".to_string(),
+        ));
+    }
+    if compact_tip.prev_hash.len() != 32 {
+        return Err(Error::Connection(format!(
+            "lightwalletd compact block previous hash is {} bytes, expected 32",
+            compact_tip.prev_hash.len()
+        )));
+    }
+
+    Ok(())
+}
+
 /// Lightwalletd gRPC client.
 ///
 /// Provides tip queries, bounded compact-block streams, endpoint failover, and
@@ -1673,6 +1730,11 @@ impl LightClient {
 
     async fn probe_candidate(config: LightClientConfig) -> Result<(LightdInfo, u64, Channel)> {
         let channel = Self::try_connect_for_probe(config).await?;
+        let (info, tip) = Self::probe_connected_candidate(channel.clone()).await?;
+        Ok((info, tip, channel))
+    }
+
+    async fn probe_connected_candidate(channel: Channel) -> Result<(LightdInfo, u64)> {
         let mut client = CompactTxStreamerClient::new(channel.clone());
         let info = client
             .get_lightd_info(tonic::Request::new(Empty {}))
@@ -1683,9 +1745,16 @@ impl LightClient {
                 network: String::new(),
             }))
             .await?
-            .into_inner()
-            .height;
-        Ok((LightdInfo::from(info), tip, channel))
+            .into_inner();
+        let tip_block = client
+            .get_block(tonic::Request::new(BlockId {
+                height: tip.height,
+                hash: Vec::new(),
+            }))
+            .await?
+            .into_inner();
+        validate_compact_cache_tip(&info, &tip, &tip_block)?;
+        Ok((LightdInfo::from(info), tip.height))
     }
 
     async fn probe_candidate_anchor(channel: Channel, height: u32) -> Result<CompactBlock> {
@@ -4613,6 +4682,88 @@ mod tests {
 
         state.tips.insert(1, 1_001);
         assert_eq!(eligible_candidate_order(&state, 1_001), vec![1]);
+    }
+
+    #[test]
+    fn compact_cache_readiness_accepts_the_served_advertised_tip() {
+        let info = proto::LightdInfo {
+            block_height: 1_010,
+            estimated_height: 1_010,
+            ..proto::LightdInfo::default()
+        };
+        let advertised_tip = BlockId {
+            height: 1_010,
+            hash: vec![7; 32],
+        };
+        let compact_tip: proto::CompactBlock = compact_block(1_010, 7, vec![6; 32]).into();
+
+        validate_compact_cache_tip(&info, &advertised_tip, &compact_tip)
+            .expect("matching compact-cache tip should be ready");
+    }
+
+    #[test]
+    fn compact_cache_readiness_rejects_an_empty_or_stale_cache() {
+        let synced_info = proto::LightdInfo {
+            block_height: 1_010,
+            estimated_height: 1_010,
+            ..proto::LightdInfo::default()
+        };
+        let empty_tip = BlockId {
+            height: 0,
+            hash: Vec::new(),
+        };
+        let empty_block: proto::CompactBlock = compact_block(0, 0, Vec::new()).into();
+        let empty_error = validate_compact_cache_tip(&synced_info, &empty_tip, &empty_block)
+            .expect_err("empty cache must not be ready");
+        assert!(empty_error.to_string().contains("empty tip"));
+
+        let reindexing_info = proto::LightdInfo {
+            block_height: 700,
+            estimated_height: 1_010,
+            ..proto::LightdInfo::default()
+        };
+        let stale_tip = BlockId {
+            height: 700,
+            hash: vec![7; 32],
+        };
+        let stale_block: proto::CompactBlock = compact_block(700, 7, vec![6; 32]).into();
+        let stale_error = validate_compact_cache_tip(&reindexing_info, &stale_tip, &stale_block)
+            .expect_err("a reindexing server must not advertise a stale cache as ready");
+        assert!(stale_error
+            .to_string()
+            .contains("trails reported network height"));
+    }
+
+    #[test]
+    fn compact_cache_readiness_rejects_inconsistent_tip_blocks() {
+        let info = proto::LightdInfo {
+            block_height: 1_010,
+            estimated_height: 1_010,
+            ..proto::LightdInfo::default()
+        };
+        let advertised_tip = BlockId {
+            height: 1_010,
+            hash: vec![7; 32],
+        };
+
+        let wrong_height: proto::CompactBlock = compact_block(1_009, 7, vec![6; 32]).into();
+        let height_error = validate_compact_cache_tip(&info, &advertised_tip, &wrong_height)
+            .expect_err("wrong compact-block height must not be ready");
+        assert!(height_error.to_string().contains("returned compact block"));
+
+        let wrong_hash: proto::CompactBlock = compact_block(1_010, 8, vec![6; 32]).into();
+        let hash_error = validate_compact_cache_tip(&info, &advertised_tip, &wrong_hash)
+            .expect_err("wrong compact-block hash must not be ready");
+        assert!(hash_error.to_string().contains("advertised tip hash"));
+
+        let malformed_hash_tip = BlockId {
+            height: 1_010,
+            hash: vec![7; 31],
+        };
+        let valid_block: proto::CompactBlock = compact_block(1_010, 7, vec![6; 32]).into();
+        let malformed_error = validate_compact_cache_tip(&info, &malformed_hash_tip, &valid_block)
+            .expect_err("malformed advertised hash must not be ready");
+        assert!(malformed_error.to_string().contains("31 bytes"));
     }
 
     #[test]
