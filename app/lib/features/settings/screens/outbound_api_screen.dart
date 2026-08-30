@@ -1,7 +1,5 @@
 library;
 
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,8 +20,11 @@ class OutboundApiScreen extends ConsumerWidget {
     final githubEnabled = ref.watch(externalGithubApiProvider);
     final desktopUpdateEnabled = ref.watch(externalDesktopUpdateApiProvider);
     final komodoSwapEnabled = ref.watch(externalKomodoSwapApiProvider);
+    final platform = Theme.of(context).platform;
     final isDesktop =
-        Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.linux;
 
     return PScaffold(
       title: 'Outbound API Calls'.tr,
@@ -75,9 +76,8 @@ class OutboundApiScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.md),
           _ApiToggleCard(
             title: 'Live Price Feeds'.tr,
-            subtitle:
-                'CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.'
-                    .tr,
+            subtitle: 'ARRR prices and fiat conversion use CoinGecko first, with CoinPaprika and CoinMarketCap as backups.'
+                .tr,
             enabled: priceEnabled,
             available: masterEnabled,
             onChanged: (value) {
@@ -89,9 +89,8 @@ class OutboundApiScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.md),
           _ApiToggleCard(
             title: 'Verify Build GitHub Checks'.tr,
-            subtitle:
-                'When enabled, Verify Build fetches releases and checksum files from GitHub over your selected transport.'
-                    .tr,
+            subtitle: 'When enabled, Verify Build fetches releases and checksum files from GitHub over your selected transport.'
+                .tr,
             enabled: githubEnabled,
             available: masterEnabled,
             onChanged: (value) {
@@ -103,9 +102,8 @@ class OutboundApiScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.md),
           _ApiToggleCard(
             title: 'Komodo Swaps'.tr,
-            subtitle:
-                'Enables the local KDF swap engine, order books, swap quotes, and funding-balance checks when the selected wallet networking mode supports swaps.'
-                    .tr,
+            subtitle: 'Enables the local KDF swap engine, order books, swap quotes, and funding-balance checks when the selected wallet networking mode supports swaps.'
+                .tr,
             enabled: komodoSwapEnabled,
             available: masterEnabled,
             onChanged: (value) {
@@ -118,9 +116,8 @@ class OutboundApiScreen extends ConsumerWidget {
             const SizedBox(height: AppSpacing.md),
             _ApiToggleCard(
               title: 'Desktop Update Checks'.tr,
-              subtitle:
-                  'When enabled, periodically checks GitHub for desktop updates over your selected transport.'
-                      .tr,
+              subtitle: 'When enabled, periodically checks GitHub for desktop updates over your selected transport.'
+                  .tr,
               enabled: desktopUpdateEnabled,
               available: masterEnabled && githubEnabled,
               onChanged: (value) {
