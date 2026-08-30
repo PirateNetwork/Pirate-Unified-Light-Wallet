@@ -235,7 +235,7 @@
   "Close and reopen to return to the real wallet.": "Tutup dan buka kembali untuk kembali ke dompet asli.",
   "Close window": "Tutup jendela",
   "Coin Type": "Jenis Koin",
-  "CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.": "CoinGecko sebagai utama + CoinMarketCap sebagai cadangan untuk harga ARRR dan konversi fiat.",
+  "ARRR prices and fiat conversion use CoinGecko first, with CoinPaprika and CoinMarketCap as backups.": "Harga ARRR dan konversi fiat menggunakan CoinGecko terlebih dahulu, dengan CoinPaprika dan CoinMarketCap sebagai cadangan.",
   "Color Tag": "Tag Warna",
   "Color tag": "Tag warna",
   "Compile metadata from the bundled Rust FFI library.": "Mengompilasi metadata dari pustaka Rust FFI yang disertakan.",

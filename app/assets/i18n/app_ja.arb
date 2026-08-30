@@ -235,7 +235,7 @@
   "Close and reopen to return to the real wallet.": "閉じてから再度開くと、実際のウォレットに戻ります。",
   "Close window": "ウィンドウを閉じる",
   "Coin Type": "コインの種類",
-  "CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.": "ARRR 価格と法定通貨換算の CoinGecko プライマリ + CoinMarketCap フォールバック。",
+  "ARRR prices and fiat conversion use CoinGecko first, with CoinPaprika and CoinMarketCap as backups.": "ARRR 価格と法定通貨換算には CoinGecko を優先し、CoinPaprika と CoinMarketCap を予備として使用します。",
   "Color Tag": "カラータグ",
   "Color tag": "カラータグ",
   "Compile metadata from the bundled Rust FFI library.": "バンドルされている Rust FFI ライブラリからメタデータをコンパイルします。",

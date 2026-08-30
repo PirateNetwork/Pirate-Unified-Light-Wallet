@@ -235,7 +235,7 @@
   "Close and reopen to return to the real wallet.": "اصلی بٹوے پر واپس جانے کے لیے بند کریں اور دوبارہ کھولیں۔",
   "Close window": "کھڑکی بند کریں۔",
   "Coin Type": "سکے کی قسم",
-  "CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.": "CoinGecko بنیادی + CoinMarketCap ARRR قیمتوں اور فیاٹ تبدیلی کے لیے فال بیک۔",
+  "ARRR prices and fiat conversion use CoinGecko first, with CoinPaprika and CoinMarketCap as backups.": "ARRR کی قیمتیں اور فیاٹ تبدیلی پہلے CoinGecko استعمال کرتی ہیں، جبکہ CoinPaprika اور CoinMarketCap متبادل ذرائع ہیں۔",
   "Color Tag": "رنگین ٹیگ",
   "Color tag": "رنگین ٹیگ",
   "Compile metadata from the bundled Rust FFI library.": "بنڈل Rust FFI لائبریری سے میٹا ڈیٹا مرتب کریں۔",

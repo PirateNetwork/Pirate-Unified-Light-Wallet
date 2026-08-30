@@ -235,7 +235,7 @@
   "Close and reopen to return to the real wallet.": "Sluit en open opnieuw om terug te keren naar de echte portemonnee.",
   "Close window": "Sluit venster",
   "Coin Type": "Muntsoort",
-  "CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.": "CoinGecko primair + CoinMarketCap fallback voor ARRR-prijzen en fiat-conversie.",
+  "ARRR prices and fiat conversion use CoinGecko first, with CoinPaprika and CoinMarketCap as backups.": "ARRR-prijzen en fiatconversie gebruiken eerst CoinGecko, met CoinPaprika en CoinMarketCap als reservebronnen.",
   "Color Tag": "Kleurlabel",
   "Color tag": "Kleur label",
   "Compile metadata from the bundled Rust FFI library.": "Compileer metadata uit de gebundelde Rust FFI-bibliotheek.",

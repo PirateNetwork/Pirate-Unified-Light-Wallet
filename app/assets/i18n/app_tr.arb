@@ -235,7 +235,7 @@
   "Close and reopen to return to the real wallet.": "Gerçek cüzdana dönmek için kapatıp yeniden açın.",
   "Close window": "Pencereyi kapat",
   "Coin Type": "Para Türü",
-  "CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.": "CoinGecko birincil + ARRR fiyatları ve itibari para dönüşümü için CoinMarketCap geri dönüşü.",
+  "ARRR prices and fiat conversion use CoinGecko first, with CoinPaprika and CoinMarketCap as backups.": "ARRR fiyatları ve itibari para dönüşümü önce CoinGecko'yu, yedek olarak CoinPaprika ve CoinMarketCap'i kullanır.",
   "Color Tag": "Renk Etiketi",
   "Color tag": "Renk etiketi",
   "Compile metadata from the bundled Rust FFI library.": "Paketlenmiş Rust FFI kitaplığından meta verileri derleyin.",

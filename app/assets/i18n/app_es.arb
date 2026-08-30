@@ -235,7 +235,7 @@
   "Close and reopen to return to the real wallet.": "Cierra y vuelve a abrir para volver a la billetera real.",
   "Close window": "Cerrar ventana",
   "Coin Type": "Tipo de moneda",
-  "CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.": "CoinGecko primario + respaldo de CoinMarketCap para precios ARRR y conversión fiduciaria.",
+  "ARRR prices and fiat conversion use CoinGecko first, with CoinPaprika and CoinMarketCap as backups.": "Los precios de ARRR y la conversión fiat usan primero CoinGecko, con CoinPaprika y CoinMarketCap como fuentes de respaldo.",
   "Color Tag": "Etiqueta de color",
   "Color tag": "Etiqueta de color",
   "Compile metadata from the bundled Rust FFI library.": "Compile metadatos de la biblioteca Rust FFI incluida.",

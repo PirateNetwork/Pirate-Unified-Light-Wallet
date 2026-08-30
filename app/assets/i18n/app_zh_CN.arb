@@ -235,7 +235,7 @@
   "Close and reopen to return to the real wallet.": "关闭并重新打开即可返回真实钱包。",
   "Close window": "关闭窗口",
   "Coin Type": "硬币类型",
-  "CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.": "CoinGecko 主要 + CoinMarketCap ARRR 价格和法定兑换的后备。",
+  "ARRR prices and fiat conversion use CoinGecko first, with CoinPaprika and CoinMarketCap as backups.": "ARRR 价格和法币换算优先使用 CoinGecko，并以 CoinPaprika 和 CoinMarketCap 作为备用来源。",
   "Color Tag": "颜色标签",
   "Color tag": "颜色标签",
   "Compile metadata from the bundled Rust FFI library.": "从捆绑的 Rust FFI 库编译元数据。",
