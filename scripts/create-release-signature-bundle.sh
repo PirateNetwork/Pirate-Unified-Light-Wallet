@@ -61,6 +61,11 @@ CHECKSUM_MANIFEST="$STAGE_DIR/sha256sum-${RELEASE_TAG}.txt"
 mapfile -d '' RELEASE_FILES < <(
   find "$RELEASE_DIR" -maxdepth 1 -type f \
     ! -name 'signatures-*.zip' \
+    ! -name '*.sig' \
+    ! -name 'README' \
+    ! -name 'public_key.asc' \
+    ! -name 'sha256sum-*.txt' \
+    ! -name 'build-payloads-*.txt' \
     -print0 | sort -z
 )
 if [[ ${#RELEASE_FILES[@]} -eq 0 ]]; then
@@ -183,5 +188,9 @@ with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(path, path.name)
 PY
 fi
+
+while IFS= read -r -d '' verification_file; do
+  cp -f "$verification_file" "$RELEASE_DIR/$(basename "$verification_file")"
+done < <(find "$STAGE_DIR" -maxdepth 1 -type f -print0)
 
 echo "Created $(basename "$OUTPUT_ZIP") with ${#RELEASE_FILES[@]} signed release files."

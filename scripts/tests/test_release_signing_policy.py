@@ -95,6 +95,11 @@ class ReleaseSigningPolicyTest(unittest.TestCase):
             'sign_file "$CHECKSUM_MANIFEST" "$CHECKSUM_MANIFEST.sig"',
             self.bundler,
         )
+        self.assertIn(
+            'cp -f "$verification_file" "$RELEASE_DIR/$(basename "$verification_file")"',
+            self.bundler,
+        )
+        self.assertIn("! -name '*.sig'", self.bundler)
 
     def test_ci_requires_the_unified_wallet_private_key_and_builds_one_bundle(self) -> None:
         self.assertIn(
