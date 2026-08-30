@@ -1771,7 +1771,7 @@ impl LightClient {
     /// Probe configured endpoints through the selected transport and retain only
     /// candidates that match a canonical endpoint at a common chain anchor.
     pub async fn probe_endpoints(&self) -> Vec<EndpointHealth> {
-        self.clone().probe_endpoints_owned().await
+        self.clone().probe_endpoints_owned(None).await
     }
 
     fn endpoint_probe_timeout(&self) -> Duration {
@@ -1832,7 +1832,7 @@ impl LightClient {
         };
         tokio::spawn(async move {
             let _guard = guard;
-            let health = pool_client.probe_endpoints_owned().await;
+            let health = pool_client.probe_endpoints_owned(None).await;
             Self::report_endpoint_pool_health(&health);
         });
         true
@@ -1883,7 +1883,10 @@ impl LightClient {
         }
     }
 
-    async fn probe_endpoints_owned(self) -> Vec<EndpointHealth> {
+    async fn probe_endpoints_owned(
+        self,
+        skipped_primary_reason: Option<String>,
+    ) -> Vec<EndpointHealth> {
         let endpoint_count = self.endpoint_count();
         let probe_timeout = self.endpoint_probe_timeout();
         let mut probes: Vec<Option<EndpointProbe>> = std::iter::repeat_with(|| None)
@@ -1900,8 +1903,14 @@ impl LightClient {
                     })
             })
             .collect::<Vec<_>>();
+        if let Some(reason) = skipped_primary_reason.as_ref() {
+            health[0].reason = Some(reason.clone());
+        }
         let mut pending_probes = FuturesUnordered::new();
         for index in 0..endpoint_count {
+            if index == 0 && skipped_primary_reason.is_some() {
+                continue;
+            }
             let Some(candidate) = self.candidate_client(index) else {
                 continue;
             };
@@ -2336,29 +2345,72 @@ impl LightClient {
             let primary = self
                 .candidate_client(0)
                 .expect("the primary endpoint is always present");
-            if primary.clone().connect_single_endpoint().await.is_ok() {
-                let channel = Arc::clone(&primary.channel)
-                    .lock_owned()
+            let primary_failure = match primary.clone().connect_single_endpoint().await {
+                Ok(()) => {
+                    let channel = Arc::clone(&primary.channel)
+                        .lock_owned()
+                        .await
+                        .clone()
+                        .ok_or_else(|| {
+                            Error::Connection(
+                                "connected primary lightwalletd endpoint has no channel"
+                                    .to_string(),
+                            )
+                        })?;
+                    let readiness_timeout = self.endpoint_probe_timeout();
+                    match tokio::time::timeout(
+                        readiness_timeout,
+                        Self::probe_connected_candidate(channel.clone()),
+                    )
                     .await
-                    .clone()
-                    .ok_or_else(|| {
-                        Error::Connection(
-                            "connected primary lightwalletd endpoint has no channel".to_string(),
-                        )
-                    })?;
-                *Arc::clone(&self.channel).lock_owned().await = Some(channel);
-                info!(
-                    "Connected to selected lightwalletd endpoint {}; alternate validation is deferred until network streaming",
-                    self.config.endpoint
-                );
-                return Ok(());
-            }
+                    {
+                        Ok(Ok((_, tip))) => {
+                            *Arc::clone(&self.channel).lock_owned().await = Some(channel);
+                            write_endpoint_pool_debug_event(
+                                "log_endpoint_primary_ready",
+                                "selected Auto endpoint passed compact-cache readiness",
+                                &serde_json::json!({
+                                    "endpoint": self.config.endpoint,
+                                    "tip": tip,
+                                })
+                                .to_string(),
+                            );
+                            info!(
+                                tip,
+                                "Connected to ready lightwalletd endpoint {}; alternate validation is deferred until network streaming",
+                                self.config.endpoint
+                            );
+                            return Ok(());
+                        }
+                        Ok(Err(error)) => error.to_string(),
+                        Err(_) => format!(
+                            "compact-cache readiness timed out after {:?}",
+                            readiness_timeout
+                        ),
+                    }
+                }
+                Err(error) => error.to_string(),
+            };
 
             warn!(
-                "Selected lightwalletd endpoint {} is unavailable; probing canonical alternates",
-                self.config.endpoint
+                reason = %primary_failure,
+                "Selected lightwalletd endpoint {} is not ready; probing canonical alternates",
+                self.config.endpoint,
             );
-            let health = self.probe_endpoints().await;
+            write_endpoint_pool_debug_event(
+                "log_endpoint_primary_rejected",
+                "selected Auto endpoint failed compact-cache readiness",
+                &serde_json::json!({
+                    "endpoint": self.config.endpoint,
+                    "reason": &primary_failure,
+                })
+                .to_string(),
+            );
+            let health = self
+                .clone()
+                .probe_endpoints_owned(Some(primary_failure))
+                .await;
+            Self::report_endpoint_pool_health(&health);
             if health.iter().any(|endpoint| endpoint.healthy) {
                 info!(
                     healthy = health.iter().filter(|endpoint| endpoint.healthy).count(),
