@@ -173,6 +173,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         return AppColors.error;
       case ReleaseVerificationStatus.checking:
         return AppColors.warning;
+      case ReleaseVerificationStatus.unavailable:
+        return AppColors.warning;
       case ReleaseVerificationStatus.error:
         return AppColors.error;
       case ReleaseVerificationStatus.noRelease:
@@ -192,6 +194,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         return 'Mismatch'.tr;
       case ReleaseVerificationStatus.checking:
         return 'Checking'.tr;
+      case ReleaseVerificationStatus.unavailable:
+        return 'Check unavailable'.tr;
       case ReleaseVerificationStatus.noRelease:
         return 'No Releases'.tr;
       case ReleaseVerificationStatus.noMatchingChecksum:
@@ -214,10 +218,13 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         return 'Official verification files are not available for this version.'
             .tr;
       case ReleaseVerificationReason.downloadFailed:
-        return 'Could not download official verification files. Check the connection and try again.'
+        return 'GitHub could not be reached through the current network connection. This does not mean the app failed verification. Check Network Privacy and try again.'
+            .tr;
+      case ReleaseVerificationReason.networkModeUnsupported:
+        return 'GitHub release files cannot be reached through the current network mode. Switch Network Privacy to Tor, SOCKS5, or Direct, then try again.'
             .tr;
       case ReleaseVerificationReason.localArtifactUnavailable:
-        return 'This platform does not expose an installed release payload that the app can hash.'
+        return 'This platform does not give the app access to the installed package. Verify the downloaded file with the checksums and PGP signatures on the release page.'
             .tr;
       case ReleaseVerificationReason.checksumNotPublished:
         return 'The signed release does not contain a checksum for this installed payload.'
@@ -287,27 +294,32 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   }
 
   Widget _buildHeader() {
+    final headerStatus = _headerStatus;
     return Column(
       children: [
         Container(
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: AppColors.successBackground,
+            color: headerStatus.color.withValues(alpha: 0.12),
             shape: BoxShape.circle,
-            border: Border.all(color: AppColors.successBorder, width: 2),
+            border: Border.all(
+              color: headerStatus.color.withValues(alpha: 0.35),
+              width: 2,
+            ),
           ),
-          child: Icon(Icons.verified_user, size: 40, color: AppColors.success),
+          child: Icon(headerStatus.icon, size: 40, color: headerStatus.color),
         ),
         SizedBox(height: PSpacing.lg),
         Text(
-          'Reproducible Builds'.tr,
+          'Check your installation'.tr,
           style: PTypography.heading2(color: AppColors.textPrimary),
           textAlign: TextAlign.center,
         ),
         SizedBox(height: PSpacing.md),
         Text(
-          'Verify that this app matches our official source code'.tr,
+          'Compare this app with the PGP-signed files from the official release.'
+              .tr,
           style: PTypography.bodyMedium(color: AppColors.textSecondary),
           textAlign: TextAlign.center,
         ),
@@ -391,7 +403,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           ),
           _buildDataRow(
             label: 'Local Artifact'.tr,
-            value: _localArtifactName ?? 'Unavailable',
+            value: _localArtifactName ?? 'Unavailable'.tr,
           ),
           if (_verificationMessage != null) ...[
             SizedBox(height: PSpacing.sm),
@@ -540,6 +552,25 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         ],
       ),
     );
+  }
+
+  ({Color color, IconData icon}) get _headerStatus {
+    switch (_verificationStatus) {
+      case ReleaseVerificationStatus.match:
+        return (color: AppColors.success, icon: Icons.verified_user);
+      case ReleaseVerificationStatus.mismatch:
+      case ReleaseVerificationStatus.error:
+        return (color: AppColors.error, icon: Icons.gpp_bad_outlined);
+      case ReleaseVerificationStatus.checking:
+        return (color: AppColors.accentPrimary, icon: Icons.shield_outlined);
+      case ReleaseVerificationStatus.unavailable:
+      case ReleaseVerificationStatus.noRelease:
+      case ReleaseVerificationStatus.noLocalArtifact:
+      case ReleaseVerificationStatus.noMatchingChecksum:
+        return (color: AppColors.warning, icon: Icons.gpp_maybe_outlined);
+      case ReleaseVerificationStatus.idle:
+        return (color: AppColors.textTertiary, icon: Icons.shield_outlined);
+    }
   }
 
   bool get _hasTechnicalDetails =>
@@ -759,28 +790,35 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           _buildDataRow(label: 'Version'.tr, value: _buildInfo!['version']!),
           _buildDataRow(
             label: 'Git Commit'.tr,
-            value: _buildInfo!['gitCommit']!,
+            value: _displayBuildValue(_buildInfo!['gitCommit']),
             copyable: true,
             monospace: true,
           ),
           _buildDataRow(
             label: 'Build Date'.tr,
-            value: _buildInfo!['buildDate']!,
+            value: _displayBuildValue(_buildInfo!['buildDate']),
             monospace: true,
           ),
           _buildDataRow(
             label: 'Rust Version'.tr,
-            value: _buildInfo!['rustVersion']!,
+            value: _displayBuildValue(_buildInfo!['rustVersion']),
             monospace: true,
           ),
           _buildDataRow(
             label: 'Target'.tr,
-            value: _buildInfo!['targetTriple']!,
+            value: _displayBuildValue(_buildInfo!['targetTriple']),
             monospace: true,
           ),
         ],
       ),
     );
+  }
+
+  String _displayBuildValue(String? value) {
+    if (value == null || value.trim().isEmpty || value == 'unknown') {
+      return 'Not embedded in this build'.tr;
+    }
+    return value;
   }
 
   Widget _buildResourceLinks() {

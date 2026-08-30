@@ -1,9 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/core/security/release_verification_service.dart';
+import 'package:pirate_wallet/design/theme.dart';
 import 'package:pirate_wallet/features/settings/providers/preferences_providers.dart';
 import 'package:pirate_wallet/features/settings/verify_build_screen.dart';
+
+const _captureBoundaryKey = ValueKey('verify-build-capture');
 
 const _buildInfo = <String, String>{
   'version': '1.1.9',
@@ -28,7 +34,23 @@ const _verifiedResult = ReleaseVerificationResult(
   matchedChecksumName: 'app.exe',
 );
 
-Future<void> _pumpScreen(WidgetTester tester, Size size) async {
+const _unavailableResult = ReleaseVerificationResult(
+  status: ReleaseVerificationStatus.unavailable,
+  reason: ReleaseVerificationReason.downloadFailed,
+  releaseTag: 'v1.1.9',
+  releaseUrl: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases/tag/v1.1.9',
+  signatureAssetName: 'signatures-v1.1.9.zip',
+  localArtifactPath:
+      '/Applications/Pirate Wallet.app/Contents/MacOS/Pirate Unified Wallet',
+  localArtifactName: 'Pirate Unified Wallet',
+  localHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+);
+
+Future<void> _pumpScreen(
+  WidgetTester tester,
+  Size size, {
+  ReleaseVerificationResult result = _verifiedResult,
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -37,10 +59,14 @@ Future<void> _pumpScreen(WidgetTester tester, Size size) async {
     ProviderScope(
       overrides: [allowGithubApisProvider.overrideWithValue(true)],
       child: MaterialApp(
-        theme: ThemeData.dark().copyWith(splashFactory: NoSplash.splashFactory),
-        home: VerifyBuildScreen(
-          buildInfoLoader: () async => _buildInfo,
-          releaseVerifier: (_, _) async => _verifiedResult,
+        debugShowCheckedModeBanner: false,
+        theme: PTheme.dark(),
+        home: RepaintBoundary(
+          key: _captureBoundaryKey,
+          child: VerifyBuildScreen(
+            buildInfoLoader: () async => _buildInfo,
+            releaseVerifier: (_, _) async => result,
+          ),
         ),
       ),
     ),
@@ -48,7 +74,24 @@ Future<void> _pumpScreen(WidgetTester tester, Size size) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _captureIfRequested(WidgetTester tester, String filename) async {
+  final outputDirectory = Platform.environment['PIRATE_UI_CAPTURE_DIR'];
+  if (outputDirectory == null || outputDirectory.isEmpty) return;
+
+  final path = '$outputDirectory${Platform.pathSeparator}$filename';
+  await expectLater(
+    find.byKey(_captureBoundaryKey),
+    matchesGoldenFile(Uri.file(path)),
+  );
+}
+
 void main() {
+  setUpAll(() async {
+    final sora = FontLoader('Sora')
+      ..addFont(rootBundle.load('assets/fonts/Sora/Sora.ttf'));
+    await sora.load();
+  });
+
   testWidgets('stacks release and build details at phone width', (
     tester,
   ) async {
@@ -63,6 +106,7 @@ void main() {
     expect(find.text('Technical details'), findsOneWidget);
     expect(find.text('Local SHA256'), findsNothing);
     expect(tester.takeException(), isNull);
+    await _captureIfRequested(tester, 'verify-build-phone.png');
   });
 
   testWidgets('uses a balanced two-column desktop layout', (tester) async {
@@ -74,6 +118,23 @@ void main() {
     final buildInfo = tester.getTopLeft(find.text('Build Information'));
     expect((buildInfo.dy - verification.dy).abs(), lessThan(2));
     expect(buildInfo.dx, greaterThan(verification.dx));
+    expect(tester.takeException(), isNull);
+    await _captureIfRequested(tester, 'verify-build-desktop.png');
+  });
+
+  testWidgets('does not present a network failure as a failed build', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      const Size(390, 1100),
+      result: _unavailableResult,
+    );
+
+    expect(find.text('Check unavailable'), findsOneWidget);
+    expect(find.text('Error'), findsNothing);
+    expect(find.text('Pirate Unified Wallet'), findsOneWidget);
+    expect(find.textContaining('does not mean the app failed'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
