@@ -13,6 +13,7 @@ enum ReleaseVerificationStatus {
   checking,
   match,
   mismatch,
+  unavailable,
   noRelease,
   noLocalArtifact,
   noMatchingChecksum,
@@ -23,6 +24,7 @@ enum ReleaseVerificationReason {
   none,
   releaseFilesUnavailable,
   downloadFailed,
+  networkModeUnsupported,
   localArtifactUnavailable,
   checksumNotPublished,
   checksumMismatch,
@@ -73,16 +75,19 @@ final class LocalReleaseArtifact {
 typedef ReleaseBytesDownloader = Future<Uint8List> Function(String url);
 typedef ReleaseAssetLoader = Future<String> Function(String key);
 typedef LocalArtifactLoader = Future<List<LocalReleaseArtifact>> Function();
+typedef ReleaseRetryDelay = Future<void> Function(Duration duration);
 
 final class ReleaseVerificationService {
   ReleaseVerificationService({
     ReleaseBytesDownloader? downloadBytes,
     ReleaseAssetLoader? loadAsset,
     LocalArtifactLoader? loadLocalArtifacts,
+    ReleaseRetryDelay? retryDelay,
     String? expectedSigningKeyId,
   }) : _downloadBytes = downloadBytes ?? _defaultDownloadBytes,
        _loadAsset = loadAsset ?? rootBundle.loadString,
        _loadLocalArtifacts = loadLocalArtifacts ?? _defaultLocalArtifacts,
+       _retryDelay = retryDelay ?? _defaultRetryDelay,
        _expectedSigningKeyId =
            expectedSigningKeyId ?? _unifiedWalletSigningKeyId;
 
@@ -93,10 +98,15 @@ final class ReleaseVerificationService {
   static const _maxBundleBytes = 8 * 1024 * 1024;
   static const _maxBundleFiles = 512;
   static const _maxBundleEntryBytes = 2 * 1024 * 1024;
+  static const _downloadRetryDelays = <Duration>[
+    Duration(milliseconds: 500),
+    Duration(seconds: 2),
+  ];
 
   final ReleaseBytesDownloader _downloadBytes;
   final ReleaseAssetLoader _loadAsset;
   final LocalArtifactLoader _loadLocalArtifacts;
+  final ReleaseRetryDelay _retryDelay;
   final String _expectedSigningKeyId;
 
   Future<ReleaseVerificationResult> verify(
@@ -111,23 +121,49 @@ final class ReleaseVerificationService {
     final signatureUrl =
         '$repositoryUrl/releases/download/$tag/$signatureAssetName';
 
-    Uint8List bundleBytes;
+    List<LocalReleaseArtifact> artifacts;
     try {
-      bundleBytes = await _downloadBytes(signatureUrl);
-    } catch (error) {
-      final detail = error.toString().toLowerCase();
-      final unavailable =
-          detail.contains('404') || detail.contains('not found');
+      artifacts = await _loadLocalArtifacts();
+    } catch (_) {
+      artifacts = const [];
+    }
+
+    Uint8List? bundleBytes;
+    Object? downloadError;
+    for (var attempt = 0; attempt <= _downloadRetryDelays.length; attempt++) {
+      try {
+        bundleBytes = await _downloadBytes(signatureUrl);
+        break;
+      } catch (error) {
+        downloadError = error;
+        if (_isReleaseUnavailable(error) ||
+            _isUnsupportedNetworkMode(error) ||
+            attempt == _downloadRetryDelays.length) {
+          break;
+        }
+        await _retryDelay(_downloadRetryDelays[attempt]);
+      }
+    }
+
+    if (bundleBytes == null) {
+      final unavailable = _isReleaseUnavailable(downloadError);
+      final unsupportedNetwork = _isUnsupportedNetworkMode(downloadError);
+      final localArtifact = artifacts.isEmpty ? null : artifacts.first;
       return ReleaseVerificationResult(
         status: unavailable
             ? ReleaseVerificationStatus.noRelease
-            : ReleaseVerificationStatus.error,
-        reason: unavailable
+            : ReleaseVerificationStatus.unavailable,
+        reason: unsupportedNetwork
+            ? ReleaseVerificationReason.networkModeUnsupported
+            : unavailable
             ? ReleaseVerificationReason.releaseFilesUnavailable
             : ReleaseVerificationReason.downloadFailed,
         releaseTag: tag,
         releaseUrl: releaseUrl,
         signatureAssetName: signatureAssetName,
+        localArtifactPath: localArtifact?.path,
+        localArtifactName: localArtifact?.name,
+        localHash: localArtifact?.sha256,
       );
     }
 
@@ -148,7 +184,6 @@ final class ReleaseVerificationService {
       }
 
       final packageChecksums = _parseChecksums(checksumBytes);
-      final artifacts = await _loadLocalArtifacts();
       if (artifacts.isEmpty) {
         return ReleaseVerificationResult(
           status: ReleaseVerificationStatus.noLocalArtifact,
@@ -244,8 +279,23 @@ final class ReleaseVerificationService {
     return normalized;
   }
 
+  static bool _isReleaseUnavailable(Object? error) {
+    final detail = error.toString().toLowerCase();
+    return detail.contains('404') || detail.contains('not found');
+  }
+
+  static bool _isUnsupportedNetworkMode(Object? error) {
+    final detail = error.toString().toLowerCase();
+    return detail.contains('i2p transport refuses non-i2p') ||
+        detail.contains('i2p transport refuses non-i2p url');
+  }
+
   static Future<Uint8List> _defaultDownloadBytes(String url) {
     return FfiBridge.fetchExternalBytes(url: url, userAgent: 'PirateWallet');
+  }
+
+  static Future<void> _defaultRetryDelay(Duration duration) {
+    return Future<void>.delayed(duration);
   }
 
   static Future<List<LocalReleaseArtifact>> _defaultLocalArtifacts() async {

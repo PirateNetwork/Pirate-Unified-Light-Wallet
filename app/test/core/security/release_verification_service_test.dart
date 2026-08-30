@@ -119,6 +119,79 @@ void main() {
     expect(result.reason, ReleaseVerificationReason.invalidVerificationFiles);
   });
 
+  test('retries transient release download failures', () async {
+    var attempts = 0;
+    final delays = <Duration>[];
+    final service = ReleaseVerificationService(
+      downloadBytes: (_) async {
+        attempts++;
+        if (attempts < 3) {
+          throw Exception('temporary transport error');
+        }
+        return _bundle();
+      },
+      loadAsset: (_) async => _fixturePublicKey,
+      loadLocalArtifacts: () async => const [
+        LocalReleaseArtifact(
+          path: '/download/fixture.bin',
+          name: _fixtureName,
+          sha256: _fixtureHash,
+        ),
+      ],
+      retryDelay: (duration) async => delays.add(duration),
+      expectedSigningKeyId: _fixtureSigningKeyId,
+    );
+
+    final result = await service.verify(_tag);
+
+    expect(result.status, ReleaseVerificationStatus.match);
+    expect(attempts, 3);
+    expect(delays, const [Duration(milliseconds: 500), Duration(seconds: 2)]);
+  });
+
+  test(
+    'keeps the local hash when the release download is unavailable',
+    () async {
+      final service = ReleaseVerificationService(
+        downloadBytes: (_) async => throw Exception('connection timed out'),
+        loadAsset: (_) async => _fixturePublicKey,
+        loadLocalArtifacts: () async => const [
+          LocalReleaseArtifact(
+            path: '/download/fixture.bin',
+            name: _fixtureName,
+            sha256: _fixtureHash,
+          ),
+        ],
+        retryDelay: (_) async {},
+        expectedSigningKeyId: _fixtureSigningKeyId,
+      );
+
+      final result = await service.verify(_tag);
+
+      expect(result.status, ReleaseVerificationStatus.unavailable);
+      expect(result.reason, ReleaseVerificationReason.downloadFailed);
+      expect(result.localArtifactName, _fixtureName);
+      expect(result.localHash, _fixtureHash);
+    },
+  );
+
+  test('explains when the current network mode cannot reach GitHub', () async {
+    final service = ReleaseVerificationService(
+      downloadBytes: (_) async => throw Exception(
+        "I2P transport refuses non-I2P URL destination 'github.com'",
+      ),
+      loadAsset: (_) async => _fixturePublicKey,
+      loadLocalArtifacts: () async => const [],
+      retryDelay: (_) async {},
+      expectedSigningKeyId: _fixtureSigningKeyId,
+    );
+
+    final result = await service.verify(_tag);
+
+    expect(result.status, ReleaseVerificationStatus.unavailable);
+    expect(result.reason, ReleaseVerificationReason.networkModeUnsupported);
+  });
+
   test('normalizes build metadata out of release tags', () {
     expect(
       ReleaseVerificationService.normalizeReleaseTag('1.1.9+10109'),
