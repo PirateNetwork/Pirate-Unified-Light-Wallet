@@ -68,3 +68,19 @@ pub(super) fn get_checkpoint_details(
         None => Ok(None),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_info_is_embedded_in_the_crate_that_reports_it() {
+        let info = get_build_info().expect("build information should be available");
+
+        assert_ne!(info.git_commit, "unknown");
+        assert_ne!(info.build_date, "unknown");
+        assert_ne!(info.rust_version, "unknown");
+        assert_ne!(info.target_triple, "unknown");
+        assert!(!info.version.trim().is_empty());
+    }
+}

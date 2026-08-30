@@ -52,13 +52,7 @@ fn resolve_git_commit() -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let value = String::from_utf8(output.stdout).ok()?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    nonempty_stdout(output.stdout)
 }
 
 fn resolve_build_date() -> Option<String> {
@@ -85,13 +79,7 @@ fn resolve_rustc_version() -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let value = String::from_utf8(output.stdout).ok()?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    nonempty_stdout(output.stdout)
 }
 
 fn format_epoch_rfc3339(epoch: &str) -> Option<String> {
@@ -105,15 +93,16 @@ fn resolve_app_version() -> Option<String> {
     let pubspec = manifest_dir.join("../../app/pubspec.yaml");
     let contents = fs::read_to_string(pubspec).ok()?;
     let raw = contents.lines().find_map(|line| {
-        let trimmed = line.trim();
-        trimmed
+        line.trim()
             .strip_prefix("version:")
             .map(|value| value.trim().to_string())
     })?;
     let semver = raw.split('+').next()?.trim();
-    if semver.is_empty() {
-        None
-    } else {
-        Some(semver.to_string())
-    }
+    (!semver.is_empty()).then(|| semver.to_string())
+}
+
+fn nonempty_stdout(stdout: Vec<u8>) -> Option<String> {
+    let value = String::from_utf8(stdout).ok()?;
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
