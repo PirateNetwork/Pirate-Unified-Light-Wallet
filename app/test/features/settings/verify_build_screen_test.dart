@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,11 @@ import 'package:pirate_wallet/features/settings/providers/preferences_providers.
 import 'package:pirate_wallet/features/settings/verify_build_screen.dart';
 
 const _captureBoundaryKey = ValueKey('verify-build-capture');
+
+class _ThemeModeTestNotifier extends ThemeModeNotifier {
+  @override
+  AppThemeMode build() => AppThemeMode.dark;
+}
 
 const _buildInfo = <String, String>{
   'version': '1.1.9',
@@ -57,7 +63,10 @@ Future<void> _pumpScreen(
 
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [allowGithubApisProvider.overrideWithValue(true)],
+      overrides: [
+        appThemeModeProvider.overrideWith(_ThemeModeTestNotifier.new),
+        allowGithubApisProvider.overrideWithValue(true),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: PTheme.dark(),
@@ -90,6 +99,22 @@ void main() {
     final sora = FontLoader('Sora')
       ..addFont(rootBundle.load('assets/fonts/Sora/Sora.ttf'));
     await sora.load();
+    final monospace = FontLoader(
+      'monospace',
+    )..addFont(rootBundle.load('assets/fonts/JetBrainsMono/JetBrainsMono.ttf'));
+    await monospace.load();
+
+    final materialIconsPath =
+        Platform.environment['PIRATE_MATERIAL_ICONS_FONT'];
+    if (materialIconsPath != null && File(materialIconsPath).existsSync()) {
+      final materialIcons = FontLoader('MaterialIcons')
+        ..addFont(
+          File(materialIconsPath)
+              .readAsBytes()
+              .then((bytes) => ByteData.sublistView(bytes)),
+        );
+      await materialIcons.load();
+    }
   });
 
   testWidgets('stacks release and build details at phone width', (
@@ -127,7 +152,7 @@ void main() {
   ) async {
     await _pumpScreen(
       tester,
-      const Size(390, 1100),
+      const Size(1280, 900),
       result: _unavailableResult,
     );
 
@@ -136,6 +161,7 @@ void main() {
     expect(find.text('Pirate Unified Wallet'), findsOneWidget);
     expect(find.textContaining('does not mean the app failed'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await _captureIfRequested(tester, 'verify-build-unavailable-desktop.png');
   });
 
   testWidgets('reveals signed manifest details on demand', (tester) async {
