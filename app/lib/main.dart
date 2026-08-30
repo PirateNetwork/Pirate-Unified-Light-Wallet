@@ -20,6 +20,7 @@ import 'core/desktop/windows_version.dart';
 import 'core/i18n/arb_text_localizer.dart';
 import 'core/logging/debug_log_controller.dart';
 import 'core/logging/debug_log_writer.dart';
+import 'core/providers/price_providers.dart';
 import 'core/security/clipboard_manager.dart';
 import 'core/swaps/swap_availability.dart';
 import 'core/swaps/swap_providers.dart';
@@ -262,6 +263,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     switch (state) {
       case AppLifecycleState.resumed:
         FfiBridge.setAppActive(true);
+        ref.read(priceFeedRefreshProvider.notifier).requestRefresh();
         unawaited(_ensureMobileSyncRunning());
         break;
       case AppLifecycleState.inactive:
@@ -288,6 +290,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   @override
   void onWindowFocus() {
     FfiBridge.setAppActive(true);
+    ref.read(priceFeedRefreshProvider.notifier).requestRefresh();
   }
 
   @override
@@ -303,6 +306,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   @override
   void onWindowRestore() {
     FfiBridge.setAppActive(true);
+    ref.read(priceFeedRefreshProvider.notifier).requestRefresh();
   }
 
   Future<void> _shutdownTransports() async {

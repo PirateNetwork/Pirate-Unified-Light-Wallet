@@ -191,16 +191,19 @@ class _ArrrPriceService {
 
     final existingRequest = _inFlightByCurrency[currency];
     if (existingRequest != null) {
-      return existingRequest;
+      return await existingRequest;
     }
 
-    final request = _fetchFresh(currency);
-    _inFlightByCurrency[currency] = request;
+    final request = _inFlightByCurrency.putIfAbsent(
+      currency,
+      () => _fetchFresh(currency),
+    );
     try {
       return await request;
     } finally {
       if (identical(_inFlightByCurrency[currency], request)) {
-        _inFlightByCurrency.remove(currency);
+        // The removed future is the request already awaited above.
+        unawaited(_inFlightByCurrency.remove(currency));
       }
     }
   }
@@ -441,6 +444,126 @@ double? parseCoinPaprikaPrice(dynamic json, String quoteCode) {
   return price != null && price > 0 ? price : null;
 }
 
+class PriceFeedRefreshNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void requestRefresh() {
+    state = state + 1;
+  }
+}
+
+final priceFeedRefreshProvider =
+    NotifierProvider<PriceFeedRefreshNotifier, int>(
+      PriceFeedRefreshNotifier.new,
+    );
+
+@visibleForTesting
+class PriceQuotePoller<T> {
+  PriceQuotePoller({
+    required this.fetch,
+    T? initialValue,
+    this.refreshInterval = const Duration(seconds: 45),
+    this.retryDelays = const [
+      Duration(seconds: 3),
+      Duration(seconds: 10),
+      Duration(seconds: 30),
+    ],
+  }) : _last = initialValue,
+       assert(retryDelays.isNotEmpty, 'retryDelays must not be empty') {
+    _controller = StreamController<T?>(onListen: _start);
+  }
+
+  final Future<T?> Function() fetch;
+  final Duration refreshInterval;
+  final List<Duration> retryDelays;
+  late final StreamController<T?> _controller;
+
+  Timer? _timer;
+  T? _last;
+  int _consecutiveFailures = 0;
+  bool _started = false;
+  bool _disposed = false;
+  bool _refreshing = false;
+  bool _refreshRequested = false;
+  bool _emittedUnavailable = false;
+
+  Stream<T?> get stream => _controller.stream;
+
+  void _start() {
+    if (_started || _disposed) return;
+    _started = true;
+    final initial = _last;
+    if (initial != null) {
+      _controller.add(initial);
+    }
+    unawaited(_refresh());
+  }
+
+  void refreshNow() {
+    if (_disposed || !_started) return;
+    _timer?.cancel();
+    if (_refreshing) {
+      _refreshRequested = true;
+      return;
+    }
+    unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    if (_disposed || _refreshing) return;
+    _refreshing = true;
+
+    T? quote;
+    try {
+      quote = await fetch();
+    } catch (_) {
+      quote = null;
+    }
+
+    if (_disposed) {
+      _refreshing = false;
+      return;
+    }
+
+    Duration nextDelay;
+    if (quote != null) {
+      _last = quote;
+      _consecutiveFailures = 0;
+      _emittedUnavailable = false;
+      _controller.add(quote);
+      nextDelay = refreshInterval;
+    } else {
+      _consecutiveFailures += 1;
+      if (_last == null && !_emittedUnavailable) {
+        _emittedUnavailable = true;
+        _controller.add(null);
+      }
+      final retryIndex = _consecutiveFailures <= retryDelays.length
+          ? _consecutiveFailures - 1
+          : retryDelays.length - 1;
+      nextDelay = retryDelays[retryIndex];
+    }
+
+    _refreshing = false;
+    if (_refreshRequested) {
+      _refreshRequested = false;
+      unawaited(_refresh());
+      return;
+    }
+    _timer = Timer(nextDelay, () => unawaited(_refresh()));
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _timer?.cancel();
+    if (!_controller.isClosed) {
+      unawaited(_controller.close());
+    }
+  }
+}
+
 final arrrPriceQuoteProvider = StreamProvider<ArrrPriceQuote?>((ref) {
   final currency = ref.watch(currencyPreferenceProvider);
   return _priceQuoteStream(ref, currency);
@@ -459,53 +582,21 @@ Stream<ArrrPriceQuote?> _priceQuoteStream(
   CurrencyPreference currency,
 ) {
   final allowPrices = ref.watch(allowPriceApisProvider);
-  final controller = StreamController<ArrrPriceQuote?>();
-
-  Timer? pollTimer;
-  ArrrPriceQuote? last;
-
-  Future<void> refreshQuote() async {
-    if (controller.isClosed) {
-      return;
-    }
-    final quote = await _ArrrPriceService.fetch(currency);
-    if (controller.isClosed) {
-      return;
-    }
-    if (quote != null) {
-      last = quote;
-      controller.add(quote);
-      return;
-    }
-    if (last == null) {
-      controller.add(null);
-    }
-  }
 
   if (!allowPrices || kIsWeb) {
-    controller.add(null);
-    unawaited(controller.close());
-    return controller.stream;
+    return Stream<ArrrPriceQuote?>.value(null);
   }
 
-  last = _ArrrPriceService.cached(currency);
-  if (last != null) {
-    controller.add(last);
-  }
-
-  unawaited(refreshQuote());
-  pollTimer = Timer.periodic(const Duration(seconds: 45), (_) {
-    unawaited(refreshQuote());
-  });
-
-  ref.onDispose(() {
-    pollTimer?.cancel();
-    if (!controller.isClosed) {
-      unawaited(controller.close());
-    }
-  });
-
-  return controller.stream;
+  final poller = PriceQuotePoller<ArrrPriceQuote>(
+    fetch: () => _ArrrPriceService.fetch(currency),
+    initialValue: _ArrrPriceService.cached(currency),
+  );
+  ref
+    ..listen(priceFeedRefreshProvider, (_, _) {
+      poller.refreshNow();
+    })
+    ..onDispose(poller.dispose);
+  return poller.stream;
 }
 
 Stream<AssetUsdPriceQuote?> _assetUsdPriceQuoteStream(
@@ -514,50 +605,20 @@ Stream<AssetUsdPriceQuote?> _assetUsdPriceQuoteStream(
   required String ticker,
 }) {
   final allowPrices = ref.watch(allowPriceApisProvider);
-  final controller = StreamController<AssetUsdPriceQuote?>();
-
-  Timer? pollTimer;
-  AssetUsdPriceQuote? last;
-
-  Future<void> refreshQuote() async {
-    if (controller.isClosed) return;
-    final quote = await _ArrrPriceService.fetchAssetUsd(
-      assetId: assetId,
-      ticker: ticker,
-    );
-    if (controller.isClosed) return;
-    if (quote != null) {
-      last = quote;
-      controller.add(quote);
-      return;
-    }
-    if (last == null) {
-      controller.add(null);
-    }
-  }
 
   if (!allowPrices || kIsWeb) {
-    controller.add(null);
-    unawaited(controller.close());
-    return controller.stream;
+    return Stream<AssetUsdPriceQuote?>.value(null);
   }
 
-  last = _ArrrPriceService.cachedAssetUsd(assetId);
-  if (last != null) {
-    controller.add(last);
-  }
-
-  unawaited(refreshQuote());
-  pollTimer = Timer.periodic(const Duration(seconds: 45), (_) {
-    unawaited(refreshQuote());
-  });
-
-  ref.onDispose(() {
-    pollTimer?.cancel();
-    if (!controller.isClosed) {
-      unawaited(controller.close());
-    }
-  });
-
-  return controller.stream;
+  final poller = PriceQuotePoller<AssetUsdPriceQuote>(
+    fetch: () =>
+        _ArrrPriceService.fetchAssetUsd(assetId: assetId, ticker: ticker),
+    initialValue: _ArrrPriceService.cachedAssetUsd(assetId),
+  );
+  ref
+    ..listen(priceFeedRefreshProvider, (_, _) {
+      poller.refreshNow();
+    })
+    ..onDispose(poller.dispose);
+  return poller.stream;
 }

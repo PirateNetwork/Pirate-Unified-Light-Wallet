@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/core/providers/price_providers.dart';
 import 'package:pirate_wallet/features/settings/providers/preferences_providers.dart';
@@ -56,6 +58,108 @@ void main() {
       expect(coinPaprikaQuoteCodeFor(CurrencyPreference.bhd), isNull);
       expect(coinPaprikaQuoteCodeFor(CurrencyPreference.kwd), isNull);
       expect(coinPaprikaQuoteCodeFor(CurrencyPreference.sar), isNull);
+    });
+  });
+
+  group('PriceQuotePoller', () {
+    testWidgets('retries quickly after startup transport failure', (
+      tester,
+    ) async {
+      var attempts = 0;
+      final poller = PriceQuotePoller<int>(
+        fetch: () async {
+          attempts += 1;
+          return attempts == 1 ? null : 42;
+        },
+        refreshInterval: const Duration(minutes: 5),
+        retryDelays: const [Duration(seconds: 3)],
+      );
+      final values = <int?>[];
+      final subscription = poller.stream.listen(values.add);
+
+      await tester.pump();
+      expect(attempts, 1);
+      expect(values, [null]);
+
+      await tester.pump(const Duration(seconds: 2));
+      expect(attempts, 1);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      expect(attempts, 2);
+      expect(values, [null, 42]);
+
+      unawaited(subscription.cancel());
+      poller.dispose();
+      await tester.pump();
+    });
+
+    testWidgets('coalesces refresh requests while a fetch is running', (
+      tester,
+    ) async {
+      var attempts = 0;
+      final firstFetch = Completer<int?>();
+      final poller = PriceQuotePoller<int>(
+        fetch: () {
+          attempts += 1;
+          return attempts == 1 ? firstFetch.future : Future.value(43);
+        },
+        refreshInterval: const Duration(minutes: 5),
+      );
+      final values = <int?>[];
+      final subscription = poller.stream.listen(values.add);
+
+      await tester.pump();
+      poller
+        ..refreshNow()
+        ..refreshNow();
+      expect(attempts, 1);
+
+      firstFetch.complete(42);
+      await tester.pump();
+      await tester.pump();
+      expect(attempts, 2);
+      expect(values, [42, 43]);
+
+      unawaited(subscription.cancel());
+      poller.dispose();
+      await tester.pump();
+    });
+
+    testWidgets('keeps the last quote during a temporary outage', (
+      tester,
+    ) async {
+      var attempts = 0;
+      final poller = PriceQuotePoller<int>(
+        fetch: () async {
+          attempts += 1;
+          return switch (attempts) {
+            1 => 42,
+            2 => null,
+            _ => 43,
+          };
+        },
+        refreshInterval: const Duration(seconds: 5),
+        retryDelays: const [Duration(seconds: 3)],
+      );
+      final values = <int?>[];
+      final subscription = poller.stream.listen(values.add);
+
+      await tester.pump();
+      expect(values, [42]);
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(attempts, 2);
+      expect(values, [42]);
+
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+      expect(values, [42, 43]);
+
+      unawaited(subscription.cancel());
+      poller.dispose();
+      await tester.pump();
     });
   });
 }
