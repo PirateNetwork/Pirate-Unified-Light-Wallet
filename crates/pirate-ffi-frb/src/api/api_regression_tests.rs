@@ -213,6 +213,8 @@ fn test_convert_from_service_accepts_stringified_activity_amounts() {
         fee: 1_000,
         memo: Some("activity memo".to_string()),
         confirmed: true,
+        expired: false,
+        expiry_height: None,
     }];
 
     let service_json = serde_json::to_value(&service_txs).unwrap();
@@ -235,6 +237,8 @@ fn test_convert_from_service_accepts_stringified_transaction_page_cursor() {
             fee: 1_000,
             memo: None,
             confirmed: true,
+            expired: false,
+            expiry_height: None,
         }],
         next_cursor: Some(pirate_wallet_service::TransactionCursor {
             height: Some(2_345_678),

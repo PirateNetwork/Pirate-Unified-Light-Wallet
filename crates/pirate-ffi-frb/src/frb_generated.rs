@@ -5195,6 +5195,8 @@ impl SseDecode for crate::models::TxInfo {
         let mut var_fee = <u64>::sse_decode(deserializer);
         let mut var_memo = <Option<String>>::sse_decode(deserializer);
         let mut var_confirmed = <bool>::sse_decode(deserializer);
+        let mut var_expired = <bool>::sse_decode(deserializer);
+        let mut var_expiryHeight = <Option<u32>>::sse_decode(deserializer);
         return crate::models::TxInfo {
             txid: var_txid,
             height: var_height,
@@ -5203,6 +5205,8 @@ impl SseDecode for crate::models::TxInfo {
             fee: var_fee,
             memo: var_memo,
             confirmed: var_confirmed,
+            expired: var_expired,
+            expiry_height: var_expiryHeight,
         };
     }
 }
@@ -6136,6 +6140,8 @@ impl flutter_rust_bridge::IntoDart for crate::models::TxInfo {
             self.fee.into_into_dart().into_dart(),
             self.memo.into_into_dart().into_dart(),
             self.confirmed.into_into_dart().into_dart(),
+            self.expired.into_into_dart().into_dart(),
+            self.expiry_height.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -7044,6 +7050,8 @@ impl SseEncode for crate::models::TxInfo {
         <u64>::sse_encode(self.fee, serializer);
         <Option<String>>::sse_encode(self.memo, serializer);
         <bool>::sse_encode(self.confirmed, serializer);
+        <bool>::sse_encode(self.expired, serializer);
+        <Option<u32>>::sse_encode(self.expiry_height, serializer);
     }
 }
 
@@ -7822,6 +7830,8 @@ mod io {
                 fee: self.fee.cst_decode(),
                 memo: self.memo.cst_decode(),
                 confirmed: self.confirmed.cst_decode(),
+                expired: self.expired.cst_decode(),
+                expiry_height: self.expiry_height.cst_decode(),
             }
         }
     }
@@ -8373,6 +8383,8 @@ mod io {
                 fee: Default::default(),
                 memo: core::ptr::null_mut(),
                 confirmed: Default::default(),
+                expired: Default::default(),
+                expiry_height: core::ptr::null_mut(),
             }
         }
     }
@@ -10604,6 +10616,8 @@ mod io {
         fee: u64,
         memo: *mut wire_cst_list_prim_u_8_strict,
         confirmed: bool,
+        expired: bool,
+        expiry_height: *mut u32,
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -11550,8 +11564,8 @@ mod web {
                 .unwrap();
             assert_eq!(
                 self_.length(),
-                7,
-                "Expected 7 elements, got {}",
+                9,
+                "Expected 9 elements, got {}",
                 self_.length()
             );
             crate::models::TxInfo {
@@ -11562,6 +11576,8 @@ mod web {
                 fee: self_.get(4).cst_decode(),
                 memo: self_.get(5).cst_decode(),
                 confirmed: self_.get(6).cst_decode(),
+                expired: self_.get(7).cst_decode(),
+                expiry_height: self_.get(8).cst_decode(),
             }
         }
     }

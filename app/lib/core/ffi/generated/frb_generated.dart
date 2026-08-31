@@ -6004,8 +6004,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TxInfo dco_decode_tx_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return TxInfo(
       txid: dco_decode_String(arr[0]),
       height: dco_decode_opt_box_autoadd_u_32(arr[1]),
@@ -6014,6 +6014,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       fee: dco_decode_u_64(arr[4]),
       memo: dco_decode_opt_String(arr[5]),
       confirmed: dco_decode_bool(arr[6]),
+      expired: dco_decode_bool(arr[7]),
+      expiryHeight: dco_decode_opt_box_autoadd_u_32(arr[8]),
     );
   }
 
@@ -7202,6 +7204,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_fee = sse_decode_u_64(deserializer);
     var var_memo = sse_decode_opt_String(deserializer);
     var var_confirmed = sse_decode_bool(deserializer);
+    var var_expired = sse_decode_bool(deserializer);
+    var var_expiryHeight = sse_decode_opt_box_autoadd_u_32(deserializer);
     return TxInfo(
       txid: var_txid,
       height: var_height,
@@ -7210,6 +7214,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       fee: var_fee,
       memo: var_memo,
       confirmed: var_confirmed,
+      expired: var_expired,
+      expiryHeight: var_expiryHeight,
     );
   }
 
@@ -8316,6 +8322,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.fee, serializer);
     sse_encode_opt_String(self.memo, serializer);
     sse_encode_bool(self.confirmed, serializer);
+    sse_encode_bool(self.expired, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.expiryHeight, serializer);
   }
 
   @protected

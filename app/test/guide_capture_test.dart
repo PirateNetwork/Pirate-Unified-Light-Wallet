@@ -148,6 +148,7 @@ final _guideTransactions = [
     fee: BigInt.zero,
     memo: 'Treasure Chest migration',
     confirmed: true,
+    expired: false,
   ),
   TxInfo(
     txid: '75f2860f6bc123de772e795ec561adb44492c87e73f2a76d204955c046f9efad',
@@ -157,6 +158,7 @@ final _guideTransactions = [
     fee: BigInt.from(10000),
     memo: 'Invoice 1042',
     confirmed: true,
+    expired: false,
   ),
 ];
 

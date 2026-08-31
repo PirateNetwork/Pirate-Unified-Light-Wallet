@@ -21,6 +21,7 @@ TxInfo _transaction(int index) {
     fee: BigInt.from(1_000),
     memo: null,
     confirmed: true,
+    expired: false,
   );
 }
 

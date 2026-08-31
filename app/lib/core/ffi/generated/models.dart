@@ -1240,6 +1240,13 @@ class TxInfo {
   /// Confirmed
   final bool confirmed;
 
+  /// The locally scanned chain passed the transaction's consensus expiry
+  /// height without observing a confirmation.
+  final bool expired;
+
+  /// Consensus expiry height for wallet-authored transactions.
+  final int? expiryHeight;
+
   const TxInfo({
     required this.txid,
     this.height,
@@ -1248,6 +1255,8 @@ class TxInfo {
     required this.fee,
     this.memo,
     required this.confirmed,
+    required this.expired,
+    this.expiryHeight,
   });
 
   @override
@@ -1258,7 +1267,9 @@ class TxInfo {
       amount.hashCode ^
       fee.hashCode ^
       memo.hashCode ^
-      confirmed.hashCode;
+      confirmed.hashCode ^
+      expired.hashCode ^
+      expiryHeight.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1271,7 +1282,9 @@ class TxInfo {
           amount == other.amount &&
           fee == other.fee &&
           memo == other.memo &&
-          confirmed == other.confirmed;
+          confirmed == other.confirmed &&
+          expired == other.expired &&
+          expiryHeight == other.expiryHeight;
 }
 
 /// Background sync result for a specific wallet

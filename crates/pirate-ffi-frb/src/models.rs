@@ -349,6 +349,13 @@ pub struct TxInfo {
     pub memo: Option<String>,
     /// Confirmed
     pub confirmed: bool,
+    /// The locally scanned chain passed the transaction's consensus expiry
+    /// height without observing a confirmation.
+    #[serde(default)]
+    pub expired: bool,
+    /// Consensus expiry height for wallet-authored transactions.
+    #[serde(default)]
+    pub expiry_height: Option<u32>,
 }
 
 /// Stable position in transaction history.

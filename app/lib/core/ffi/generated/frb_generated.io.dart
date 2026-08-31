@@ -1564,6 +1564,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     wireObj.fee = cst_encode_u_64(apiObj.fee);
     wireObj.memo = cst_encode_opt_String(apiObj.memo);
     wireObj.confirmed = cst_encode_bool(apiObj.confirmed);
+    wireObj.expired = cst_encode_bool(apiObj.expired);
+    wireObj.expiry_height = cst_encode_opt_box_autoadd_u_32(
+      apiObj.expiryHeight,
+    );
   }
 
   @protected
@@ -6871,6 +6875,11 @@ final class wire_cst_tx_info extends ffi.Struct {
 
   @ffi.Bool()
   external bool confirmed;
+
+  @ffi.Bool()
+  external bool expired;
+
+  external ffi.Pointer<ffi.Uint32> expiry_height;
 }
 
 final class wire_cst_list_tx_info extends ffi.Struct {

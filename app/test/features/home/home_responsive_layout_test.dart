@@ -234,6 +234,7 @@ void main() {
         fee: BigInt.zero,
         memo: null,
         confirmed: true,
+        expired: false,
       ),
       TxInfo(
         txid: 'large-send',
@@ -243,6 +244,7 @@ void main() {
         fee: BigInt.from(10000),
         memo: null,
         confirmed: true,
+        expired: false,
       ),
     ];
 

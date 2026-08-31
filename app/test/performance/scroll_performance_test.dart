@@ -65,6 +65,7 @@ List<TxInfo> _buildTestTransactions() {
       fee: BigInt.from(1000),
       memo: index % 3 == 0 ? 'Test memo $index' : null,
       confirmed: index % 5 != 0,
+      expired: false,
     );
   });
 }

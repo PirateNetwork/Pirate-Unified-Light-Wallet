@@ -1342,6 +1342,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_u_64(raw.fee),
       cst_encode_opt_String(raw.memo),
       cst_encode_bool(raw.confirmed),
+      cst_encode_bool(raw.expired),
+      cst_encode_opt_box_autoadd_u_32(raw.expiryHeight),
     ].jsify()!;
   }
 
