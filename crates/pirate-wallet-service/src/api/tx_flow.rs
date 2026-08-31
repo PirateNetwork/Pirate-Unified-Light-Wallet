@@ -414,6 +414,7 @@ const PENDING_SIGN_CONTEXT_MAX_ENTRIES: usize = 128;
 const BUILD_AND_SIGN_TIMEOUT_BASE_SECS: u64 = 5 * 60;
 const BUILD_AND_SIGN_TIMEOUT_PER_INPUT_SECS: u64 = 15;
 const BUILD_AND_SIGN_TIMEOUT_MAX_SECS: u64 = 30 * 60;
+pub(super) const TRANSACTION_EXPIRY_BLOCKS: u32 = 40;
 
 #[derive(Debug)]
 struct PendingSignContext {
@@ -511,6 +512,7 @@ struct BroadcastContext {
     sent_amount: u64,
     fee: u64,
     change_amount: u64,
+    expiry_height: u32,
     created_at_ms: u64,
 }
 
@@ -908,7 +910,7 @@ fn build_tx_internal(
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height as u32;
-    let expiry_height = current_height.saturating_add(40);
+    let expiry_height = current_height.saturating_add(TRANSACTION_EXPIRY_BLOCKS);
 
     let pending = PendingTx {
         id: uuid::Uuid::new_v4().to_string(),
@@ -1791,6 +1793,7 @@ fn sign_tx_internal(
             sent_amount: pending.total_amount,
             fee: pending.fee,
             change_amount: pending.change,
+            expiry_height: pending.expiry_height,
             created_at_ms: unix_timestamp_millis(),
         },
     );
@@ -1883,6 +1886,7 @@ fn record_accepted_broadcast(signed: &SignedTx) {
         ctx.sent_amount,
         ctx.fee,
         broadcast_at,
+        ctx.expiry_height,
     ) {
         // The transaction is already accepted by the network. Never turn a
         // local history-write failure into a resend prompt.
@@ -1942,7 +1946,7 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
         ));
     }
 
-    let txid_hex = match client.broadcast(signed.raw.clone()).await {
+    let txid_hex = match client.broadcast_redundant(signed.raw.clone()).await {
         Ok(txid_hex) => txid_hex,
         Err(e) => {
             let err_text = format!("{}", e);
@@ -2032,7 +2036,10 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
                     let retry_client =
                         pirate_sync_lightd::LightClient::with_config(client_config_for_retry);
                     if retry_client.connect().await.is_ok()
-                        && retry_client.broadcast(signed.raw.clone()).await.is_ok()
+                        && retry_client
+                            .broadcast_redundant(signed.raw.clone())
+                            .await
+                            .is_ok()
                     {
                         pirate_core::debug_log::with_locked_file(|file| {
                             let ts = std::time::SystemTime::now()

@@ -2599,6 +2599,25 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
     // Standard confirmation depth for wallet spendability.
     const MIN_DEPTH: u64 = 1;
 
+    if !suppress_live_reads {
+        let initialized_legacy = repo.initialize_legacy_outgoing_expiries(
+            secret.account_id,
+            current_height,
+            tx_flow::TRANSACTION_EXPIRY_BLOCKS,
+        )?;
+        let released_notes =
+            repo.release_expired_outgoing_notes(secret.account_id, current_height)?;
+        if initialized_legacy > 0 || released_notes > 0 {
+            tracing::info!(
+                wallet_id = %wallet_id,
+                initialized_legacy,
+                released_notes,
+                current_height,
+                "Reconciled outgoing transaction expiry state"
+            );
+        }
+    }
+
     let unspent = repo.get_unspent_notes(secret.account_id)?;
 
     // #region agent log
@@ -2819,8 +2838,31 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     // Get current height from sync state
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
-    // Use the best known synced height for confirmation display stability.
-    let current_height = sync_state.local_height.max(sync_state.target_height);
+    // Only locally scanned blocks can prove that an unconfirmed transaction
+    // reached its consensus expiry height. The advertised target remains useful
+    // for confirmation display, but never for releasing locked notes.
+    let local_height = sync_state.local_height;
+    let current_height = local_height.max(sync_state.target_height);
+
+    let lifecycle_height = if suppress_live_reads { 0 } else { local_height };
+    if !suppress_live_reads {
+        let initialized_legacy = repo.initialize_legacy_outgoing_expiries(
+            secret.account_id,
+            local_height,
+            tx_flow::TRANSACTION_EXPIRY_BLOCKS,
+        )?;
+        let released_notes =
+            repo.release_expired_outgoing_notes(secret.account_id, local_height)?;
+        if initialized_legacy > 0 || released_notes > 0 {
+            tracing::info!(
+                wallet_id = %wallet_id,
+                initialized_legacy,
+                released_notes,
+                local_height,
+                "Reconciled outgoing transaction expiry state"
+            );
+        }
+    }
 
     // Confirmation thresholds for transaction display.
     const RECEIVE_MIN_DEPTH: u64 = 1;
@@ -2831,7 +2873,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     let tx_records = repo.get_transactions_with_options(
         secret.account_id,
         limit,
-        current_height,
+        lifecycle_height,
         RECEIVE_MIN_DEPTH,
         split_transfers,
     )?;
@@ -2877,6 +2919,8 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
                 fee: tx.fee,
                 memo: memo_str,
                 confirmed,
+                expired: tx.expired,
+                expiry_height: tx.expiry_height,
             }
         })
         .collect();

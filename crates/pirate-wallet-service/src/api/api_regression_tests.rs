@@ -785,6 +785,8 @@ fn history_tx(txid: &str, height: u32, amount: i64) -> TxInfo {
         fee: 1_000,
         memo: None,
         confirmed: true,
+        expired: false,
+        expiry_height: None,
     }
 }
 
@@ -862,6 +864,8 @@ fn missing_pending_cursor_resumes_at_confirmed_history() {
             fee: 1,
             memo: None,
             confirmed: false,
+            expired: false,
+            expiry_height: Some(100),
         },
         history_tx("confirmed-new", 50, 5),
         history_tx("confirmed-old", 40, 4),

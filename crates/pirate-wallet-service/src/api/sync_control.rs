@@ -163,6 +163,8 @@ mod transaction_cache_tests {
             fee: 1_000,
             memo: None,
             confirmed: true,
+            expired: false,
+            expiry_height: None,
         }
     }
 
