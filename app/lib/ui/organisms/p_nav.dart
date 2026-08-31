@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../../core/platform/platform_utils.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Navigation
+/// Stashi Wallet Navigation
 /// - BottomNavigationBar for mobile
 /// - Compact navigation rail + AppSidebar for desktop
 class PNav extends StatelessWidget {
@@ -35,9 +36,14 @@ class PNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isDesktopPlatform) {
+      final compact = PSpacing.isCompactDesktopViewport(
+        MediaQuery.sizeOf(context),
+      );
       return SizedBox(
         key: const ValueKey('desktop-navigation-rail'),
-        width: PSpacing.desktopNavRailWidth,
+        width: compact
+            ? PSpacing.desktopCompactNavRailWidth
+            : PSpacing.desktopNavRailWidth,
         child: ListView.separated(
           padding: const EdgeInsets.symmetric(
             horizontal: PSpacing.sm,
@@ -51,6 +57,7 @@ class PNav extends StatelessWidget {
               key: ValueKey('desktop-nav-item-$index'),
               destination: destination,
               isSelected: index == currentIndex,
+              compact: compact,
               onTap: () => onDestinationSelected(index),
             );
           },
@@ -140,28 +147,37 @@ class PNav extends StatelessWidget {
   }
 }
 
-class _DesktopNavItem extends StatelessWidget {
+class _DesktopNavItem extends StatefulWidget {
   const _DesktopNavItem({
     required this.destination,
     required this.isSelected,
+    required this.compact,
     required this.onTap,
     super.key,
   });
 
   final PNavDestination destination;
   final bool isSelected;
+  final bool compact;
   final VoidCallback onTap;
+
+  @override
+  State<_DesktopNavItem> createState() => _DesktopNavItemState();
+}
+
+class _DesktopNavItemState extends State<_DesktopNavItem> {
+  bool _isFocused = false;
 
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(PSpacing.radiusSM);
-    final iconColor = isSelected
+    final iconColor = widget.isSelected
         ? AppColors.focusRing
         : AppColors.textSecondary;
-    final labelColor = isSelected
+    final labelColor = widget.isSelected
         ? AppColors.textPrimary
         : AppColors.textSecondary;
-    final background = isSelected
+    final background = widget.isSelected
         ? AppColors.selectedBackground
         : Colors.transparent;
     final reduceMotion =
@@ -169,24 +185,34 @@ class _DesktopNavItem extends StatelessWidget {
 
     return Semantics(
       button: true,
-      selected: isSelected,
+      selected: widget.isSelected,
       child: AnimatedContainer(
         duration: reduceMotion
             ? Duration.zero
             : const Duration(milliseconds: 150),
-        constraints: const BoxConstraints(minHeight: 72),
+        constraints: BoxConstraints(minHeight: widget.compact ? 60 : 72),
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: background,
           borderRadius: radius,
           border: Border.all(
-            color: isSelected ? AppColors.selectedBorder : Colors.transparent,
+            color: _isFocused
+                ? AppColors.focusRing
+                : widget.isSelected
+                ? AppColors.selectedBorder
+                : Colors.transparent,
+            width: _isFocused ? 2 : 1,
           ),
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onTap,
+            onTap: widget.onTap,
+            onFocusChange: (focused) {
+              if (_isFocused != focused) {
+                setState(() => _isFocused = focused);
+              }
+            },
             mouseCursor: SystemMouseCursors.click,
             borderRadius: radius,
             hoverColor: AppColors.hoverOverlay,
@@ -194,23 +220,24 @@ class _DesktopNavItem extends StatelessWidget {
             highlightColor: AppColors.pressedOverlay,
             splashColor: AppColors.pressedOverlay,
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: PSpacing.xs,
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.compact ? PSpacing.xxs : PSpacing.xs,
                 vertical: PSpacing.xs,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    isSelected
-                        ? destination.selectedIcon ?? destination.icon
-                        : destination.icon,
+                    widget.isSelected
+                        ? widget.destination.selectedIcon ??
+                              widget.destination.icon
+                        : widget.destination.icon,
                     color: iconColor,
-                    size: PSpacing.iconLG,
+                    size: widget.compact ? PSpacing.iconMD : PSpacing.iconLG,
                   ),
                   const SizedBox(height: PSpacing.xxs),
                   Text(
-                    destination.label,
+                    widget.destination.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: PTypography.caption(color: labelColor),

@@ -12,6 +12,9 @@ void main() {
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(tester.view.reset);
     var selectedIndex = -1;
     await tester.pumpWidget(
       MaterialApp(
@@ -24,7 +27,7 @@ void main() {
               PNavDestination(
                 icon: Icons.payments_outlined,
                 selectedIcon: Icons.payments,
-                label: 'Pay',
+                label: 'Actions',
               ),
               PNavDestination(icon: Icons.settings_outlined, label: 'Settings'),
             ],
@@ -55,7 +58,7 @@ void main() {
     expect(decoration.borderRadius, BorderRadius.circular(PSpacing.radiusSM));
 
     final selectedLabel = tester.widget<Text>(
-      find.descendant(of: selectedItemFinder, matching: find.text('Pay')),
+      find.descendant(of: selectedItemFinder, matching: find.text('Actions')),
     );
     expect(selectedLabel.style!.fontSize, 12);
     expect(selectedLabel.style!.fontWeight, PTypography.regular);
@@ -69,6 +72,9 @@ void main() {
   testWidgets('desktop destinations expand for large text', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         home: MediaQuery(
@@ -96,6 +102,43 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('desktop rail compacts on a scaled laptop viewport', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1097, 706);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PNav(
+            currentIndex: 0,
+            onDestinationSelected: (_) {},
+            destinations: const [
+              PNavDestination(icon: Icons.home_outlined, label: 'Home'),
+              PNavDestination(icon: Icons.payments_outlined, label: 'Actions'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('desktop-navigation-rail')))
+          .width,
+      PSpacing.desktopCompactNavRailWidth,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('desktop-nav-item-0'))).height,
+      60,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('keeps complete mobile labels in compact landscape', (
     tester,
   ) async {
@@ -118,7 +161,7 @@ void main() {
               PNavDestination(icon: Icons.home_outlined, label: 'Home'),
               PNavDestination(
                 icon: Icons.payments_outlined,
-                label: 'Pay',
+                label: 'Actions',
                 isPay: true,
               ),
               PNavDestination(

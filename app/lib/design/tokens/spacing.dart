@@ -192,11 +192,17 @@ class PSpacing {
   /// Desktop navigation rail width
   static const double desktopNavRailWidth = 104.0;
 
+  /// Desktop navigation rail width for short or scaled laptop viewports.
+  static const double desktopCompactNavRailWidth = 88.0;
+
   /// Desktop status bar height
   static const double desktopStatusBarHeight = 44.0;
 
   /// Desktop content max width
   static const double desktopContentMaxWidth = 1200.0;
+
+  /// Comfortable reading and form width on wide desktop windows.
+  static const double desktopFormMaxWidth = 840.0;
 
   // ============================================================================
   // Responsive Breakpoints
@@ -268,6 +274,15 @@ class PSpacing {
   /// Returns true for a phone rotated into a height-constrained viewport.
   static bool isCompactLandscape(Size screenSize) {
     return isHandset(screenSize) && screenSize.width > screenSize.height;
+  }
+
+  /// Returns true when desktop controls should use their laptop density.
+  ///
+  /// This is based on logical viewport size, so it also behaves correctly
+  /// under fractional Linux and Windows display scaling. Text scaling remains
+  /// untouched for accessibility.
+  static bool isCompactDesktopViewport(Size screenSize) {
+    return screenSize.width < 1120 || screenSize.height < 720;
   }
 
   /// Returns standard screen padding with responsive gutters.

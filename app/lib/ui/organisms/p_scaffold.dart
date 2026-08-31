@@ -1,15 +1,17 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
+
 import '../../core/desktop/windows_version.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import 'p_app_bar.dart';
 
-/// Pirate Wallet Scaffold with custom titlebar for desktop
+/// Stashi Wallet Scaffold with custom titlebar for desktop
 class PScaffold extends StatelessWidget {
   const PScaffold({
     required this.body,
@@ -35,6 +37,14 @@ class PScaffold extends StatelessWidget {
   bool get _isDesktop =>
       (Platform.isWindows || Platform.isMacOS || Platform.isLinux) && !_isTest;
 
+  double _appBarHeight(BuildContext context) {
+    final candidate = appBar;
+    if (candidate == null) return 0;
+    return candidate is PAppBar
+        ? candidate.preferredHeightFor(context)
+        : candidate.preferredSize.height;
+  }
+
   @override
   Widget build(BuildContext context) {
     final content = useSafeArea ? SafeArea(child: body) : body;
@@ -47,10 +57,10 @@ class PScaffold extends StatelessWidget {
         body: Column(
           children: [
             // Custom titlebar for desktop
-            _CustomTitleBar(title: title ?? 'Pirate Wallet'),
+            _CustomTitleBar(title: title ?? 'Stashi Wallet'),
 
             if (appBar != null)
-              SizedBox(height: appBar!.preferredSize.height, child: appBar),
+              SizedBox(height: _appBarHeight(context), child: appBar),
             // Main content
             Expanded(child: dismissibleContent),
           ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/platform/platform_utils.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -39,7 +40,12 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(82);
 
   double preferredHeightFor(BuildContext context) {
-    return PSpacing.isCompactLandscape(MediaQuery.sizeOf(context)) ? 64 : 82;
+    final size = MediaQuery.sizeOf(context);
+    if (PSpacing.isCompactLandscape(size)) return 64;
+    if (isDesktopPlatform && PSpacing.isCompactDesktopViewport(size)) {
+      return 68;
+    }
+    return 82;
   }
 
   bool _shouldShowBack(BuildContext context) {
@@ -73,13 +79,18 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     final isNarrow = mediaQuery.size.width < 360;
     final isMobile = PSpacing.isHandset(mediaQuery.size);
     final compactLandscape = PSpacing.isCompactLandscape(mediaQuery.size);
+    final compactDesktop =
+        isDesktopPlatform && PSpacing.isCompactDesktopViewport(mediaQuery.size);
+    final compactViewport = compactLandscape || compactDesktop;
     final textScale = mediaQuery.textScaler.scale(1);
-    final verticalPadding = compactLandscape
+    final verticalPadding = compactViewport
         ? PSpacing.xs
         : isMobile
         ? PSpacing.sm
         : PSpacing.md;
-    final horizontalPadding = isMobile ? PSpacing.md : PSpacing.lg;
+    final horizontalPadding = isMobile || compactDesktop
+        ? PSpacing.md
+        : PSpacing.lg;
     final resolvedLeading =
         leading ??
         (_shouldShowBack(context) ? _buildBackButton(context) : null);
@@ -124,9 +135,8 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
           fontSize: isMobile ? 16 : (isNarrow ? 15 : 17),
           fontWeight: FontWeight.w600,
         );
-    final subtitleStyle = PTypography.caption(
-      color: AppColors.textSecondary,
-    ).copyWith(fontSize: isMobile ? 10 : 11);
+    final subtitleStyle = PTypography.caption(color: AppColors.textSecondary)
+        .copyWith(fontSize: isMobile ? 10 : 11);
     final showSubtitle =
         subtitle != null && textScale <= 1.3 && !compactLandscape;
 
@@ -163,7 +173,7 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
                 .map(
                   (action) => Padding(
                     padding: EdgeInsets.only(
-                      left: compactLandscape ? PSpacing.xs : PSpacing.sm,
+                      left: compactViewport ? PSpacing.xs : PSpacing.sm,
                     ),
                     child: action,
                   ),

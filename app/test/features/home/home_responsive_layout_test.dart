@@ -65,7 +65,7 @@ Widget _testApp({
       activeWalletMetaProvider.overrideWithValue(
         WalletMeta(
           id: 'wallet-1',
-          name: 'My Pirate Wallet',
+          name: 'My Stashi Wallet',
           createdAt: 0,
           watchOnly: false,
           birthdayHeight: 3500000,
@@ -165,6 +165,29 @@ void main() {
     expect(recentActivity.data, 'Recent activity');
     expect(recentActivity.maxLines, isNull);
     expect(recentActivity.overflow, isNull);
+    expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('uses a shorter dashboard header on laptop viewports', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1097, 706);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_testApp());
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final header = tester.widget<SliverPersistentHeader>(
+      find.byKey(HomeScreen.headerKey),
+    );
+    final extent = (header.delegate as PSliverHeaderDelegate).maxExtent;
+
+    expect(extent, lessThanOrEqualTo(252));
+    expect(extent, lessThan(284));
     expect(tester.takeException(), isNull);
     debugDefaultTargetPlatformOverride = null;
   });

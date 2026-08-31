@@ -19,7 +19,7 @@ Widget _testApp({
       activeWalletMetaProvider.overrideWithValue(
         WalletMeta(
           id: 'wallet-1',
-          name: 'My Pirate Wallet with a deliberately long name',
+          name: 'My Stashi Wallet with a deliberately long name',
           createdAt: 0,
           watchOnly: true,
           birthdayHeight: 1,

@@ -14,6 +14,7 @@ import '../../core/ffi/generated/models.dart'
         TunnelMode_Direct,
         SyncMode;
 import '../../core/providers/wallet_providers.dart';
+import '../../core/services/wallet_name_suggestion.dart';
 import '../../design/tokens/spacing.dart';
 import '../settings/providers/transport_providers.dart';
 import '../../ui/atoms/p_button.dart';
@@ -38,7 +39,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     final tunnelMode = ref.watch(tunnelModeProvider);
 
     return PScaffold(
-      title: 'Pirate Wallet',
+      title: 'Stashi Wallet',
       body: ListView(
         padding: padding,
         children: [
@@ -287,9 +288,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.7),
+                color: Theme.of(context).colorScheme.onSurface
+                    .withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -300,9 +300,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -314,13 +313,21 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     return '${(arrrtoshis.toDouble() / 100000000).toStringAsFixed(8)} ARRR';
   }
 
+  Future<String> _nextWalletName() async {
+    try {
+      final wallets = await ref.read(walletsProvider.future);
+      final number = nextArrrWalletNumber(wallets.map((wallet) => wallet.name));
+      return 'My ARRR Wallet {number}'.trArgs({'number': number});
+    } catch (_) {
+      return 'My ARRR Wallet {number}'.trArgs({'number': 1});
+    }
+  }
+
   Future<void> _createWallet() async {
     try {
       final createWallet = ref.read(createWalletProvider);
-      final walletId = await createWallet(
-        name: 'My Wallet'.tr,
-        entropyLen: 256,
-      );
+      final name = await _nextWalletName();
+      final walletId = await createWallet(name: name, entropyLen: 256);
 
       if (!mounted) return;
 
@@ -349,10 +356,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
       final mnemonic = await generateMnemonic(wordCount: 24);
 
       final restoreWallet = ref.read(restoreWalletProvider);
-      final walletId = await restoreWallet(
-        name: 'Restored Wallet'.tr,
-        mnemonic: mnemonic,
-      );
+      final name = await _nextWalletName();
+      final walletId = await restoreWallet(name: name, mnemonic: mnemonic);
 
       if (!mounted) return;
 

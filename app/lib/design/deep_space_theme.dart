@@ -10,8 +10,10 @@
 library;
 
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'tokens/colors.dart';
 import 'tokens/spacing.dart';
 import 'tokens/typography.dart';
@@ -771,9 +773,9 @@ class AppTypography {
   static TextStyle get body => bodyMedium;
   static TextStyle get bodySmall =>
       PTypography.bodySmall(color: AppColors.textTertiary);
-  static TextStyle get bodyBold => PTypography.bodyMedium(
-    color: AppColors.textPrimary,
-  ).copyWith(fontWeight: FontWeight.w600);
+  static TextStyle get bodyBold =>
+      PTypography.bodyMedium(color: AppColors.textPrimary)
+          .copyWith(fontWeight: FontWeight.w600);
   static TextStyle get caption =>
       PTypography.caption(color: AppColors.textTertiary);
   static TextStyle get code =>
@@ -799,6 +801,7 @@ class AppSpacing {
   static const double lg = PSpacing.lg;
   static const double xl = PSpacing.xl;
   static const double xxl = PSpacing.xxl;
+  static const double desktopFormMaxWidth = PSpacing.desktopFormMaxWidth;
 
   static double responsiveGutter(double screenWidth) =>
       PSpacing.responsiveGutter(screenWidth);

@@ -32,9 +32,9 @@ class AppShell extends ConsumerWidget {
       label: 'Home'.tr,
     ),
     PNavDestination(
-      icon: Icons.payments_outlined,
-      selectedIcon: Icons.payments,
-      label: 'Pay'.tr,
+      icon: Icons.grid_view_outlined,
+      selectedIcon: Icons.grid_view_rounded,
+      label: 'Actions'.tr,
       isPay: true,
     ),
     PNavDestination(
@@ -110,7 +110,7 @@ class AppShell extends ConsumerWidget {
     }
     if (path.startsWith('/pay')) {
       return PAppBar(
-        title: 'Pay'.tr,
+        title: 'Actions'.tr,
         subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
         actions: [WalletSwitcherButton(compact: true)],
         showThemeToggle: false,
@@ -192,7 +192,7 @@ class AppShell extends ConsumerWidget {
           )
         : content;
     return PScaffold(
-      title: 'Pirate Wallet',
+      title: 'Stashi Wallet',
       useSafeArea: false,
       body: body,
       bottomNavigationBar: isDesktopPlatform ? null : nav,
@@ -209,12 +209,15 @@ class DesktopAppPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final candidate = appBar;
+    final appBarHeight = candidate is PAppBar
+        ? candidate.preferredHeightFor(context)
+        : candidate?.preferredSize.height;
     return ClipRect(
       clipBehavior: Clip.hardEdge,
       child: Column(
         children: [
-          if (appBar != null)
-            SizedBox(height: appBar!.preferredSize.height, child: appBar),
+          if (appBar != null) SizedBox(height: appBarHeight, child: appBar),
           Expanded(child: child),
         ],
       ),

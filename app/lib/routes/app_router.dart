@@ -290,7 +290,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
-          // Pay - entry point for Send/Receive
+          // Actions - entry point for Send/Receive/Verify/Swap
           GoRoute(
             path: '/pay',
             name: 'pay',
@@ -405,7 +405,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: ExportSeedScreen(
             walletId: state.uri.queryParameters['walletId'] ?? 'default',
             walletName:
-                state.uri.queryParameters['walletName'] ?? 'My Wallet'.tr,
+                state.uri.queryParameters['walletName'] ??
+                'My ARRR Wallet {number}'.trArgs({'number': 1}),
           ),
         ),
       ),

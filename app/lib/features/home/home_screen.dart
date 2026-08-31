@@ -59,6 +59,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final screenWidth = mediaQuery.size.width;
     final compactLandscape =
         !isDesktopPlatform && PSpacing.isCompactLandscape(screenSize);
+    final compactDesktopViewport =
+        isDesktopPlatform && PSpacing.isCompactDesktopViewport(screenSize);
     final balance = ref.watch(balanceStreamProvider).asData?.value;
     final hasBalanceHelper =
         balance == null ||
@@ -70,13 +72,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final stackedHeaderControls = HomeHeaderControls.shouldStack(
       availableHeaderWidth,
     );
-    final headerVerticalPadding = compactLandscape
+    final headerVerticalPadding = compactLandscape || compactDesktopViewport
         ? PSpacing.xs
         : PSpacing.isDesktop(screenWidth)
         ? PSpacing.md
         : PSpacing.sm;
     final standardHeaderExtent = compactLandscape
         ? 224.0
+        : compactDesktopViewport
+        ? hasBalanceHelper
+              ? 252.0
+              : 228.0
         : PSpacing.isMobile(screenWidth)
         ? 280.0
         : PSpacing.isTablet(screenWidth)
@@ -542,34 +548,31 @@ class _QuickActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PCard(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: PSpacing.lg,
-            vertical: PSpacing.xl,
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(PSpacing.md),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 28, semanticLabel: label),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: PSpacing.lg,
+          vertical: PSpacing.xl,
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(PSpacing.md),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: PSpacing.sm),
-              Text(
-                label,
-                style: PTypography.bodyMedium().copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
+              child: Icon(icon, color: color, size: 28, semanticLabel: label),
+            ),
+            const SizedBox(height: PSpacing.sm),
+            Text(
+              label,
+              style: PTypography.bodyMedium().copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/core/swaps/swap_availability.dart';
 import 'package:pirate_wallet/design/tokens/colors.dart';
@@ -100,5 +101,26 @@ void main() {
     expect(find.text('Verify'), findsOneWidget);
     expect(find.text('Swap'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('fits action cards into a scaled Ubuntu laptop viewport', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1097, 706);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const MaterialApp(home: PayScreen()));
+    await tester.pump();
+
+    final sendTile = find.ancestor(
+      of: find.text('Send'),
+      matching: find.byType(Ink),
+    );
+    expect(tester.getSize(sendTile).height, lessThanOrEqualTo(230));
+    expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
   });
 }

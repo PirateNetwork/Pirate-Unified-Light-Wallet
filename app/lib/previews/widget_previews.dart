@@ -12,7 +12,7 @@ import '../ui/atoms/p_input.dart';
 import '../ui/molecules/p_card.dart';
 import '../core/i18n/arb_text_localizer.dart';
 
-@Preview(name: 'Pay Sheet', group: 'Wallet Shell', size: Size(390, 780))
+@Preview(name: 'Actions Sheet', group: 'Wallet Shell', size: Size(390, 780))
 Widget paySheetPreview() {
   return MaterialApp(
     theme: PTheme.dark(),
@@ -34,10 +34,7 @@ Widget paySheetPreview() {
 @Preview(name: 'Swap Screen', group: 'Swap', size: Size(390, 844))
 Widget swapScreenPreview() {
   return ProviderScope(
-    child: MaterialApp(
-      theme: PTheme.dark(),
-      home: const SwapScreen(),
-    ),
+    child: MaterialApp(theme: PTheme.dark(), home: const SwapScreen()),
   );
 }
 

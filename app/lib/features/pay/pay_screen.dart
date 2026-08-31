@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,7 +14,7 @@ import '../../core/i18n/arb_text_localizer.dart';
 import '../../core/platform/platform_utils.dart';
 import '../../core/swaps/swap_availability.dart';
 
-/// Pay entry screen for desktop and deep links.
+/// Action hub for desktop and deep links.
 class PayScreen extends StatelessWidget {
   const PayScreen({super.key, this.useScaffold = true});
 
@@ -42,10 +44,10 @@ class PayScreen extends StatelessWidget {
         return content;
       }
       return PScaffold(
-        title: 'Pay'.tr,
+        title: 'Actions'.tr,
         useSafeArea: false,
         appBar: PAppBar(
-          title: 'Pay'.tr,
+          title: 'Actions'.tr,
           subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
           actions: appBarActions,
         ),
@@ -54,11 +56,11 @@ class PayScreen extends StatelessWidget {
     }
 
     return PScaffold(
-      title: 'Pay'.tr,
+      title: 'Actions'.tr,
       appBar: desktopPlatform
           ? null
           : PAppBar(
-              title: 'Pay'.tr,
+              title: 'Actions'.tr,
               subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
               actions: appBarActions,
             ),
@@ -67,7 +69,7 @@ class PayScreen extends StatelessWidget {
   }
 }
 
-/// Mobile pay sheet with primary actions.
+/// Mobile action sheet with primary wallet actions.
 class PaySheet extends StatelessWidget {
   const PaySheet({
     required this.onSend,
@@ -183,7 +185,7 @@ class PaySheet extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Pay'.tr,
+                    'Actions'.tr,
                     style: PTypography.heading4(color: AppColors.textPrimary),
                   ),
                   const SizedBox(height: PSpacing.xs),
@@ -239,6 +241,9 @@ class _PayContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final desktopPlatform = isDesktopPlatform;
+    final compactDesktopViewport =
+        desktopPlatform &&
+        PSpacing.isCompactDesktopViewport(MediaQuery.sizeOf(context));
     final compactLandscape =
         !desktopPlatform &&
         PSpacing.isCompactLandscape(MediaQuery.sizeOf(context));
@@ -302,9 +307,20 @@ class _PayContent extends StatelessWidget {
             final tileWidth =
                 (constraints.maxWidth - spacing * (crossAxisCount - 1)) /
                 crossAxisCount;
-            final tileHeight = (tileWidth * 0.54).clamp(150.0, 260.0);
+            final preferredTileHeight = (tileWidth * 0.54).clamp(150.0, 260.0);
+            final availableTileHeight = constraints.hasBoundedHeight
+                ? ((constraints.maxHeight - spacing - PSpacing.xl) / 2).clamp(
+                    150.0,
+                    260.0,
+                  )
+                : preferredTileHeight;
+            var tileHeight = math.min(preferredTileHeight, availableTileHeight);
+            if (compactDesktopViewport) {
+              tileHeight = math.min(tileHeight, 210);
+            }
             final aspectRatio = tileWidth / tileHeight;
-            final compactDesktop = tileWidth < 280 || tileHeight < 190;
+            final compactDesktop =
+                compactDesktopViewport || tileWidth < 280 || tileHeight < 210;
 
             return SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: PSpacing.xl),
@@ -373,7 +389,7 @@ class _PayContent extends StatelessWidget {
   }
 }
 
-class _PayActionTile extends StatelessWidget {
+class _PayActionTile extends StatefulWidget {
   const _PayActionTile({
     required this.title,
     required this.subtitle,
@@ -393,24 +409,33 @@ class _PayActionTile extends StatelessWidget {
   final bool isDesktop;
 
   @override
+  State<_PayActionTile> createState() => _PayActionTileState();
+}
+
+class _PayActionTileState extends State<_PayActionTile> {
+  bool _isFocused = false;
+
+  @override
   Widget build(BuildContext context) {
-    final enabled = onTap != null;
-    final padding = isDesktop
+    final enabled = widget.onTap != null;
+    final padding = widget.isDesktop
         ? PSpacing.xl
-        : compact
+        : widget.compact
         ? PSpacing.sm
         : PSpacing.lg;
-    final iconSize = isDesktop
+    final iconSize = widget.isDesktop
         ? 32.0
-        : compact
+        : widget.compact
         ? 24.0
         : 28.0;
-    final iconContainerSize = isDesktop ? 56.0 : (compact ? 40.0 : 48.0);
-    final titleStyle = isDesktop
+    final iconContainerSize = widget.isDesktop
+        ? 56.0
+        : (widget.compact ? 40.0 : 48.0);
+    final titleStyle = widget.isDesktop
         ? PTypography.heading5(
             color: enabled ? AppColors.textOnAccent : AppColors.textDisabled,
           )
-        : compact
+        : widget.compact
         ? PTypography.titleMedium(
             color: enabled ? AppColors.textOnAccent : AppColors.textDisabled,
           )
@@ -420,11 +445,11 @@ class _PayActionTile extends StatelessWidget {
     final subtitleColor = enabled
         ? AppColors.textOnAccent
         : AppColors.textDisabled;
-    final subtitleStyle = isDesktop
+    final subtitleStyle = widget.isDesktop
         ? PTypography.bodyMedium(
             color: subtitleColor.withValues(alpha: enabled ? 0.9 : 1),
           )
-        : compact
+        : widget.compact
         ? PTypography.bodySmall(
             color: subtitleColor.withValues(alpha: enabled ? 0.8 : 1),
           )
@@ -440,25 +465,32 @@ class _PayActionTile extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onTap,
+            onTap: widget.onTap,
+            onFocusChange: (focused) {
+              if (_isFocused != focused) {
+                setState(() => _isFocused = focused);
+              }
+            },
             borderRadius: BorderRadius.circular(PSpacing.radiusLG),
             child: Ink(
               decoration: BoxDecoration(
-                gradient: enabled ? gradient : null,
+                gradient: enabled ? widget.gradient : null,
                 color: enabled ? null : AppColors.backgroundSurface,
                 borderRadius: BorderRadius.circular(PSpacing.radiusLG),
                 border: Border.all(
-                  color: enabled
+                  color: _isFocused
+                      ? AppColors.textOnAccent
+                      : enabled
                       ? AppColors.borderStrong
                       : AppColors.borderSubtle,
-                  width: isDesktop ? 1.5 : 1.0,
+                  width: _isFocused ? 3 : (widget.isDesktop ? 1.5 : 1.0),
                 ),
                 boxShadow: enabled
                     ? [
                         BoxShadow(
                           color: AppColors.shadowStrong,
-                          blurRadius: isDesktop ? 20 : 16,
-                          offset: Offset(0, isDesktop ? 10 : 8),
+                          blurRadius: widget.isDesktop ? 20 : 16,
+                          offset: Offset(0, widget.isDesktop ? 10 : 8),
                         ),
                       ]
                     : null,
@@ -475,35 +507,37 @@ class _PayActionTile extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: enabled
                             ? AppColors.textOnAccent.withValues(
-                                alpha: isDesktop ? 0.16 : 0.14,
+                                alpha: widget.isDesktop ? 0.16 : 0.14,
                               )
                             : AppColors.backgroundElevated,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        icon,
+                        widget.icon,
                         color: enabled
                             ? AppColors.textOnAccent
                             : AppColors.textDisabled,
                         size: iconSize,
-                        semanticLabel: title,
+                        semanticLabel: widget.title,
                       ),
                     ),
                     SizedBox(
-                      height: isDesktop
+                      height: widget.isDesktop
                           ? PSpacing.lg
-                          : (compact ? PSpacing.sm : PSpacing.md),
+                          : (widget.compact ? PSpacing.sm : PSpacing.md),
                     ),
                     const Spacer(),
                     Text(
-                      title,
+                      widget.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: titleStyle,
                     ),
-                    SizedBox(height: isDesktop ? PSpacing.sm : PSpacing.xs),
+                    SizedBox(
+                      height: widget.isDesktop ? PSpacing.sm : PSpacing.xs,
+                    ),
                     Text(
-                      subtitle,
+                      widget.subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: subtitleStyle,

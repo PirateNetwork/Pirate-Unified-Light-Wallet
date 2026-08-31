@@ -21,4 +21,10 @@ void main() {
     expect(PSpacing.isHandset(landscapeTablet), isFalse);
     expect(PSpacing.isCompactLandscape(landscapeTablet), isFalse);
   });
+
+  test('uses compact desktop density only for constrained viewports', () {
+    expect(PSpacing.isCompactDesktopViewport(const Size(1097, 706)), isTrue);
+    expect(PSpacing.isCompactDesktopViewport(const Size(1180, 760)), isFalse);
+    expect(PSpacing.isCompactDesktopViewport(const Size(1440, 900)), isFalse);
+  });
 }
