@@ -23,8 +23,6 @@ Work through this list in order:
 9. In Auto node mode, let the wallet replace an endpoint that is connected but not serving current blocks.
 10. Rescan from before the missing transaction.
 
-A transaction ID proves that a transaction exists. It does not prove that the active wallet controls its destination. Never publish a viewing key to prove ownership.
-
 ## Stuck on Preparing sync
 
 1. Wait several minutes after an upgrade, database migration, new key import, or seed-account addition.
@@ -105,23 +103,6 @@ Stashi Wallet follows the operating system's display and text scaling. It also s
 4. Scroll the page if controls do not fit vertically. No wallet function is removed in the compact layout.
 
 Do not reduce an accessibility text setting only to make the wallet match a screenshot. The layout is designed to keep scaled text readable.
-
-## Text or panels flicker on an Intel Mac
-
-Install the latest release and restart the app. Current macOS builds use the stable renderer on Intel and Apple Silicon Macs. Rendering corruption does not change wallet keys or blockchain data.
-
-## macOS says a required entitlement is missing
-
-This can affect Keychain-backed preferences or biometric features on an incorrectly packaged build.
-
-1. Confirm the app came from the official signed and notarized DMG.
-2. Move **Stashi Wallet.app** into Applications before opening it.
-3. Do not run it directly from the mounted DMG.
-4. Check that Keychain is unlocked and the user session has a login keychain.
-5. Install the latest wallet release.
-6. Use the app passphrase if biometric secure storage is unavailable.
-
-If the official current release still reports the entitlement error, save the exact error and macOS version for support.
 
 ## Send failed
 

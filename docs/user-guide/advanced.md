@@ -78,7 +78,7 @@ When the build enables swaps, the swap interface uses the local KDF engine and e
 - Keep the app running while an active swap requires it.
 - Do not assume a displayed quote is guaranteed until the order is accepted.
 
-Swaps have risks beyond a normal ARRR transfer. Start small and keep the swap record until settlement finishes.
+Swaps have risks beyond a normal ARRR transfer.
 
 ## Local privacy data
 

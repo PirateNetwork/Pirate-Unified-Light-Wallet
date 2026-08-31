@@ -10,15 +10,13 @@ The app passphrase protects local access to the wallet database. It is not a rep
 
 ## Back up the recovery phrase
 
-1. Disconnect screen sharing and make sure the device is private.
+1. Make sure no one else can see or record the recovery phrase.
 2. Open **Settings > Backups > Backup seed phrase**.
 3. Authenticate with the requested biometric or app passphrase.
 4. Write the words in order on an offline medium.
 5. Check every word and its position.
 6. Store the backup somewhere separate from the unlocked device.
 7. Leave the seed screen and confirm that no photo, clipboard entry, or print job remains.
-
-For a large balance, keep two protected copies in different physical locations. A metal backup can be more resistant to fire and water than paper.
 
 Never enter a recovery phrase into a support form, website, Telegram bot, Discord bot, browser extension, or remote-support session.
 
@@ -59,16 +57,6 @@ Before enabling it:
 2. Test both while the real recovery phrase is safely backed up.
 3. Do not reuse either passphrase elsewhere.
 4. Remember that a decoy is not a guarantee against every physical or forensic threat.
-
-## Device security
-
-- Install operating system security updates.
-- Use full-disk encryption and a device login.
-- Do not run unknown wallet helpers, key checkers, or cracked software.
-- Keep browser extensions and remote-access tools to a minimum on a wallet device.
-- Lock the wallet before leaving the device.
-- Review copied addresses for clipboard replacement malware.
-- Prefer a dedicated device for a balance that would be painful to lose.
 
 ## Before deleting or resetting anything
 

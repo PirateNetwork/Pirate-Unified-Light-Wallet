@@ -11,10 +11,7 @@ Do not remove the old wallet until the Stashi Wallet balance, transaction histor
 3. Record the approximate date or block height of the wallet's first transaction.
 4. Record whether the old wallet used multiple accounts under the phrase.
 5. Record whether it had any separately imported Sapling spending keys or viewing keys.
-6. If possible, save the transaction IDs of important deposits.
-7. Update the old wallet's sync and let it finish so you have a useful comparison.
-
-Never type the recovery phrase into both wallets at the same time while either device is being screen-shared.
+6. Update the old wallet's sync and let it finish so you have a useful comparison.
 
 ## Restore the phrase
 
@@ -87,5 +84,3 @@ Keep the old wallet until all of the following are true:
 - You have identified any imported keys that still hold funds.
 - You have tested a small receive and send if practical.
 - The Stashi Wallet recovery phrase backup has been verified offline.
-
-Removing an app does not move funds. Funds remain controlled by the keys. The risk is losing the last working copy of a key that was never included in the recovery phrase.

@@ -83,7 +83,7 @@ A key can produce many payment addresses. These are addresses within the same ac
 - Generating a new diversified address does not create a new recovery phrase.
 - Old addresses remain able to receive funds.
 - Address rotation reduces address reuse.
-- Labels and color tags remain local to this installation unless included in a supported backup.
+- Labels and color tags remain local to this installation.
 - A spending or viewing key can derive addresses only within the scope represented by that key.
 
 ## Key details and export
@@ -100,4 +100,4 @@ Before exporting:
 
 ## Seed account controls are not shown for imported keys
 
-Only a wallet with its recovery phrase can derive the next seed account. Imported spending keys and viewing keys can create diversified addresses inside their own scope, but they cannot recreate account 1, account 2, or any other sibling account. This is a protocol-level property of the key hierarchy, not a missing wallet feature.
+Only a wallet with its recovery phrase can derive the next seed account. Imported spending keys and viewing keys can create diversified addresses inside their own scope, but they cannot recreate account 1, account 2, or any other sibling account. This is a protocol-level property of the key hierarchy.

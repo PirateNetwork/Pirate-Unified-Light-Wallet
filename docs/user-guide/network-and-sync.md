@@ -57,8 +57,6 @@ The height shown by the wallet should continue to move when the chain advances. 
 
 Stashi Wallet keeps validated compact blocks locally so a rescan can avoid downloading the same range again. Cached data is checked before reuse. Adding a seed account or imported key triggers the required historical replay so the new key is tested against the relevant blocks.
 
-Cached scanning still performs wallet trial decryption. It is not a shortcut that simply counts downloaded blocks.
-
 ## If Preparing sync does not finish
 
 1. Leave the wallet open for several minutes after an update or large migration.

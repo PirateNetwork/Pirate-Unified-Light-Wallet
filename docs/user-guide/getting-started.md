@@ -10,9 +10,12 @@ Choose the package for your device:
 
 - Windows: download `Stashi-Wallet-windows-installer.exe`.
 - macOS: download `Stashi-Wallet-macos.dmg`. It supports Apple Silicon and Intel Macs.
-- Linux: choose `Stashi-Wallet-linux-x86_64.AppImage`, `Stashi-Wallet-amd64.deb`, or `Stashi-Wallet.flatpak` for the package format supported by your distribution.
+- Linux:
+  - Download `Stashi-Wallet-linux-x86_64.AppImage` when you want a portable file that runs on most 64-bit Linux distributions without installation.
+  - Download `Stashi-Wallet-amd64.deb` for Debian-based distributions such as Debian, Ubuntu, Linux Mint, Pop!_OS, and Zorin OS.
+  - Download `Stashi-Wallet.flatpak` when your distribution supports Flatpak or you normally install applications through Flatpak. This includes distributions such as Fedora, Endless OS, and many others after Flatpak is enabled.
 - Android: use `Stashi-Wallet-android-V8.apk` on current 64-bit ARM phones and tablets. Use `Stashi-Wallet-android-V7.apk` only on an older 32-bit ARM device that cannot install the V8 build.
-- iOS: Stashi Wallet is not distributed for ordinary iPhone or iPad installation. Use a third-party wallet with Pirate Chain support, such as Edge.
+- iOS: Stashi Wallet is not yet distributed for iPhone or iPad. Until an iOS version is available, use a third-party wallet with Pirate Chain support, such as Edge.
 
 The release includes SHA-256 checksums and PGP signatures. See [Verify the downloaded release files](settings-and-verification.md#verify-the-downloaded-release-files) if you want to check them before installation.
 
@@ -95,7 +98,7 @@ Keep a viewing key private. It cannot spend funds, but it can reveal transaction
 
 ## After setup
 
-Confirm these items before receiving a large payment:
+Confirm these items before receiving a payment:
 
 - The wallet opens with the passphrase or biometric method you expect.
 - The recovery phrase backup has been checked twice.

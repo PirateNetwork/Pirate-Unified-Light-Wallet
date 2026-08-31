@@ -118,4 +118,8 @@ Debug logging is off by default.
 4. Return to Debug logging and use the share or save action.
 5. Turn logging off when finished. Disabling it clears the active debug log where the screen states that it will.
 
-The logger is designed to redact known secrets, but inspect a log before sharing it. Never send a log that contains recovery words, a private key, an app passphrase, or personal information you do not want disclosed.
+The active `debug.log` file is stored at:
+
+- Windows: `%LOCALAPPDATA%\Pirate\PirateWallet\data\logs\debug.log`
+- macOS: `~/Library/Application Support/com.Pirate.PirateWallet/logs/debug.log`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/piratewallet/logs/debug.log`
