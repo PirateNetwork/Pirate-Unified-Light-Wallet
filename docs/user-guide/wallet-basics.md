@@ -29,13 +29,13 @@ The status chip reports whether the wallet is connected and which privacy transp
 
 The sync card shows the current stage, block height, progress, and estimated time when available. Common stages are preparing, downloading, scanning, and synced. Keep the app open if the operating system restricts background activity.
 
-## Actions
+## Wallet
 
-The Actions page groups send, receive, swap, and payment verification tools.
+The Wallet page groups send, receive, swap, and payment verification tools.
 
 | Phone | Desktop |
 |---|---|
-| ![Actions page on a phone](images/pay-phone.png) | ![Actions page on desktop](images/pay-desktop.png) |
+| ![Wallet page on a phone](images/pay-phone.png) | ![Wallet page on desktop](images/pay-desktop.png) |
 
 On a small screen, scroll to see all actions. Depending on the build and wallet mode, this page can include send, receive, sweep, swap, and payment disclosure tools.
 

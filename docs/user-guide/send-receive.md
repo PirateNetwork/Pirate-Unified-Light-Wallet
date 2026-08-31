@@ -4,7 +4,7 @@
 
 ## Receive ARRR
 
-1. Open **Receive** from Home or Actions.
+1. Open **Receive** from Home or Wallet.
 2. Confirm the wallet and key shown on the page.
 3. Generate or select the address you want to use.
 4. Add a local label if it will help you recognize the payment later.
