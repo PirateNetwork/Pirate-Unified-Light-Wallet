@@ -79,40 +79,40 @@ class _PTextButtonState extends State<PTextButton> {
 
     final borderRadius = BorderRadius.circular(PSpacing.radiusMD);
 
-    return Focus(
-      onFocusChange: (value) => setState(() => _isFocused = value),
-      child: MouseRegion(
-        cursor: widget._isDisabled
-            ? SystemMouseCursors.forbidden
-            : SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
-          decoration: BoxDecoration(
-            color: _isHovered && !widget._isDisabled
-                ? hoverColor
-                : Colors.transparent,
+    return MouseRegion(
+      cursor: widget._isDisabled
+          ? SystemMouseCursors.forbidden
+          : SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+        decoration: BoxDecoration(
+          color: _isHovered && !widget._isDisabled
+              ? hoverColor
+              : Colors.transparent,
+          borderRadius: borderRadius,
+          border: _isFocused ? Border.all(color: focusOutline, width: 2) : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget._isDisabled ? null : widget.onPressed,
+            onFocusChange: (focused) {
+              if (_isFocused != focused) {
+                setState(() => _isFocused = focused);
+              }
+            },
             borderRadius: borderRadius,
-            border: _isFocused
-                ? Border.all(color: focusOutline, width: 1.5)
-                : null,
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: widget._isDisabled ? null : widget.onPressed,
-              borderRadius: borderRadius,
-              splashColor: focusOutline.withValues(alpha: 0.2),
-              highlightColor: hoverColor,
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: verticalPadding,
-                ),
-                child: content,
+            splashColor: focusOutline.withValues(alpha: 0.2),
+            highlightColor: hoverColor,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: verticalPadding,
               ),
+              child: content,
             ),
           ),
         ),

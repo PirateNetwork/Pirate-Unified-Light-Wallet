@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Checkbox
+/// Stashi Wallet Checkbox
 class PCheckbox extends StatefulWidget {
   const PCheckbox({
     required this.value,
@@ -24,6 +25,25 @@ class PCheckbox extends StatefulWidget {
 
 class _PCheckboxState extends State<PCheckbox> {
   bool _isHovered = false;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode()..addListener(_handleFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focusNode
+      ..removeListener(_handleFocusChange)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChange() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,11 +52,19 @@ class _PCheckboxState extends State<PCheckbox> {
       onExit: (_) => setState(() => _isHovered = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: EdgeInsets.all(PSpacing.xs),
         decoration: BoxDecoration(
           color: _isHovered && widget.onChanged != null
               ? AppColors.hoverOverlay
               : Colors.transparent,
           borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+          border: Border.all(
+            color: _focusNode.hasFocus
+                ? AppColors.focusRing
+                : Colors.transparent,
+            width: 2,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -48,6 +76,7 @@ class _PCheckboxState extends State<PCheckbox> {
                 value: widget.value,
                 onChanged: widget.onChanged,
                 tristate: widget.tristate,
+                focusNode: _focusNode,
               ),
             ),
             if (widget.label != null) ...[
@@ -69,24 +98,28 @@ class _PCheckboxState extends State<PCheckbox> {
     );
 
     if (widget.label != null) {
-      return InkWell(
-        onTap: widget.onChanged == null
-            ? null
-            : () {
-                if (widget.tristate) {
-                  if (widget.value == false) {
-                    widget.onChanged?.call(null);
-                  } else if (widget.value == null) {
-                    widget.onChanged?.call(true);
+      return MergeSemantics(
+        child: InkWell(
+          canRequestFocus: false,
+          excludeFromSemantics: true,
+          onTap: widget.onChanged == null
+              ? null
+              : () {
+                  if (widget.tristate) {
+                    if (widget.value == false) {
+                      widget.onChanged?.call(null);
+                    } else if (widget.value == null) {
+                      widget.onChanged?.call(true);
+                    } else {
+                      widget.onChanged?.call(false);
+                    }
                   } else {
-                    widget.onChanged?.call(false);
+                    widget.onChanged?.call(!(widget.value ?? false));
                   }
-                } else {
-                  widget.onChanged?.call(!(widget.value ?? false));
-                }
-              },
-        borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-        child: Padding(padding: EdgeInsets.all(PSpacing.xs), child: checkbox),
+                },
+          borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+          child: checkbox,
+        ),
       );
     }
 

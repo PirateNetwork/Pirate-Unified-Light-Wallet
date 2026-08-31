@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Input Field
+/// Stashi Wallet Input Field
 class PInput extends StatefulWidget {
   const PInput({
     this.controller,
@@ -144,48 +145,54 @@ class _PInputState extends State<PInput> {
     final effectiveKeyboardType =
         widget.keyboardType ??
         (widget.obscureText ? TextInputType.visiblePassword : null);
-    final textField = TextField(
-      controller:
-          widget.controller ??
-          (_isInternalController ? _internalController : null),
-      focusNode: _focusNode,
-      obscureText: widget.obscureText,
+    final textField = Semantics(
+      label: widget.label,
+      textField: true,
       enabled: widget.enabled,
       readOnly: widget.readOnly,
-      maxLines: widget.maxLines,
-      maxLength: widget.maxLength,
-      autocorrect: autocorrect,
-      enableSuggestions: enableSuggestions,
-      enableInteractiveSelection: widget.enableInteractiveSelection,
-      enableIMEPersonalizedLearning: !widget.obscureText,
-      smartDashesType: widget.obscureText
-          ? SmartDashesType.disabled
-          : SmartDashesType.enabled,
-      smartQuotesType: widget.obscureText
-          ? SmartQuotesType.disabled
-          : SmartQuotesType.enabled,
-      keyboardType: effectiveKeyboardType,
-      textInputAction: widget.textInputAction,
-      onChanged: widget.onChanged,
-      onSubmitted: widget.onSubmitted,
-      inputFormatters: widget.inputFormatters,
-      autofocus: widget.autofocus,
-      textAlignVertical:
-          widget.textAlignVertical ??
-          (widget.maxLines == 1 ? TextAlignVertical.center : null),
-      style: widget.monospace
-          ? PTypography.codeMedium(color: AppColors.textPrimary)
-          : PTypography.bodyMedium(color: AppColors.textPrimary),
-      cursorColor: AppColors.focusRing,
-      decoration: InputDecoration(
-        hintText: widget.hint,
-        errorText: widget.errorText,
-        prefixIcon: widget.prefixIcon,
-        suffixIcon: widget.suffixIcon,
-        filled: true,
-        fillColor: widget.enabled
-            ? AppColors.backgroundSurface
-            : AppColors.backgroundBase,
+      child: TextField(
+        controller:
+            widget.controller ??
+            (_isInternalController ? _internalController : null),
+        focusNode: _focusNode,
+        obscureText: widget.obscureText,
+        enabled: widget.enabled,
+        readOnly: widget.readOnly,
+        maxLines: widget.maxLines,
+        maxLength: widget.maxLength,
+        autocorrect: autocorrect,
+        enableSuggestions: enableSuggestions,
+        enableInteractiveSelection: widget.enableInteractiveSelection,
+        enableIMEPersonalizedLearning: !widget.obscureText,
+        smartDashesType: widget.obscureText
+            ? SmartDashesType.disabled
+            : SmartDashesType.enabled,
+        smartQuotesType: widget.obscureText
+            ? SmartQuotesType.disabled
+            : SmartQuotesType.enabled,
+        keyboardType: effectiveKeyboardType,
+        textInputAction: widget.textInputAction,
+        onChanged: widget.onChanged,
+        onSubmitted: widget.onSubmitted,
+        inputFormatters: widget.inputFormatters,
+        autofocus: widget.autofocus,
+        textAlignVertical:
+            widget.textAlignVertical ??
+            (widget.maxLines == 1 ? TextAlignVertical.center : null),
+        style: widget.monospace
+            ? PTypography.codeMedium(color: AppColors.textPrimary)
+            : PTypography.bodyMedium(color: AppColors.textPrimary),
+        cursorColor: AppColors.focusRing,
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          errorText: widget.errorText,
+          prefixIcon: widget.prefixIcon,
+          suffixIcon: widget.suffixIcon,
+          filled: true,
+          fillColor: widget.enabled
+              ? AppColors.backgroundSurface
+              : AppColors.backgroundBase,
+        ),
       ),
     );
 
@@ -194,9 +201,11 @@ class _PInputState extends State<PInput> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.label != null) ...[
-          Text(
-            widget.label!,
-            style: PTypography.labelMedium(color: AppColors.textSecondary),
+          ExcludeSemantics(
+            child: Text(
+              widget.label!,
+              style: PTypography.labelMedium(color: AppColors.textSecondary),
+            ),
           ),
           SizedBox(height: PSpacing.xs),
         ],

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet List Tile
+/// Stashi Wallet List Tile
 class PListTile extends StatefulWidget {
   const PListTile({
     required this.title,
@@ -28,6 +29,7 @@ class PListTile extends StatefulWidget {
 
 class _PListTileState extends State<PListTile> {
   bool _isHovered = false;
+  bool _isFocused = false;
 
   @override
   Widget build(BuildContext context) {
@@ -44,11 +46,19 @@ class _PListTileState extends State<PListTile> {
               ? AppColors.hoverOverlay
               : Colors.transparent,
           borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+          border: _isFocused
+              ? Border.all(color: AppColors.focusRing, width: 2)
+              : null,
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: widget.enabled ? widget.onTap : null,
+            onFocusChange: (focused) {
+              if (_isFocused != focused) {
+                setState(() => _isFocused = focused);
+              }
+            },
             borderRadius: BorderRadius.circular(PSpacing.radiusMD),
             child: Padding(
               padding: EdgeInsets.symmetric(

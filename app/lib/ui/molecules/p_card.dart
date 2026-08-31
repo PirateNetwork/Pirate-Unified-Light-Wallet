@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 
-/// Pirate Wallet Card
+/// Stashi Wallet Card
 class PCard extends StatefulWidget {
   const PCard({
     required this.child,
@@ -26,6 +27,7 @@ class PCard extends StatefulWidget {
 
 class _PCardState extends State<PCard> {
   bool _isHovered = false;
+  bool _isFocused = false;
 
   @override
   Widget build(BuildContext context) {
@@ -46,8 +48,12 @@ class _PCardState extends State<PCard> {
               : AppColors.backgroundSurface),
       borderRadius: BorderRadius.circular(PSpacing.radiusCard),
       border: Border.all(
-        color: isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
-        width: 1.0,
+        color: _isFocused
+            ? AppColors.focusRing
+            : isHovered
+            ? AppColors.borderStrong
+            : AppColors.borderSubtle,
+        width: _isFocused ? 2.0 : 1.0,
       ),
       boxShadow: isHovered
           ? [
@@ -76,6 +82,11 @@ class _PCardState extends State<PCard> {
           color: Colors.transparent,
           child: InkWell(
             onTap: widget.onTap,
+            onFocusChange: (focused) {
+              if (_isFocused != focused) {
+                setState(() => _isFocused = focused);
+              }
+            },
             borderRadius: BorderRadius.circular(PSpacing.radiusCard),
             splashColor: AppColors.pressedOverlay,
             highlightColor: AppColors.hoverOverlay,

@@ -78,4 +78,25 @@ void main() {
       PSpacing.iconSM,
     );
   });
+
+  testWidgets('icon button exposes its tooltip as an accessible label', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PIconButton(
+            icon: const Icon(Icons.light_mode_outlined),
+            onPressed: () {},
+            tooltip: 'Switch to light mode',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.bySemanticsLabel('Switch to light mode'), findsOneWidget);
+    semantics.dispose();
+  });
 }

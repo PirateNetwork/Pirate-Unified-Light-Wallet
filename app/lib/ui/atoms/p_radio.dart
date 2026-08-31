@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Radio Button
+/// Stashi Wallet Radio Button
 class PRadio<T> extends StatefulWidget {
   const PRadio({
     required this.value,
@@ -24,6 +25,25 @@ class PRadio<T> extends StatefulWidget {
 
 class _PRadioState<T> extends State<PRadio<T>> {
   bool _isHovered = false;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode()..addListener(_handleFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focusNode
+      ..removeListener(_handleFocusChange)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChange() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +57,12 @@ class _PRadioState<T> extends State<PRadio<T>> {
               ? AppColors.hoverOverlay
               : Colors.transparent,
           borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+          border: Border.all(
+            color: _focusNode.hasFocus
+                ? AppColors.focusRing
+                : Colors.transparent,
+            width: 2,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -47,7 +73,7 @@ class _PRadioState<T> extends State<PRadio<T>> {
               child: RadioGroup<T>(
                 groupValue: widget.groupValue,
                 onChanged: widget.onChanged ?? (_) {},
-                child: Radio<T>(value: widget.value),
+                child: Radio<T>(value: widget.value, focusNode: _focusNode),
               ),
             ),
             if (widget.label != null) ...[
@@ -69,12 +95,16 @@ class _PRadioState<T> extends State<PRadio<T>> {
     );
 
     if (widget.label != null) {
-      return InkWell(
-        onTap: widget.onChanged == null
-            ? null
-            : () => widget.onChanged?.call(widget.value),
-        borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-        child: Padding(padding: EdgeInsets.all(PSpacing.xs), child: radio),
+      return MergeSemantics(
+        child: InkWell(
+          canRequestFocus: false,
+          excludeFromSemantics: true,
+          onTap: widget.onChanged == null
+              ? null
+              : () => widget.onChanged?.call(widget.value),
+          borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+          child: Padding(padding: EdgeInsets.all(PSpacing.xs), child: radio),
+        ),
       );
     }
 

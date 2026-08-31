@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Button - Primary action button with gradient
+/// Stashi Wallet Button - Primary action button with gradient
 class PButton extends StatefulWidget {
   const PButton({
     required this.onPressed,
@@ -36,10 +37,16 @@ class PButton extends StatefulWidget {
 class _PButtonState extends State<PButton> {
   bool _isHovered = false;
   bool _isPressed = false;
+  bool _isFocused = false;
 
   @override
   Widget build(BuildContext context) {
     final isDisabled = widget.onPressed == null || widget.loading;
+    final focusBorderColor =
+        widget.variant == PButtonVariant.primary ||
+            widget.variant == PButtonVariant.secondary
+        ? AppColors.textOnAccent
+        : AppColors.focusRing;
     final contentChild =
         widget.child ?? Text(widget.text ?? '', textAlign: TextAlign.center);
 
@@ -64,7 +71,9 @@ class _PButtonState extends State<PButton> {
                       isHovered: _isHovered,
                       isPressed: _isPressed,
                     ),
-                    border: widget.variant.border(isDisabled: isDisabled),
+                    border: _isFocused && !isDisabled
+                        ? Border.all(color: focusBorderColor, width: 2)
+                        : widget.variant.border(isDisabled: isDisabled),
                     borderRadius: BorderRadius.circular(PSpacing.radiusMD),
                     boxShadow: _isHovered && !isDisabled
                         ? [
@@ -80,6 +89,11 @@ class _PButtonState extends State<PButton> {
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: isDisabled ? null : widget.onPressed,
+                      onFocusChange: (focused) {
+                        if (_isFocused != focused) {
+                          setState(() => _isFocused = focused);
+                        }
+                      },
                       borderRadius: BorderRadius.circular(PSpacing.radiusMD),
                       splashColor: AppColors.pressedOverlay,
                       highlightColor: AppColors.hoverOverlay,
@@ -278,6 +292,25 @@ class PIconButton extends StatefulWidget {
 
 class _PIconButtonState extends State<PIconButton> {
   bool _isHovered = false;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode()..addListener(_handleFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focusNode
+      ..removeListener(_handleFocusChange)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleFocusChange() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -301,10 +334,14 @@ class _PIconButtonState extends State<PIconButton> {
           borderRadius: isCircular
               ? null
               : BorderRadius.circular(PSpacing.radiusSM),
+          border: _focusNode.hasFocus
+              ? Border.all(color: AppColors.focusRing, width: 2)
+              : null,
         ),
         child: IconButton(
           icon: widget.icon,
           onPressed: widget.onPressed,
+          focusNode: _focusNode,
           iconSize: widget.size.iconSize,
           color: widget.onPressed == null
               ? AppColors.textDisabled
@@ -313,12 +350,23 @@ class _PIconButtonState extends State<PIconButton> {
         ),
       ),
     );
-
-    if (widget.tooltip != null) {
-      return Tooltip(message: widget.tooltip, child: button);
+    final tooltip = widget.tooltip;
+    if (tooltip == null || tooltip.isEmpty) {
+      return button;
     }
-
-    return button;
+    return Semantics(
+      container: true,
+      label: tooltip,
+      button: true,
+      enabled: widget.onPressed != null,
+      child: ExcludeSemantics(
+        child: Tooltip(
+          message: tooltip,
+          excludeFromSemantics: true,
+          child: button,
+        ),
+      ),
+    );
   }
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'tokens/colors.dart';
 import 'tokens/spacing.dart';
 import 'tokens/typography.dart';
@@ -63,7 +64,7 @@ WidgetStateTextStyle _floatingInputLabelStyle({
   });
 }
 
-/// Pirate Wallet theme system
+/// Stashi Wallet theme system
 ///
 /// Builds Material ThemeData from design tokens with dark-first approach
 class PTheme {
@@ -444,7 +445,22 @@ class PTheme {
           return Colors.transparent;
         }),
         checkColor: WidgetStateProperty.all(PColors.textOnAccent),
-        side: BorderSide(color: PColors.borderDefault, width: 1.5),
+        side: WidgetStateBorderSide.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return BorderSide(
+              color: highContrast
+                  ? PColorsHighContrast.focusRing
+                  : PColors.focusRing,
+              width: 2,
+            );
+          }
+          final color = states.contains(WidgetState.disabled)
+              ? PColors.textDisabled.withValues(alpha: 0.45)
+              : highContrast
+              ? PColorsHighContrast.borderDefault
+              : PColors.textSecondary.withValues(alpha: 0.72);
+          return BorderSide(color: color, width: 1.5);
+        }),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusXS),
         ),
@@ -876,7 +892,15 @@ class PTheme {
           return Colors.transparent;
         }),
         checkColor: WidgetStateProperty.all(PColorsLight.textOnAccent),
-        side: const BorderSide(color: PColorsLight.borderDefault, width: 1.5),
+        side: WidgetStateBorderSide.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return const BorderSide(color: PColorsLight.focusRing, width: 2);
+          }
+          final color = states.contains(WidgetState.disabled)
+              ? PColorsLight.textDisabled.withValues(alpha: 0.55)
+              : PColorsLight.textSecondary.withValues(alpha: 0.68);
+          return BorderSide(color: color, width: 1.5);
+        }),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusXS),
         ),
