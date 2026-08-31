@@ -1574,6 +1574,7 @@ enum SubtreeRootCapability {
 const SUBTREE_ROOT_TRANSIENT_RETRY: Duration = Duration::from_secs(60);
 const SUBTREE_ROOT_TIMEOUT_RETRY: Duration = Duration::from_secs(10 * 60);
 const SUBTREE_ROOT_UNSUPPORTED_RETRY: Duration = Duration::from_secs(24 * 60 * 60);
+const REDUNDANT_BROADCAST_MAX_ALTERNATES: usize = 2;
 
 /// Full transaction payload returned by lightwalletd.
 #[derive(Debug, Clone)]
@@ -3621,6 +3622,84 @@ impl LightClient {
             Ok(txid)
         })
         .await
+    }
+
+    /// Broadcast through the active endpoint and, when Auto mode has a pool,
+    /// relay the identical signed transaction to a validated alternate in the
+    /// background.
+    ///
+    /// Reusing the same transaction bytes is idempotent at consensus level and
+    /// avoids creating a competing transaction. The primary acknowledgement is
+    /// returned immediately so alternate validation does not add Tor or I2P
+    /// probe latency to the send flow.
+    pub async fn broadcast_redundant(&self, raw_tx: Vec<u8>) -> Result<String> {
+        let txid = self.broadcast(raw_tx.clone()).await?;
+        if !self.has_failover_endpoints() {
+            return Ok(txid);
+        }
+
+        let source_index = self.endpoint_pool.read().await.active_index;
+        let client = self.clone();
+        let txid_for_log = txid.clone();
+        tokio::spawn(async move {
+            client
+                .rebroadcast_to_validated_alternate(raw_tx, source_index, &txid_for_log)
+                .await;
+        });
+
+        Ok(txid)
+    }
+
+    async fn rebroadcast_to_validated_alternate(
+        &self,
+        raw_tx: Vec<u8>,
+        source_index: usize,
+        txid: &str,
+    ) {
+        if !self.endpoint_pool_is_probed().await {
+            let health = self.clone().probe_endpoints_owned(None).await;
+            Self::report_endpoint_pool_health(&health);
+        }
+
+        let candidates = {
+            let state = self.endpoint_pool.read().await;
+            state
+                .healthy_indices
+                .iter()
+                .copied()
+                .filter(|index| *index != source_index)
+                .take(REDUNDANT_BROADCAST_MAX_ALTERNATES)
+                .collect::<Vec<_>>()
+        };
+        for index in candidates {
+            let Some(candidate) = self.connected_candidate_client(index).await else {
+                continue;
+            };
+            let endpoint = candidate.endpoint().to_string();
+            match candidate.broadcast(raw_tx.clone()).await {
+                Ok(_) => {
+                    info!(
+                        txid,
+                        endpoint = %endpoint,
+                        "Relayed transaction through a validated alternate endpoint"
+                    );
+                    return;
+                }
+                Err(error) => {
+                    warn!(
+                        txid,
+                        endpoint = %endpoint,
+                        %error,
+                        "Validated alternate did not accept transaction relay"
+                    );
+                }
+            }
+        }
+
+        warn!(
+            txid,
+            "No validated alternate endpoint accepted the background transaction relay"
+        );
     }
 
     /// Get full transaction by hash (for memo decryption)
