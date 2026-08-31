@@ -619,6 +619,7 @@ class _TransactionItemWithLabel extends ConsumerWidget {
     return TransactionRowV2(
       isReceived: isReceived,
       isConfirmed: isConfirmed,
+      isExpired: tx.expired,
       amountText: '${isReceived ? '+' : '-'}${amount.toStringAsFixed(4)} ARRR',
       timestamp: timestamp,
       memo: tx.memo,

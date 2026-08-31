@@ -11,6 +11,7 @@ class TransactionRowV2 extends StatelessWidget {
   const TransactionRowV2({
     required this.isReceived,
     required this.isConfirmed,
+    this.isExpired = false,
     required this.amountText,
     required this.timestamp,
     this.memo,
@@ -21,6 +22,7 @@ class TransactionRowV2 extends StatelessWidget {
 
   final bool isReceived;
   final bool isConfirmed;
+  final bool isExpired;
   final String amountText;
   final DateTime timestamp;
   final String? memo;
@@ -36,8 +38,16 @@ class TransactionRowV2 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusText = isConfirmed ? 'Confirmed'.tr : 'Pending'.tr;
-    final statusColor = isConfirmed ? AppColors.success : AppColors.warning;
+    final statusText = isExpired
+        ? 'Expired'.tr
+        : isConfirmed
+        ? 'Confirmed'.tr
+        : 'Pending'.tr;
+    final statusColor = isExpired
+        ? AppColors.error
+        : isConfirmed
+        ? AppColors.success
+        : AppColors.warning;
     final directionLabel = isReceived ? 'Received'.tr : 'Sent'.tr;
     final timeLabel = timeago.format(timestamp);
 

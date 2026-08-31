@@ -9,7 +9,9 @@ import 'package:go_router/go_router.dart';
 import '../../core/ffi/generated/models.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/platform/platform_utils.dart';
+
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -21,7 +23,7 @@ import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 
-enum ActivityFilter { all, sent, received, pending }
+enum ActivityFilter { all, sent, received, pending, expired }
 
 extension ActivityFilterLabel on ActivityFilter {
   String get label {
@@ -34,6 +36,8 @@ extension ActivityFilterLabel on ActivityFilter {
         return 'Received'.tr;
       case ActivityFilter.pending:
         return 'Pending'.tr;
+      case ActivityFilter.expired:
+        return 'Expired'.tr;
     }
   }
 }
@@ -122,7 +126,12 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
         filtered = filtered.where((tx) => tx.amount >= 0);
         break;
       case ActivityFilter.pending:
-        filtered = filtered.where((tx) => !_isConfirmedTx(tx, currentHeight));
+        filtered = filtered.where(
+          (tx) => !tx.expired && !_isConfirmedTx(tx, currentHeight),
+        );
+        break;
+      case ActivityFilter.expired:
+        filtered = filtered.where((tx) => tx.expired);
         break;
       case ActivityFilter.all:
         break;
@@ -241,6 +250,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               child: TransactionRowV2(
                 isReceived: tx.amount >= 0,
                 isConfirmed: _isConfirmedTx(tx, currentHeight),
+                isExpired: tx.expired,
                 amountText:
                     '${tx.amount >= 0 ? '+' : '-'}${(tx.amount.abs() / 100000000.0).toStringAsFixed(4)} ARRR',
                 timestamp: _convertPlatformInt64ToDateTime(tx.timestamp),

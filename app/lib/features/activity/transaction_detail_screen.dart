@@ -8,7 +8,9 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart';
 import '../../core/providers/wallet_providers.dart';
+
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -104,6 +106,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.tx.txid != widget.tx.txid ||
         oldWidget.tx.amount != widget.tx.amount ||
+        oldWidget.tx.expired != widget.tx.expired ||
         (oldWidget.tx.memo ?? '') != (widget.tx.memo ?? '')) {
       _refreshMemoFuture();
       _refreshPaymentDisclosuresFuture();
@@ -134,7 +137,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
 
   void _refreshPaymentDisclosuresFuture() {
     final walletId = ref.read(activeWalletProvider);
-    if (walletId == null || widget.tx.amount >= 0) {
+    if (walletId == null || widget.tx.amount >= 0 || widget.tx.expired) {
       _paymentDisclosuresFuture = null;
       return;
     }
@@ -198,8 +201,16 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
       currentHeight: currentHeight,
     );
     final isConfirmed = tx.confirmed || confirmations >= 1;
-    final statusText = isConfirmed ? 'Confirmed'.tr : 'Pending'.tr;
-    final statusColor = isConfirmed ? AppColors.success : AppColors.warning;
+    final statusText = tx.expired
+        ? 'Expired'.tr
+        : isConfirmed
+        ? 'Confirmed'.tr
+        : 'Pending'.tr;
+    final statusColor = tx.expired
+        ? AppColors.error
+        : isConfirmed
+        ? AppColors.success
+        : AppColors.warning;
     final timestamp = _convertTimestamp(tx.timestamp);
     final localizations = MaterialLocalizations.of(context);
     final dateText = localizations.formatFullDate(timestamp);
@@ -277,10 +288,64 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
                     value: confirmations.toString(),
                   ),
                 ],
+                if (tx.expiryHeight != null) ...[
+                  const SizedBox(height: PSpacing.sm),
+                  _DetailRow(
+                    label: 'Expiry'.tr,
+                    value: tx.expiryHeight.toString(),
+                  ),
+                ],
               ],
             ),
           ),
         ),
+        if (tx.expired) ...[
+          const SizedBox(height: PSpacing.lg),
+          PCard(
+            child: Padding(
+              padding: const EdgeInsets.all(PSpacing.md),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(PSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.timer_off_outlined,
+                      color: AppColors.error,
+                      size: PSpacing.iconMD,
+                    ),
+                  ),
+                  const SizedBox(width: PSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Transaction expired'.tr,
+                          style: PTypography.titleMedium(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: PSpacing.xs),
+                        Text(
+                          'This payment did not confirm before it expired. Its locked funds are available to spend again. Create a new payment if you still want to send it.'
+                              .tr,
+                          style: PTypography.bodySmall(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (displayFeeArrrtoshis > 0 &&
             tx.amount.abs() == displayFeeArrrtoshis) ...[
           const SizedBox(height: PSpacing.lg),
