@@ -20,6 +20,11 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Flutter 3.47 enables Impeller by default on macOS. Its current Intel
+	     rendering path can corrupt glyph and surface repaints, so desktop macOS
+	     builds use the stable Skia renderer until upstream resolves it. -->
+	<key>FLTEnableImpeller</key>
+	<false/>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
