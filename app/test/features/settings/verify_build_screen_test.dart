@@ -1,14 +1,14 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/core/security/release_verification_service.dart';
 import 'package:pirate_wallet/design/theme.dart';
 import 'package:pirate_wallet/features/settings/providers/preferences_providers.dart';
 import 'package:pirate_wallet/features/settings/verify_build_screen.dart';
+
+import '../../support/test_font_loader.dart';
 
 const _captureBoundaryKey = ValueKey('verify-build-capture');
 
@@ -96,24 +96,16 @@ Future<void> _captureIfRequested(WidgetTester tester, String filename) async {
 
 void main() {
   setUpAll(() async {
-    final sora = FontLoader('Sora')
-      ..addFont(rootBundle.load('assets/fonts/Sora/Sora.ttf'));
-    await sora.load();
-    final monospace = FontLoader(
+    await loadTestFont('Sora', 'assets/fonts/Sora/Sora.ttf');
+    await loadTestFont(
       'monospace',
-    )..addFont(rootBundle.load('assets/fonts/JetBrainsMono/JetBrainsMono.ttf'));
-    await monospace.load();
+      'assets/fonts/JetBrainsMono/JetBrainsMono.ttf',
+    );
 
     final materialIconsPath =
         Platform.environment['PIRATE_MATERIAL_ICONS_FONT'];
     if (materialIconsPath != null && File(materialIconsPath).existsSync()) {
-      final materialIcons = FontLoader('MaterialIcons')
-        ..addFont(
-          File(materialIconsPath)
-              .readAsBytes()
-              .then((bytes) => ByteData.sublistView(bytes)),
-        );
-      await materialIcons.load();
+      await loadTestFont('MaterialIcons', materialIconsPath);
     }
   });
 
