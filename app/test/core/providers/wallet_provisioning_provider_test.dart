@@ -27,9 +27,8 @@ void main() {
       expect(walletId, _walletId);
       expect(container.read(activeWalletProvider), _walletId);
       expect(
-        (await container.read(
-          walletsProvider.future,
-        )).map((wallet) => wallet.id),
+        (await container.read(walletsProvider.future))
+            .map((wallet) => wallet.id),
         contains(_walletId),
       );
       expect(await container.read(walletsExistProvider.future), isTrue);
@@ -73,6 +72,27 @@ void main() {
     expect(completed, isTrue);
     expect(events, ['restore', 'activate', 'list-wallets', 'wallets-exist']);
   });
+
+  test('finalization tolerates a briefly stale wallet registry', () async {
+    final events = <String>[];
+    final api = _FakeWalletProvisioningApi(events);
+    final container = _container(
+      api: api,
+      events: events,
+      hiddenRegistryReads: 2,
+    );
+    addTearDown(container.dispose);
+
+    final walletId = await container.read(restoreWalletProvider)(
+      name: 'Restored Wallet',
+      mnemonic: 'test mnemonic',
+      birthday: 3_500_000,
+    );
+
+    expect(walletId, _walletId);
+    expect(events.where((event) => event == 'list-wallets'), hasLength(3));
+    expect(await container.read(walletsExistProvider.future), isTrue);
+  });
 }
 
 const _walletId = 'restored-wallet-id';
@@ -82,7 +102,9 @@ ProviderContainer _container({
   required List<String> events,
   Completer<void>? activationStarted,
   Completer<void>? releaseActivation,
+  int hiddenRegistryReads = 0,
 }) {
+  var registryReads = 0;
   return ProviderContainer(
     overrides: [
       walletProvisioningApiProvider.overrideWithValue(api),
@@ -95,12 +117,24 @@ ProviderContainer _container({
       ),
       walletsProvider.overrideWith((ref) async {
         events.add('list-wallets');
+        registryReads += 1;
+        if (registryReads <= hiddenRegistryReads) {
+          return const <WalletMeta>[];
+        }
         return List<WalletMeta>.unmodifiable(api.wallets);
       }),
       walletsExistProvider.overrideWith((ref) async {
         events.add('wallets-exist');
         return api.wallets.isNotEmpty;
       }),
+      walletProvisioningRefreshDelaysProvider.overrideWithValue(
+        const <Duration>[
+          Duration.zero,
+          Duration.zero,
+          Duration.zero,
+          Duration.zero,
+        ],
+      ),
     ],
   );
 }

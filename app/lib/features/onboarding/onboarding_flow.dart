@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../core/providers/wallet_providers.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart';
@@ -137,6 +138,10 @@ class OnboardingState {
 
 /// Onboarding flow controller
 class OnboardingController extends Notifier<OnboardingState> {
+  WalletId? _provisionedWalletId;
+  int? _pendingBirthdayHeight;
+  bool _needsBirthdayRefresh = false;
+
   @override
   OnboardingState build() {
     return const OnboardingState();
@@ -186,6 +191,7 @@ class OnboardingController extends Notifier<OnboardingState> {
   }
 
   void reset({OnboardingStep startAt = OnboardingStep.createOrImport}) {
+    _clearProvisioningCheckpoint();
     state = OnboardingState(currentStep: startAt);
   }
 
@@ -196,62 +202,29 @@ class OnboardingController extends Notifier<OnboardingState> {
       throw StateError('Onboarding mode not selected');
     }
 
-    switch (mode) {
-      case OnboardingMode.create:
-        // For new wallets, wait for a lightwalletd tip and set birthday to tip-10
-        int? birthday = state.birthdayHeight;
-        _BirthdayResolution? resolution;
-        if (birthday == null) {
-          resolution = await _resolveBirthdayHeight();
-          birthday = resolution.height;
-          state = state.copyWith(birthdayHeight: birthday);
-        }
+    var walletId = _provisionedWalletId;
+    if (walletId == null) {
+      walletId = await _provisionWallet(mode, walletName);
+      // Keep the returned ID until setup is fully finalized. If activation or
+      // provider refresh fails, retrying resumes here instead of creating a
+      // duplicate wallet from the same recovery phrase.
+      _provisionedWalletId = walletId;
+    }
 
-        // If we have a mnemonic in state (from seed display), use restore_wallet
-        // to create wallet with that specific mnemonic. Otherwise, use create_wallet
-        // which generates a new mnemonic.
-        final WalletId walletId;
-        if (state.mnemonic != null && state.mnemonic!.isNotEmpty) {
-          walletId = await ref.read(restoreWalletProvider)(
-            name: walletName,
-            mnemonic: state.mnemonic!,
-            birthday: birthday,
-            mnemonicLanguage: state.mnemonicLanguage,
-          );
-        } else {
-          walletId = await ref.read(createWalletProvider)(
-            name: walletName,
-            birthday: birthday,
-            mnemonicLanguage: state.mnemonicLanguage,
-          );
-        }
-        if (resolution?.timedOut ?? false) {
-          await BirthdayUpdateService.markPending(walletId, birthday);
-          unawaited(
-            BirthdayUpdateService.updateWhenAvailable(
-              walletId,
-              birthday,
-              onWalletsUpdated: ref.read(refreshWalletsProvider),
-            ),
-          );
-        }
-        break;
-      case OnboardingMode.import:
-        final mnemonic = state.mnemonic;
-        if (mnemonic == null || mnemonic.isEmpty) {
-          throw StateError('Mnemonic not provided for restore');
-        }
-        await ref.read(restoreWalletProvider)(
-          name: walletName,
-          mnemonic: mnemonic,
-          birthday: state.birthdayHeight,
-          mnemonicLanguage: state.mnemonicLanguage,
-        );
-        break;
-      case OnboardingMode.watchOnly:
-        throw StateError(
-          'Watch-only onboarding must use viewing key import flow',
-        );
+    await ref.read(finalizeWalletProvisioningProvider)(walletId);
+
+    final pendingBirthday = _pendingBirthdayHeight;
+    if (_needsBirthdayRefresh && pendingBirthday != null) {
+      await BirthdayUpdateService.markPending(walletId, pendingBirthday);
+      unawaited(
+        BirthdayUpdateService.updateWhenAvailable(
+          walletId,
+          pendingBirthday,
+          onWalletsUpdated: ref.read(refreshWalletsProvider),
+        ),
+      );
+      _needsBirthdayRefresh = false;
+      _pendingBirthdayHeight = null;
     }
 
     // After wallet creation, unlock the app with the passphrase
@@ -267,6 +240,67 @@ class OnboardingController extends Notifier<OnboardingState> {
     }
 
     state = state.copyWith(currentStep: OnboardingStep.complete);
+    _clearProvisioningCheckpoint();
+  }
+
+  Future<WalletId> _provisionWallet(
+    OnboardingMode mode,
+    String walletName,
+  ) async {
+    final api = ref.read(walletProvisioningApiProvider);
+    switch (mode) {
+      case OnboardingMode.create:
+        // New wallets start near the current tip. The generated mnemonic is
+        // restored deliberately so the exact words shown to the user are used.
+        int? birthday = state.birthdayHeight;
+        _BirthdayResolution? resolution;
+        if (birthday == null) {
+          resolution = await _resolveBirthdayHeight();
+          birthday = resolution.height;
+          state = state.copyWith(birthdayHeight: birthday);
+        }
+
+        final mnemonic = state.mnemonic;
+        final walletId = mnemonic != null && mnemonic.isNotEmpty
+            ? await api.restoreWallet(
+                name: walletName,
+                mnemonic: mnemonic,
+                birthday: birthday,
+                mnemonicLanguage: state.mnemonicLanguage,
+              )
+            : await api.createWallet(
+                name: walletName,
+                entropyLen: 256,
+                birthday: birthday,
+                mnemonicLanguage: state.mnemonicLanguage,
+              );
+        if (resolution?.timedOut ?? false) {
+          _needsBirthdayRefresh = true;
+          _pendingBirthdayHeight = birthday;
+        }
+        return walletId;
+      case OnboardingMode.import:
+        final mnemonic = state.mnemonic;
+        if (mnemonic == null || mnemonic.isEmpty) {
+          throw StateError('Mnemonic not provided for restore');
+        }
+        return api.restoreWallet(
+          name: walletName,
+          mnemonic: mnemonic,
+          birthday: state.birthdayHeight,
+          mnemonicLanguage: state.mnemonicLanguage,
+        );
+      case OnboardingMode.watchOnly:
+        throw StateError(
+          'Watch-only onboarding must use viewing key import flow',
+        );
+    }
+  }
+
+  void _clearProvisioningCheckpoint() {
+    _provisionedWalletId = null;
+    _pendingBirthdayHeight = null;
+    _needsBirthdayRefresh = false;
   }
 
   Future<_BirthdayResolution> _resolveBirthdayHeight() async {

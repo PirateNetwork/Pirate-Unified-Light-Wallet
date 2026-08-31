@@ -244,6 +244,16 @@ final refreshWalletRuntimeProvider = Provider<void Function()>((ref) {
   };
 });
 
+/// Bounded delays used while freshly committed wallet metadata becomes visible.
+final walletProvisioningRefreshDelaysProvider = Provider<List<Duration>>((_) {
+  return const <Duration>[
+    Duration.zero,
+    Duration(milliseconds: 80),
+    Duration(milliseconds: 220),
+    Duration(milliseconds: 500),
+  ];
+});
+
 final finalizeWalletProvisioningProvider =
     Provider<Future<void> Function(WalletId)>((ref) {
       return (WalletId walletId) async {
@@ -252,14 +262,38 @@ final finalizeWalletProvisioningProvider =
         ref.read(refreshWalletRuntimeProvider)();
         ref.invalidate(walletsExistProvider);
 
-        final wallets = await ref.read(walletsProvider.future);
-        if (!wallets.any((wallet) => wallet.id == walletId)) {
+        final retryDelays = ref.read(walletProvisioningRefreshDelaysProvider);
+        var registered = false;
+        for (var attempt = 0; attempt < retryDelays.length; attempt += 1) {
+          final delay = retryDelays[attempt];
+          if (attempt > 0) {
+            if (delay != Duration.zero) {
+              await Future<void>.delayed(delay);
+            }
+            ref.invalidate(walletsProvider);
+          }
+          final wallets = await ref.read(walletsProvider.future);
+          registered = wallets.any((wallet) => wallet.id == walletId);
+          if (registered) break;
+        }
+        if (!registered) {
           throw StateError(
             'Provisioned wallet is missing from the wallet registry',
           );
         }
 
-        final walletsExist = await ref.read(walletsExistProvider.future);
+        var walletsExist = false;
+        for (var attempt = 0; attempt < retryDelays.length; attempt += 1) {
+          final delay = retryDelays[attempt];
+          if (attempt > 0) {
+            if (delay != Duration.zero) {
+              await Future<void>.delayed(delay);
+            }
+            ref.invalidate(walletsExistProvider);
+          }
+          walletsExist = await ref.read(walletsExistProvider.future);
+          if (walletsExist) break;
+        }
         if (!walletsExist) {
           throw StateError('Provisioned wallet was not detected');
         }
@@ -562,12 +596,11 @@ final refreshSyncLogsProvider = Provider<void Function()>((ref) {
 const int _recentTransactionLimit = 100;
 const int activityTransactionPageSize = 50;
 
-typedef TransactionPageLoader =
-    Future<TransactionPage> Function(
-      WalletId walletId, {
-      TransactionCursor? cursor,
-      required int pageSize,
-    });
+typedef TransactionPageLoader = Future<TransactionPage> Function(
+  WalletId walletId, {
+  TransactionCursor? cursor,
+  required int pageSize,
+});
 
 final transactionPageLoaderProvider = Provider<TransactionPageLoader>((ref) {
   return FfiBridge.listTransactionsPage;
@@ -780,9 +813,8 @@ final transactionStreamProvider = StreamProvider<TxInfo?>((ref) async* {
     return;
   }
 
-  yield* FfiBridge.transactionStream(
-    walletId,
-  ).distinct((prev, next) => prev.txid == next.txid);
+  yield* FfiBridge.transactionStream(walletId)
+      .distinct((prev, next) => prev.txid == next.txid);
 });
 
 /// Watch for new transactions and refresh dependent providers.
