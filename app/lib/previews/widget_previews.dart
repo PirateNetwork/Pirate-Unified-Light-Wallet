@@ -12,7 +12,7 @@ import '../ui/atoms/p_input.dart';
 import '../ui/molecules/p_card.dart';
 import '../core/i18n/arb_text_localizer.dart';
 
-@Preview(name: 'Actions Sheet', group: 'Wallet Shell', size: Size(390, 780))
+@Preview(name: 'Wallet Sheet', group: 'Wallet Shell', size: Size(390, 780))
 Widget paySheetPreview() {
   return MaterialApp(
     theme: PTheme.dark(),

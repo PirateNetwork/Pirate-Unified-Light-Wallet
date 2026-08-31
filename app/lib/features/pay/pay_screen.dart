@@ -44,10 +44,10 @@ class PayScreen extends StatelessWidget {
         return content;
       }
       return PScaffold(
-        title: 'Actions'.tr,
+        title: 'Wallet'.tr,
         useSafeArea: false,
         appBar: PAppBar(
-          title: 'Actions'.tr,
+          title: 'Wallet'.tr,
           subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
           actions: appBarActions,
         ),
@@ -56,11 +56,11 @@ class PayScreen extends StatelessWidget {
     }
 
     return PScaffold(
-      title: 'Actions'.tr,
+      title: 'Wallet'.tr,
       appBar: desktopPlatform
           ? null
           : PAppBar(
-              title: 'Actions'.tr,
+              title: 'Wallet'.tr,
               subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
               actions: appBarActions,
             ),
@@ -69,7 +69,7 @@ class PayScreen extends StatelessWidget {
   }
 }
 
-/// Mobile action sheet with primary wallet actions.
+/// Mobile wallet sheet with primary payment tools.
 class PaySheet extends StatelessWidget {
   const PaySheet({
     required this.onSend,
@@ -185,7 +185,7 @@ class PaySheet extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Actions'.tr,
+                    'Wallet'.tr,
                     style: PTypography.heading4(color: AppColors.textPrimary),
                   ),
                   const SizedBox(height: PSpacing.xs),

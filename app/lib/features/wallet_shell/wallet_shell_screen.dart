@@ -164,7 +164,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
 
           const SizedBox(height: PSpacing.md),
 
-          // Actions
+          // Wallet tools
           PCard(
             child: Padding(
               padding: const EdgeInsets.all(PSpacing.md),
@@ -172,7 +172,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Actions'.tr,
+                    'Wallet'.tr,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: PSpacing.md),

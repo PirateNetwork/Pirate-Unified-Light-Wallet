@@ -34,7 +34,7 @@ class AppShell extends ConsumerWidget {
     PNavDestination(
       icon: Icons.grid_view_outlined,
       selectedIcon: Icons.grid_view_rounded,
-      label: 'Actions'.tr,
+      label: 'Wallet'.tr,
       isPay: true,
     ),
     PNavDestination(
@@ -110,7 +110,7 @@ class AppShell extends ConsumerWidget {
     }
     if (path.startsWith('/pay')) {
       return PAppBar(
-        title: 'Actions'.tr,
+        title: 'Wallet'.tr,
         subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
         actions: [WalletSwitcherButton(compact: true)],
         showThemeToggle: false,

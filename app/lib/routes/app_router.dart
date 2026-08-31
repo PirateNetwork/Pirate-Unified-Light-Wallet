@@ -290,7 +290,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
-          // Actions - entry point for Send/Receive/Verify/Swap
+          // Wallet - entry point for Send/Receive/Verify/Swap
           GoRoute(
             path: '/pay',
             name: 'pay',
