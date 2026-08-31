@@ -1,6 +1,6 @@
 # Verify Builds
 
-This document describes how to verify published Pirate Unified Wallet artifacts and how to reproduce repository outputs locally.
+This document describes how to verify published Stashi Wallet artifacts and how to reproduce repository outputs locally.
 
 Release artifacts
 -----------------
@@ -8,29 +8,29 @@ Release artifacts
 The project build scripts currently generate these artifact names:
 
 - Windows release installers
-  - `pirate-unified-wallet-windows-installer.exe`
-  - `pirate-unified-wallet-windows-installer-unsigned.exe`
+  - `Stashi-Wallet-windows-installer.exe`
+  - `Stashi-Wallet-windows-installer-unsigned.exe`
 - Windows CI/test build
-  - `pirate-unified-wallet-windows-portable-unsigned.zip`
+  - `Stashi-Wallet-windows-portable-unsigned.zip`
 - Linux
-  - `pirate-unified-wallet-linux-x86_64.AppImage`
-  - `pirate-unified-wallet.flatpak`
-  - `pirate-unified-wallet-amd64.deb`
+  - `Stashi-Wallet-linux-x86_64.AppImage`
+  - `Stashi-Wallet.flatpak`
+  - `Stashi-Wallet-amd64.deb`
 - macOS
-  - `pirate-unified-wallet-macos.dmg`
-  - `pirate-unified-wallet-macos-unsigned.dmg`
+  - `Stashi-Wallet-macos.dmg`
+  - `Stashi-Wallet-macos-unsigned.dmg`
 - Android
-  - `pirate-unified-wallet-android-V8.apk`
-  - `pirate-unified-wallet-android-V8-unsigned.apk`
-  - `pirate-unified-wallet-android-V7.apk`
-  - `pirate-unified-wallet-android-V7-unsigned.apk`
-  - `pirate-unified-wallet-android-x86.apk`
-  - `pirate-unified-wallet-android-x86-unsigned.apk`
-  - `pirate-unified-wallet-android.aab`
-  - `pirate-unified-wallet-android-unsigned.aab`
+  - `Stashi-Wallet-android-V8.apk`
+  - `Stashi-Wallet-android-V8-unsigned.apk`
+  - `Stashi-Wallet-android-V7.apk`
+  - `Stashi-Wallet-android-V7-unsigned.apk`
+  - `Stashi-Wallet-android-x86.apk`
+  - `Stashi-Wallet-android-x86-unsigned.apk`
+  - `Stashi-Wallet-android.aab`
+  - `Stashi-Wallet-android-unsigned.aab`
 - iOS
-  - `pirate-unified-wallet-ios.ipa`
-  - `pirate-unified-wallet-ios-unsigned.ipa`
+  - `Stashi-Wallet-ios.ipa`
+  - `Stashi-Wallet-ios-unsigned.ipa`
 - Backend
   - `piratewallet-cli`
   - `piratewallet-cli.exe`
@@ -46,17 +46,17 @@ Official GitHub Releases keep user installables at the top level. Developer arti
 
 The Windows installer is the normal-user release artifact. The unsigned
 portable build is retained inside
-`pirate-unified-wallet-unsigned-desktop-test-builds.zip` for testing and
+`Stashi-Wallet-unsigned-desktop-test-builds.zip` for testing and
 reproducible comparison.
 
 Each release also publishes `signatures-<tag>.zip`. Its filenames and command
 flow intentionally match Treasure Chest's verification bundle, while every
-signature is made with Pirate Unified Wallet's own release key. Never use a
-Treasure Chest maintainer key to authenticate a Unified Wallet release.
+signature is made with Stashi Wallet's own release key. Never use a
+Treasure Chest maintainer key to authenticate a Stashi Wallet release.
 
-The authoritative key identity is
-`Pirate Unified Wallet <dev@piratechainfoundation.com>`, with primary
-fingerprint:
+The established key UID is
+`Pirate Unified Wallet <dev@piratechainfoundation.com>`. The authoritative
+primary fingerprint is:
 
 ```text
 E4FB 2399 AECC F9B9 447D ED47 2CE6 5343 4015 53A6
@@ -70,7 +70,7 @@ Verify an official release
 
 ```bash
 gh release download <tag> -R PirateNetwork/Pirate-Unified-Light-Wallet \
-  -p pirate-unified-wallet-windows-installer.exe \
+  -p Stashi-Wallet-windows-installer.exe \
   -p 'signatures-*.zip'
 ```
 
@@ -104,8 +104,8 @@ that file's manifest entry.
 
 ```bash
 gpg --verify \
-  signatures-<tag>/pirate-unified-wallet-linux-x86_64.AppImage.sig \
-  pirate-unified-wallet-linux-x86_64.AppImage
+  signatures-<tag>/Stashi-Wallet-linux-x86_64.AppImage.sig \
+  Stashi-Wallet-linux-x86_64.AppImage
 ```
 
 PGP verification does not decrypt a package. It confirms that the exact bytes
@@ -180,11 +180,11 @@ Compare local outputs
 After building locally, hash the artifact and compare it to the published checksum.
 
 ```bash
-sha256sum dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip
-sha256sum dist/linux/pirate-unified-wallet-linux-x86_64.AppImage
-shasum -a 256 dist/macos/pirate-unified-wallet-macos-unsigned.dmg
-sha256sum dist/android/pirate-unified-wallet-android-V8-unsigned.apk
-shasum -a 256 dist/ios/pirate-unified-wallet-ios-unsigned.ipa
+sha256sum dist/windows/Stashi-Wallet-windows-portable-unsigned.zip
+sha256sum dist/linux/Stashi-Wallet-linux-x86_64.AppImage
+shasum -a 256 dist/macos/Stashi-Wallet-macos-unsigned.dmg
+sha256sum dist/android/Stashi-Wallet-android-V8-unsigned.apk
+shasum -a 256 dist/ios/Stashi-Wallet-ios-unsigned.ipa
 ```
 
 SBOM and provenance
@@ -210,7 +210,7 @@ Verify Build screen
 The application includes a Verify Build screen that:
 
 - downloads the deterministic `signatures-<tag>.zip` asset for its exact build
-- verifies the signed manifest with the embedded Unified Wallet public key and
+- verifies the signed manifest with the embedded Stashi Wallet public key and
   pinned primary key identity
 - hashes the distributed desktop artifact when available, otherwise the
   installed desktop executable recorded during packaging

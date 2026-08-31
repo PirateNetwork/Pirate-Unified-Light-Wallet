@@ -274,10 +274,10 @@ fi
 
 # Top-level release assets should be normal-user installables only.
 find "$ARTIFACTS_DIR" -type f \( \
-  -name 'pirate-unified-wallet-android-*.apk' \
-  -o -name 'pirate-unified-wallet-windows-installer.exe' \
-  -o -name 'pirate-unified-wallet-macos.dmg' \
-  -o -name 'pirate-unified-wallet-ios.ipa' \
+  -name 'Stashi-Wallet-android-*.apk' \
+  -o -name 'Stashi-Wallet-windows-installer.exe' \
+  -o -name 'Stashi-Wallet-macos.dmg' \
+  -o -name 'Stashi-Wallet-ios.ipa' \
 \) ! -name '*-unsigned*' -print0 |
   while IFS= read -r -d '' file; do
     cp -f "$file" "$RELEASE_DIR/"
@@ -286,14 +286,14 @@ find "$ARTIFACTS_DIR" -type f \( \
 # If signing is unavailable, publish unsigned desktop builds so testers still
 # receive installable artifacts. Unsigned mobile/store builds stay in the
 # developer bundle because regular users cannot install them safely.
-if [[ ! -f "$RELEASE_DIR/pirate-unified-wallet-windows-installer.exe" ]]; then
-  copy_first 'pirate-unified-wallet-windows-installer-unsigned.exe' "$RELEASE_DIR"
+if [[ ! -f "$RELEASE_DIR/Stashi-Wallet-windows-installer.exe" ]]; then
+  copy_first 'Stashi-Wallet-windows-installer-unsigned.exe' "$RELEASE_DIR"
 fi
-if [[ ! -f "$RELEASE_DIR/pirate-unified-wallet-macos.dmg" ]]; then
+if [[ ! -f "$RELEASE_DIR/Stashi-Wallet-macos.dmg" ]]; then
   if [[ "$macos_notary_pending" == "true" ]]; then
     echo "Signed macOS notarization is pending; publishing explicit unsigned macOS fallback."
   fi
-  copy_first 'pirate-unified-wallet-macos-unsigned.dmg' "$RELEASE_DIR"
+  copy_first 'Stashi-Wallet-macos-unsigned.dmg' "$RELEASE_DIR"
 fi
 
 copy_matching "$RELEASE_DIR" \( \
@@ -400,21 +400,21 @@ stage_developer_archive "${REACT_NATIVE_PLUGIN_CHANGED:-false}" \
   "react-native-plugin"
 
 copy_matching "$DEV_DIR/mobile-store-and-test-builds" \( \
-  -name 'pirate-unified-wallet-android*.aab' \
-  -o -name 'pirate-unified-wallet-android-*-unsigned.apk' \
-  -o -name 'pirate-unified-wallet-ios-unsigned.ipa' \
+  -name 'Stashi-Wallet-android*.aab' \
+  -o -name 'Stashi-Wallet-android-*-unsigned.apk' \
+  -o -name 'Stashi-Wallet-ios-unsigned.ipa' \
 \)
 
 # Portable Windows builds remain available to testers without adding a second
 # Windows distribution path to the normal-user release assets.
 copy_matching "$DEV_DIR/unsigned-desktop-test-builds" \( \
-  -name 'pirate-unified-wallet-windows-*-unsigned.*' \
-  -o -name 'pirate-unified-wallet-macos-unsigned.dmg' \
+  -name 'Stashi-Wallet-windows-*-unsigned.*' \
+  -o -name 'Stashi-Wallet-macos-unsigned.dmg' \
 \)
 
 if find "$DEV_DIR" -type f -print -quit | grep -q .; then
-  zip_nonempty_dir "$DEV_DIR/mobile-store-and-test-builds" "$RELEASE_DIR/pirate-unified-wallet-mobile-store-test-builds.zip"
-  zip_nonempty_dir "$DEV_DIR/unsigned-desktop-test-builds" "$RELEASE_DIR/pirate-unified-wallet-unsigned-desktop-test-builds.zip"
+  zip_nonempty_dir "$DEV_DIR/mobile-store-and-test-builds" "$RELEASE_DIR/Stashi-Wallet-mobile-store-test-builds.zip"
+  zip_nonempty_dir "$DEV_DIR/unsigned-desktop-test-builds" "$RELEASE_DIR/Stashi-Wallet-unsigned-desktop-test-builds.zip"
 else
   rm -rf "$DEV_DIR"
 fi
@@ -447,7 +447,7 @@ find "$ARTIFACTS_DIR" -type f \( \
 # including grouped developer artifacts and generated Swift package manifests.
 SHA256SUMS_FILE="$META_DIR/SHA256SUMS"
 : > "$SHA256SUMS_FILE"
-find "$RELEASE_DIR" -maxdepth 1 -type f ! -name 'pirate-unified-wallet-release-metadata.zip' -print0 |
+find "$RELEASE_DIR" -maxdepth 1 -type f ! -name 'Stashi-Wallet-release-metadata.zip' -print0 |
   sort -z |
   while IFS= read -r -d '' file; do
     hash="$(sha256sum "$file" | awk '{print $1}')"
@@ -456,7 +456,7 @@ find "$RELEASE_DIR" -maxdepth 1 -type f ! -name 'pirate-unified-wallet-release-m
   done
 
 if find "$META_DIR" -type f -print -quit | grep -q .; then
-  zip_directory "$META_DIR" "$RELEASE_DIR/pirate-unified-wallet-release-metadata.zip"
+  zip_directory "$META_DIR" "$RELEASE_DIR/Stashi-Wallet-release-metadata.zip"
 else
   echo "No release metadata files found to package."
 fi

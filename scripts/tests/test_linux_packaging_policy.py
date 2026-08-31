@@ -98,7 +98,7 @@ class LinuxPackagingPolicyTest(unittest.TestCase):
         self.assertRegex(
             self.linux_build,
             r'python3 "\$SCRIPT_DIR/verify_appimage_runtime\.py" \\\s+'
-            r'"\$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64\.AppImage" \\\s+'
+            r'"\$OUTPUT_DIR/Stashi-Wallet-linux-x86_64\.AppImage" \\\s+'
             r'"\$appimage_runtime"',
         )
         self.assertNotIn("cmp --silent --bytes", self.linux_build)

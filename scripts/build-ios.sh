@@ -479,7 +479,7 @@ bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" ios "$IPA_FILE"
 OUTPUT_DIR="$PROJECT_ROOT/dist/ios"
 mkdir -p "$OUTPUT_DIR"
 
-OUTPUT_NAME="pirate-unified-wallet-ios"
+OUTPUT_NAME="Stashi-Wallet-ios"
 if [ "$SIGNED" != "true" ]; then
     OUTPUT_NAME="${OUTPUT_NAME}-unsigned"
 fi

@@ -231,10 +231,10 @@ python3 "$SCRIPT_DIR/verify_linux_glibc.py" \
 OUTPUT_DIR="$PROJECT_ROOT/dist/linux"
 mkdir -p "$OUTPUT_DIR"
 
-runtime_executable="$BUNDLE_DIR/pirate_unified_wallet"
+runtime_executable="$BUNDLE_DIR/stashi-wallet"
 [ -f "$runtime_executable" ] || error "Installed Linux executable not found: $runtime_executable"
 runtime_hash="$(sha256sum "$runtime_executable" | awk '{print $1}')"
-printf '%s  %s\n' "$runtime_hash" 'pirate_unified_wallet' \
+printf '%s  %s\n' "$runtime_hash" 'stashi-wallet' \
     > "$OUTPUT_DIR/installed-payload-linux.txt"
 
 build_appimage() {
@@ -293,31 +293,31 @@ build_appimage() {
     cp -r "$BUNDLE_DIR"/* "$APPDIR/usr/bin/"
     
     # Create desktop entry
-    cat > "$APPDIR/pirate-unified-wallet.desktop" <<EOF
+    cat > "$APPDIR/stashi-wallet.desktop" <<EOF
 [Desktop Entry]
-Name=Pirate Unified Wallet
-Exec=pirate_unified_wallet
-Icon=pirate-unified-wallet
+Name=Stashi Wallet
+Exec=stashi-wallet
+Icon=stashi-wallet
 Type=Application
 Categories=Finance;Utility;
 Comment=Privacy-first cryptocurrency wallet for Pirate Chain
 Terminal=false
 EOF
     
-    cp "$APPDIR/pirate-unified-wallet.desktop" "$APPDIR/usr/share/applications/"
+    cp "$APPDIR/stashi-wallet.desktop" "$APPDIR/usr/share/applications/"
     
     # Copy icon
-    if [ -f "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" ]; then
-        cp "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" \
-            "$APPDIR/usr/share/icons/hicolor/256x256/apps/pirate-unified-wallet.png"
-        cp "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" "$APPDIR/pirate-unified-wallet.png"
+    if [ -f "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" ]; then
+        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" \
+            "$APPDIR/usr/share/icons/hicolor/256x256/apps/stashi-wallet.png"
+        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" "$APPDIR/stashi-wallet.png"
     fi
     
     # Create AppRun script
     cat > "$APPDIR/AppRun" <<'EOF'
 #!/bin/bash
 APPDIR="$(dirname "$(readlink -f "$0")")"
-exec "$APPDIR/usr/bin/pirate_unified_wallet" "$@"
+exec "$APPDIR/usr/bin/stashi-wallet" "$@"
 EOF
     chmod +x "$APPDIR/AppRun"
     
@@ -331,25 +331,25 @@ EOF
             APPIMAGE_SQUASHFS_OPTIONS="-all-time $appimage_epoch" \
             ARCH=x86_64 \
             "$APPIMAGETOOL" --runtime-file "$appimage_runtime" \
-            "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+            "$APPDIR" "$OUTPUT_DIR/Stashi-Wallet-linux-x86_64.AppImage"
     else
         ARCH=x86_64 "$APPIMAGETOOL" --runtime-file "$appimage_runtime" \
-            "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+            "$APPDIR" "$OUTPUT_DIR/Stashi-Wallet-linux-x86_64.AppImage"
     fi
 
     python3 "$SCRIPT_DIR/verify_appimage_runtime.py" \
-        "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage" \
+        "$OUTPUT_DIR/Stashi-Wallet-linux-x86_64.AppImage" \
         "$appimage_runtime"
 
     python3 "$SCRIPT_DIR/verify_linux_glibc.py" \
         --max-version 2.35 \
-        "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+        "$OUTPUT_DIR/Stashi-Wallet-linux-x86_64.AppImage"
     
     # Generate checksum
     cd "$OUTPUT_DIR"
-    sha256sum "pirate-unified-wallet-linux-x86_64.AppImage" > "pirate-unified-wallet-linux-x86_64.AppImage.sha256"
+    sha256sum "Stashi-Wallet-linux-x86_64.AppImage" > "Stashi-Wallet-linux-x86_64.AppImage.sha256"
     
-    log "AppImage created: $OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+    log "AppImage created: $OUTPUT_DIR/Stashi-Wallet-linux-x86_64.AppImage"
 }
 
 build_flatpak() {
@@ -363,7 +363,7 @@ app-id: com.pirate.wallet
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
-command: pirate-unified-wallet
+command: stashi-wallet
 finish-args:
   - --share=network
   - --socket=wayland
@@ -372,22 +372,22 @@ finish-args:
   - --talk-name=org.freedesktop.secrets
   - --filesystem=xdg-data/pirate-wallet:create
 modules:
-  - name: pirate-unified-wallet
+  - name: stashi-wallet
     buildsystem: simple
     build-commands:
       - cp -r bundle /app/
       - |
           install -d /app/bin
-          cat > /app/bin/pirate-unified-wallet <<'LAUNCHER'
+          cat > /app/bin/stashi-wallet <<'LAUNCHER'
           #!/bin/sh
-          exec /app/bundle/pirate_unified_wallet "\$@"
+          exec /app/bundle/stashi-wallet "\$@"
           LAUNCHER
-          chmod 0755 /app/bin/pirate-unified-wallet
+          chmod 0755 /app/bin/stashi-wallet
       - |
           cat > com.pirate.wallet.desktop <<'DESKTOP'
           [Desktop Entry]
-          Name=Pirate Unified Wallet
-          Exec=pirate-unified-wallet
+          Name=Stashi Wallet
+          Exec=stashi-wallet
           Icon=com.pirate.wallet
           Type=Application
           Categories=Finance;Utility;
@@ -425,14 +425,14 @@ EOF
 
         log "Verifying Flatpak runtime layout..."
         flatpak build "$flatpak_build_dir" sh -eu -c \
-            'test -x /app/bin/pirate-unified-wallet; test -x /app/bundle/pirate_unified_wallet; test -d /app/bundle/data; test -d /app/bundle/lib; grep -Fq "/app/bundle/pirate_unified_wallet" /app/bin/pirate-unified-wallet'
+            'test -x /app/bin/stashi-wallet; test -x /app/bundle/stashi-wallet; test -d /app/bundle/data; test -d /app/bundle/lib; grep -Fq "/app/bundle/stashi-wallet" /app/bin/stashi-wallet'
 
         log "Creating Flatpak bundle..."
         flatpak build-bundle "$flatpak_repo_dir" \
-            "$OUTPUT_DIR/pirate-unified-wallet.flatpak" \
+            "$OUTPUT_DIR/Stashi-Wallet.flatpak" \
             com.pirate.wallet
         
-        log "Flatpak created: $OUTPUT_DIR/pirate-unified-wallet.flatpak"
+        log "Flatpak created: $OUTPUT_DIR/Stashi-Wallet.flatpak"
     else
         warn "flatpak-builder not found. Manifest created but not built."
     fi
@@ -447,21 +447,24 @@ build_deb() {
     mkdir -p "$DEB_DIR/usr/bin"
     mkdir -p "$DEB_DIR/usr/share/applications"
     mkdir -p "$DEB_DIR/usr/share/icons/hicolor/256x256/apps"
-    mkdir -p "$DEB_DIR/usr/share/doc/pirate-unified-wallet"
+    mkdir -p "$DEB_DIR/usr/share/doc/stashi-wallet"
     
     # Copy application files
     cp -r "$BUNDLE_DIR"/* "$DEB_DIR/usr/bin/"
     
     # Create control file
     cat > "$DEB_DIR/DEBIAN/control" <<EOF
-Package: pirate-unified-wallet
+Package: stashi-wallet
 Version: $APP_VERSION_SEMVER
 Section: utils
 Priority: optional
 Architecture: amd64
-Maintainer: Pirate Chain <dev@piratechain.com>
+Maintainer: Pirate Chain Foundation <dev@piratechainfoundation.com>
+Provides: pirate-unified-wallet
+Replaces: pirate-unified-wallet
+Conflicts: pirate-unified-wallet
 Description: Privacy-first cryptocurrency wallet for Pirate Chain
- Pirate Unified Wallet is a production-grade, privacy-first wallet for
+ Stashi Wallet is a privacy-first wallet for
  Pirate Chain (ARRR) with Sapling shielded transactions, Tor routing,
  and watch-only capabilities.
 Depends: libgtk-3-0, libglib2.0-0, libsqlite3-0
@@ -469,11 +472,11 @@ Homepage: https://piratechain.com
 EOF
     
     # Create desktop entry
-    cat > "$DEB_DIR/usr/share/applications/pirate-unified-wallet.desktop" <<EOF
+    cat > "$DEB_DIR/usr/share/applications/stashi-wallet.desktop" <<EOF
 [Desktop Entry]
-Name=Pirate Unified Wallet
-Exec=/usr/bin/pirate_unified_wallet
-Icon=pirate-unified-wallet
+Name=Stashi Wallet
+Exec=/usr/bin/stashi-wallet
+Icon=stashi-wallet
 Type=Application
 Categories=Finance;Utility;
 Comment=Privacy-first cryptocurrency wallet for Pirate Chain
@@ -481,33 +484,33 @@ Terminal=false
 EOF
     
     # Copy icon
-    if [ -f "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" ]; then
-        cp "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" \
-            "$DEB_DIR/usr/share/icons/hicolor/256x256/apps/pirate-unified-wallet.png"
+    if [ -f "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" ]; then
+        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" \
+            "$DEB_DIR/usr/share/icons/hicolor/256x256/apps/stashi-wallet.png"
     fi
     
     # Copy documentation
-    cat > "$DEB_DIR/usr/share/doc/pirate-unified-wallet/copyright" <<EOF
+    cat > "$DEB_DIR/usr/share/doc/stashi-wallet/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Package-Name: pirate-unified-wallet
+Package-Name: stashi-wallet
 Source: https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet
 
 Files: *
-Copyright: 2026 Pirate Chain
+Copyright: 2026 Pirate Chain Foundation
 License: MIT or Apache-2.0
 EOF
     
     # Build deb package
     normalize_mtime "$DEB_DIR"
-    dpkg-deb --build "$DEB_DIR" "$OUTPUT_DIR/pirate-unified-wallet-amd64.deb"
+    dpkg-deb --build "$DEB_DIR" "$OUTPUT_DIR/Stashi-Wallet-amd64.deb"
     
     # Generate checksum
     cd "$OUTPUT_DIR"
-    sha256sum "pirate-unified-wallet-amd64.deb" > "pirate-unified-wallet-amd64.deb.sha256"
+    sha256sum "Stashi-Wallet-amd64.deb" > "Stashi-Wallet-amd64.deb.sha256"
     
-    log "Debian package created: $OUTPUT_DIR/pirate-unified-wallet-amd64.deb"
+    log "Debian package created: $OUTPUT_DIR/Stashi-Wallet-amd64.deb"
     
-    # Create repository metadata (for apt install pirate-unified-wallet)
+    # Create repository metadata (for apt install stashi-wallet)
     create_apt_repo_metadata
 }
 
@@ -519,7 +522,7 @@ create_apt_repo_metadata() {
     mkdir -p "$REPO_DIR/dists/stable/main/binary-amd64"
     
     # Copy deb to pool
-    cp "$OUTPUT_DIR/pirate-unified-wallet-amd64.deb" "$REPO_DIR/pool/main/"
+    cp "$OUTPUT_DIR/Stashi-Wallet-amd64.deb" "$REPO_DIR/pool/main/"
     
     if ! command -v dpkg-scanpackages &> /dev/null; then
         error "dpkg-scanpackages not found. Install dpkg-dev to generate apt metadata."
@@ -557,7 +560,7 @@ EOF
     
     # Create installation instructions
     cat > "$REPO_DIR/INSTALL.md" <<'EOF'
-# Pirate Unified Wallet - APT Repository
+# Stashi Wallet APT Repository
 
 ## Installation
 
@@ -566,7 +569,7 @@ Add the repository (once hosted):
 ```bash
 echo "deb [trusted=yes] <APT_REPO_URL> stable main" | sudo tee /etc/apt/sources.list.d/pirate.list
 sudo apt update
-sudo apt install pirate-unified-wallet
+sudo apt install stashi-wallet
 ```
 
 ## Local Installation
@@ -576,7 +579,7 @@ Replace `<APT_REPO_URL>` with the official repository URL when published.
 For local installation from the .deb file:
 
 ```bash
-sudo dpkg -i pirate-unified-wallet-amd64.deb
+sudo dpkg -i Stashi-Wallet-amd64.deb
 sudo apt-get install -f  # Install dependencies
 ```
 
@@ -585,7 +588,7 @@ sudo apt-get install -f  # Install dependencies
 Verify the package signature:
 
 ```bash
-sha256sum -c pirate-unified-wallet-amd64.deb.sha256
+sha256sum -c Stashi-Wallet-amd64.deb.sha256
 ```
 EOF
     

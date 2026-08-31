@@ -297,10 +297,10 @@ create_windows_installer() {
     cat > "$iss_file" <<'ISS'
 [Setup]
 AppId={{8A65B5A7-79A4-4EBF-A89E-9B8F745FA96F}
-AppName=Pirate Wallet
+AppName=Stashi Wallet
 AppVersion={#AppVersion}
-DefaultDirName={localappdata}\PirateWallet
-DefaultGroupName=Pirate Wallet
+DefaultDirName={localappdata}\StashiWallet
+DefaultGroupName=Stashi Wallet
 OutputDir={#OutputDir}
 OutputBaseFilename={#OutputBaseFilename}
 Compression=lzma2
@@ -318,12 +318,15 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
+[InstallDelete]
+Type: files; Name: "{app}\app.exe"
+
 [Icons]
-Name: "{autoprograms}\Pirate Wallet"; Filename: "{app}\{#AppExeName}"
-Name: "{autodesktop}\Pirate Wallet"; Filename: "{app}\{#AppExeName}"
+Name: "{autoprograms}\Stashi Wallet"; Filename: "{app}\{#AppExeName}"
+Name: "{autodesktop}\Stashi Wallet"; Filename: "{app}\{#AppExeName}"
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Launch Pirate Wallet"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "Launch Stashi Wallet"; Flags: nowait postinstall skipifsilent
 ISS
 
     local source_dir_win="$source_dir"
@@ -357,12 +360,12 @@ ISS
 OUTPUT_DIR="$PROJECT_ROOT/dist/windows"
 mkdir -p "$OUTPUT_DIR"
 
-PORTABLE_OUTPUT_NAME="pirate-unified-wallet-windows-portable"
+PORTABLE_OUTPUT_NAME="Stashi-Wallet-windows-portable"
 if [ "$BINARIES_SIGNED" != "true" ]; then
     PORTABLE_OUTPUT_NAME="${PORTABLE_OUTPUT_NAME}-unsigned"
 fi
 PORTABLE_OUTPUT_NAME="${PORTABLE_OUTPUT_NAME}.zip"
-INSTALLER_OUTPUT_NAME="pirate-unified-wallet-windows-installer"
+INSTALLER_OUTPUT_NAME="Stashi-Wallet-windows-installer"
 if [ "$BINARIES_SIGNED" != "true" ]; then
     INSTALLER_OUTPUT_NAME="${INSTALLER_OUTPUT_NAME}-unsigned"
 fi
@@ -389,12 +392,12 @@ sha256sum "$PORTABLE_OUTPUT_NAME" > "$PORTABLE_OUTPUT_NAME.sha256"
 
 # Record the installed executable separately from distribution-package hashes.
 # The release signing step authenticates this manifest for in-app verification.
-runtime_executable="$RELEASE_DIR/app.exe"
+runtime_executable="$RELEASE_DIR/Stashi Wallet.exe"
 if [ ! -f "$runtime_executable" ]; then
     error "Installed Windows executable not found: $runtime_executable"
 fi
 runtime_hash="$(sha256sum "$runtime_executable" | awk '{print $1}')"
-printf '%s  %s\n' "$runtime_hash" 'app.exe' \
+printf '%s  %s\n' "$runtime_hash" 'Stashi Wallet.exe' \
     > "$OUTPUT_DIR/installed-payload-windows.txt"
 
 log "Build complete!"

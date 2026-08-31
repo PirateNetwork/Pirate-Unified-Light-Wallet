@@ -1,6 +1,6 @@
 # Release Process
 
-This document describes the release process for Pirate Unified Wallet as it is implemented in this repository.
+This document describes the release process for Stashi Wallet as it is implemented in this repository.
 
 Release inputs
 --------------
@@ -194,12 +194,12 @@ Signing behavior depends on platform and environment:
   - unsigned artifacts are produced when signing inputs are not present
 - macOS
   - `scripts/build-macos.sh` supports Developer ID signing and optional notarization
-  - when release signing is disabled, the release publishes `pirate-unified-wallet-macos-unsigned.dmg`
+  - when release signing is disabled, the release publishes `Stashi-Wallet-macos-unsigned.dmg`
 - Android
   - `scripts/build-android.sh` signs only when keystore inputs are provided
 - iOS
   - `scripts/build-ios.sh true` requires a valid Xcode signing configuration
-  - when release signing is disabled, the unsigned IPA is kept in `pirate-unified-wallet-mobile-store-test-builds.zip`; it is not a normal-user installable
+  - when release signing is disabled, the unsigned IPA is kept in `Stashi-Wallet-mobile-store-test-builds.zip`; it is not a normal-user installable
 
 Artifact naming
 ---------------
@@ -207,24 +207,24 @@ Artifact naming
 Current script outputs are:
 
 - Windows
-  - `pirate-unified-wallet-windows-installer.exe`
-  - `pirate-unified-wallet-windows-installer-unsigned.exe`
-  - `pirate-unified-wallet-windows-portable-unsigned.zip` (CI/test artifact)
+  - `Stashi-Wallet-windows-installer.exe`
+  - `Stashi-Wallet-windows-installer-unsigned.exe`
+  - `Stashi-Wallet-windows-portable-unsigned.zip` (CI/test artifact)
 - Linux
-  - `pirate-unified-wallet-linux-x86_64.AppImage`
-  - `pirate-unified-wallet.flatpak`
-  - `pirate-unified-wallet-amd64.deb`
+  - `Stashi-Wallet-linux-x86_64.AppImage`
+  - `Stashi-Wallet.flatpak`
+  - `Stashi-Wallet-amd64.deb`
 - macOS
-  - `pirate-unified-wallet-macos.dmg`
-  - `pirate-unified-wallet-macos-unsigned.dmg`
+  - `Stashi-Wallet-macos.dmg`
+  - `Stashi-Wallet-macos-unsigned.dmg`
 - Android
   - split APK outputs named by ABI
   - signed and unsigned variants
-  - `pirate-unified-wallet-android.aab`
-  - `pirate-unified-wallet-android-unsigned.aab`
+  - `Stashi-Wallet-android.aab`
+  - `Stashi-Wallet-android-unsigned.aab`
 - iOS
-  - `pirate-unified-wallet-ios.ipa`
-  - `pirate-unified-wallet-ios-unsigned.ipa`
+  - `Stashi-Wallet-ios.ipa`
+  - `Stashi-Wallet-ios-unsigned.ipa`
 - Backend
   - `piratewallet-cli`
   - `piratewallet-cli.exe`
@@ -257,15 +257,15 @@ Top-level release assets are:
 - signed Android split APKs for direct installation
 - signed iOS IPA when available
 - `PirateWalletNative.xcframework.zip` and `PirateWalletSDK-Package.swift` only when the iOS SDK changes, because Swift Package Manager binary targets need a direct release URL
-- `pirate-unified-wallet-release-metadata.zip`
+- `Stashi-Wallet-release-metadata.zip`
 - `signatures-<tag>.zip`
 - `pirate-unified-wallet-developer-artifacts.zip` when developer artifacts were produced
 
 The unsigned portable Windows build is retained in
-`pirate-unified-wallet-unsigned-desktop-test-builds.zip` for testing and
+`Stashi-Wallet-unsigned-desktop-test-builds.zip` for testing and
 reproducible verification. It is not published as a normal-user download.
 
-`pirate-unified-wallet-release-metadata.zip` contains:
+`Stashi-Wallet-release-metadata.zip` contains:
 
 - `README` with checksum and detached-signature verification instructions
 - `SHA256SUMS` with one entry for every top-level release asset
@@ -274,11 +274,12 @@ reproducible verification. It is not published as a normal-user download.
 - `raw/` with the original checksums, detached signatures, SBOMs, provenance files, verification notes, and optional VirusTotal reports from the package jobs
 
 `signatures-<tag>.zip` follows the established Treasure Chest filename and
-verification layout, but is signed exclusively by the Pirate Unified Wallet
+verification layout, but is signed exclusively by the Stashi Wallet
 release key. It contains:
 
 - `README` with verification commands
-- `public_key.asc` for `Pirate Unified Wallet <dev@piratechainfoundation.com>`
+- `public_key.asc` for the established release-key UID
+  `Pirate Unified Wallet <dev@piratechainfoundation.com>`
 - `sha256sum-<tag>.txt` and its binary detached `.sig`
 - one binary detached `<release-asset>.sig` for every top-level release asset
 - a signed `build-payloads-<tag>.txt` manifest when desktop installed-payload
@@ -296,7 +297,7 @@ scripts/generate-sbom.sh dist/sbom
 scripts/generate-provenance.sh <artifact> dist/provenance
 ```
 
-Each published release should include readable checksum data for the distributed artifacts. The Verify Build screen and desktop updater depend on that, and both support checksums inside `pirate-unified-wallet-release-metadata.zip`.
+Each published release should include readable checksum data for the distributed artifacts. The Verify Build screen and desktop updater depend on that, and both support checksums inside `Stashi-Wallet-release-metadata.zip`.
 
 Release publication checklist
 -----------------------------

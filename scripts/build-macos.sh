@@ -548,7 +548,7 @@ log "Building macOS app (universal2)..."
 flutter_build_macos_release
 
 APP_OUTPUT_DIR="build/macos/Build/Products/Release"
-APP_PATH="$APP_OUTPUT_DIR/Pirate Unified Wallet.app"
+APP_PATH="$APP_OUTPUT_DIR/Stashi Wallet.app"
 
 if [ ! -d "$APP_PATH" ]; then
   APP_PATH="$(find "$APP_OUTPUT_DIR" -maxdepth 1 -type d -name "*.app" | LC_ALL=C sort | head -n 1)"
@@ -611,7 +611,7 @@ fi
 
 # Authenticate the executable users actually run, independently of the DMG.
 # This manifest is folded into the release's PGP-signed verification bundle.
-APP_EXECUTABLE="$APP_PATH/Contents/MacOS/Pirate Unified Wallet"
+APP_EXECUTABLE="$APP_PATH/Contents/MacOS/Stashi Wallet"
 [ -f "$APP_EXECUTABLE" ] || autofail "App executable not found: $APP_EXECUTABLE"
 mkdir -p "$PROJECT_ROOT/dist/macos"
 if [ "$SIGNED" = "true" ]; then
@@ -620,14 +620,14 @@ else
   PAYLOAD_MANIFEST="$PROJECT_ROOT/dist/macos/installed-payload-macos-unsigned.txt"
 fi
 app_executable_hash="$(shasum -a 256 "$APP_EXECUTABLE" | awk '{print $1}')"
-printf '%s  %s\n' "$app_executable_hash" 'Pirate Unified Wallet' \
+printf '%s  %s\n' "$app_executable_hash" 'Stashi Wallet' \
   > "$PAYLOAD_MANIFEST"
 
 # Create DMG
 log "Creating DMG..."
 
-DMG_NAME="Pirate Unified Wallet"
-OUTPUT_NAME="pirate-unified-wallet-macos"
+DMG_NAME="Stashi Wallet"
+OUTPUT_NAME="Stashi-Wallet-macos"
 if [ "$SIGNED" != "true" ]; then
   OUTPUT_NAME="${OUTPUT_NAME}-unsigned"
 fi
@@ -640,14 +640,14 @@ cp -R "$APP_PATH" "$TMP_DMG_DIR/"
 
 if [ "$SIGNED" != "true" ]; then
   cat > "$TMP_DMG_DIR/README.txt" <<'EOF'
- Pirate Unified Wallet (test build)
+ Stashi Wallet (test build)
 
  This build is not Developer ID code-signed or notarized yet. macOS may block it on first launch.
 
  How to run it:
- 1) Drag "Pirate Unified Wallet.app" to /Applications
+ 1) Drag "Stashi Wallet.app" to /Applications
  2) Open Terminal and run:
-   xattr -dr com.apple.quarantine "/Applications/Pirate Unified Wallet.app"
+   xattr -dr com.apple.quarantine "/Applications/Stashi Wallet.app"
 3) Then right-click the app and choose Open (first run).
    Alternatively: System Settings -> Privacy & Security -> Open Anyway.
 

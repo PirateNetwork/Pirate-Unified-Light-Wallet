@@ -127,7 +127,7 @@ if [ "$BUILD_TYPE" = "bundle" ]; then
         --dart-define="PIRATE_RELEASE_TAG=${GITHUB_REF_NAME:-}"
     
     OUTPUT_FILE="$APP_DIR/build/app/outputs/bundle/release/app-release.aab"
-    OUTPUT_NAME_BASE="pirate-unified-wallet-android"
+    OUTPUT_NAME_BASE="Stashi-Wallet-android"
 else
     log "Building Android APK..."
     APK_MODE="split"
@@ -260,9 +260,9 @@ if [ "$BUILD_TYPE" = "apk" ]; then
         fi
         abi_tag="$(abi_label "$abi")"
         if [ "$SIGNED" = "true" ]; then
-            OUTPUT_NAME="pirate-unified-wallet-android-${abi_tag}.apk"
+            OUTPUT_NAME="Stashi-Wallet-android-${abi_tag}.apk"
         else
-            OUTPUT_NAME="pirate-unified-wallet-android-${abi_tag}-unsigned.apk"
+            OUTPUT_NAME="Stashi-Wallet-android-${abi_tag}-unsigned.apk"
         fi
         cp "$apk" "$OUTPUT_DIR/$OUTPUT_NAME"
         bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" android "$OUTPUT_DIR/$OUTPUT_NAME"
@@ -270,9 +270,9 @@ if [ "$BUILD_TYPE" = "apk" ]; then
     done
 else
     if [ "$SIGNED" = "true" ]; then
-        OUTPUT_NAME="pirate-unified-wallet-android.aab"
+        OUTPUT_NAME="Stashi-Wallet-android.aab"
     else
-        OUTPUT_NAME="pirate-unified-wallet-android-unsigned.aab"
+        OUTPUT_NAME="Stashi-Wallet-android-unsigned.aab"
     fi
     cp "$OUTPUT_FILE" "$OUTPUT_DIR/$OUTPUT_NAME"
     bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" android "$OUTPUT_DIR/$OUTPUT_NAME"

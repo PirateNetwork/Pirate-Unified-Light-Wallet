@@ -1,4 +1,4 @@
-name: CI - Pirate Unified Wallet
+name: CI - Stashi Wallet
 
 on:
   push:
@@ -1371,24 +1371,24 @@ jobs:
       - name: Generate Provenance
         run: |
           chmod +x scripts/generate-provenance.sh
-          ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-V8-unsigned.apk dist/provenance
-          ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-unsigned.aab dist/provenance
+          ./scripts/generate-provenance.sh dist/android/Stashi-Wallet-android-V8-unsigned.apk dist/provenance
+          ./scripts/generate-provenance.sh dist/android/Stashi-Wallet-android-unsigned.aab dist/provenance
 
       - name: Upload APK (V8)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-apk-unsigned-v8
           path: |
-            dist/android/pirate-unified-wallet-android-V8-unsigned.apk
-            dist/android/pirate-unified-wallet-android-V8-unsigned.apk.sha256
+            dist/android/Stashi-Wallet-android-V8-unsigned.apk
+            dist/android/Stashi-Wallet-android-V8-unsigned.apk.sha256
 
       - name: Upload APK (V7)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-apk-unsigned-v7
           path: |
-            dist/android/pirate-unified-wallet-android-V7-unsigned.apk
-            dist/android/pirate-unified-wallet-android-V7-unsigned.apk.sha256
+            dist/android/Stashi-Wallet-android-V7-unsigned.apk
+            dist/android/Stashi-Wallet-android-V7-unsigned.apk.sha256
 
       - name: Upload AAB
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1511,7 +1511,7 @@ jobs:
       - name: Generate Provenance
         run: |
           chmod +x scripts/generate-provenance.sh
-          ./scripts/generate-provenance.sh dist/ios/pirate-unified-wallet-ios-unsigned.ipa dist/provenance
+          ./scripts/generate-provenance.sh dist/ios/Stashi-Wallet-ios-unsigned.ipa dist/provenance
 
       - name: Upload IPA
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1624,11 +1624,11 @@ jobs:
         shell: bash
         run: |
           chmod +x scripts/generate-provenance.sh
-          if [ -f dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe ]; then
-            ./scripts/generate-provenance.sh dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe dist/provenance
+          if [ -f dist/windows/Stashi-Wallet-windows-installer-unsigned.exe ]; then
+            ./scripts/generate-provenance.sh dist/windows/Stashi-Wallet-windows-installer-unsigned.exe dist/provenance
           fi
-          if [ -f dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip ]; then
-            ./scripts/generate-provenance.sh dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip dist/provenance
+          if [ -f dist/windows/Stashi-Wallet-windows-portable-unsigned.zip ]; then
+            ./scripts/generate-provenance.sh dist/windows/Stashi-Wallet-windows-portable-unsigned.zip dist/provenance
           fi
 
       - name: Upload Windows artifacts
@@ -1739,7 +1739,7 @@ jobs:
       - name: Generate Provenance
         run: |
           chmod +x scripts/generate-provenance.sh
-          ./scripts/generate-provenance.sh dist/macos/pirate-unified-wallet-macos-unsigned.dmg dist/provenance
+          ./scripts/generate-provenance.sh dist/macos/Stashi-Wallet-macos-unsigned.dmg dist/provenance
 
       - name: Upload DMG
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1867,8 +1867,8 @@ jobs:
       - name: Generate Provenance
         run: |
           chmod +x scripts/generate-provenance.sh
-          ./scripts/generate-provenance.sh dist/linux/pirate-unified-wallet-linux-x86_64.AppImage dist/provenance
-          ./scripts/generate-provenance.sh dist/linux/pirate-unified-wallet-amd64.deb dist/provenance
+          ./scripts/generate-provenance.sh dist/linux/Stashi-Wallet-linux-x86_64.AppImage dist/provenance
+          ./scripts/generate-provenance.sh dist/linux/Stashi-Wallet-amd64.deb dist/provenance
 
       - name: Upload AppImage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -2006,8 +2006,8 @@ jobs:
             sha256sum "$APK_SIGNED" > "$APK_SIGNED.sha256"
           done
 
-          AAB_UNSIGNED="dist/android/pirate-unified-wallet-android-unsigned.aab"
-          AAB_SIGNED="dist/android/pirate-unified-wallet-android.aab"
+          AAB_UNSIGNED="dist/android/Stashi-Wallet-android-unsigned.aab"
+          AAB_SIGNED="dist/android/Stashi-Wallet-android.aab"
           if [ ! -f "$AAB_UNSIGNED" ]; then
             echo "Unsigned AAB not found at $AAB_UNSIGNED" >&2
             exit 1
@@ -2029,8 +2029,8 @@ jobs:
         with:
           name: android-apk-signed-v8
           path: |
-            dist/android/pirate-unified-wallet-android-V8.apk
-            dist/android/pirate-unified-wallet-android-V8.apk.sha256
+            dist/android/Stashi-Wallet-android-V8.apk
+            dist/android/Stashi-Wallet-android-V8.apk.sha256
           if-no-files-found: error
 
       - name: Upload signed APK (V7)
@@ -2039,8 +2039,8 @@ jobs:
         with:
           name: android-apk-signed-v7
           path: |
-            dist/android/pirate-unified-wallet-android-V7.apk
-            dist/android/pirate-unified-wallet-android-V7.apk.sha256
+            dist/android/Stashi-Wallet-android-V7.apk
+            dist/android/Stashi-Wallet-android-V7.apk.sha256
           if-no-files-found: error
 
       - name: Upload signed AAB
@@ -2049,8 +2049,8 @@ jobs:
         with:
           name: android-aab-signed
           path: |
-            dist/android/pirate-unified-wallet-android.aab
-            dist/android/pirate-unified-wallet-android.aab.sha256
+            dist/android/Stashi-Wallet-android.aab
+            dist/android/Stashi-Wallet-android.aab.sha256
           if-no-files-found: error
 
   sign-windows:
@@ -2143,8 +2143,8 @@ jobs:
           $cert = $env:WINDOWS_SIGN_CERT
           $pass = "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}"
 
-          $installerUnsigned = "dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe"
-          $installerSigned = "dist/windows/pirate-unified-wallet-windows-installer.exe"
+          $installerUnsigned = "dist/windows/Stashi-Wallet-windows-installer-unsigned.exe"
+          $installerSigned = "dist/windows/Stashi-Wallet-windows-installer.exe"
           if (-not (Test-Path $installerUnsigned)) {
             Write-Error "Unsigned installer not found"
             exit 1
@@ -2163,8 +2163,8 @@ jobs:
         with:
           name: windows-signed
           path: |
-            dist/windows/pirate-unified-wallet-windows-installer.exe
-            dist/windows/pirate-unified-wallet-windows-installer.exe.sha256
+            dist/windows/Stashi-Wallet-windows-installer.exe
+            dist/windows/Stashi-Wallet-windows-installer.exe.sha256
           if-no-files-found: error
 
   sign-macos:
@@ -2309,7 +2309,7 @@ jobs:
         if: steps.signing.outputs.enabled == 'true'
         run: |
           set -euo pipefail
-          metadata="dist/macos/pirate-unified-wallet-macos.notary.json"
+          metadata="dist/macos/Stashi-Wallet-macos.notary.json"
           status=""
           if [ -f "$metadata" ]; then
             status="$(python3 -c 'import json, pathlib, sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")).get("status", ""))' "$metadata")"
@@ -2319,8 +2319,8 @@ jobs:
             echo "final=true" >> "$GITHUB_OUTPUT"
           else
             echo "final=false" >> "$GITHUB_OUTPUT"
-            dmg="dist/macos/pirate-unified-wallet-macos.dmg"
-            pending="dist/macos/pirate-unified-wallet-macos-pending-notarization.dmg"
+            dmg="dist/macos/Stashi-Wallet-macos.dmg"
+            pending="dist/macos/Stashi-Wallet-macos-pending-notarization.dmg"
             if [ -f "$dmg" ]; then
               mv "$dmg" "$pending"
               shasum -a 256 "$pending" > "$pending.sha256"
@@ -2334,9 +2334,9 @@ jobs:
         with:
           name: macos-dmg-signed
           path: |
-            dist/macos/pirate-unified-wallet-macos.dmg
-            dist/macos/pirate-unified-wallet-macos.dmg.sha256
-            dist/macos/pirate-unified-wallet-macos.notary.json
+            dist/macos/Stashi-Wallet-macos.dmg
+            dist/macos/Stashi-Wallet-macos.dmg.sha256
+            dist/macos/Stashi-Wallet-macos.notary.json
             dist/macos/installed-payload-macos.txt
           if-no-files-found: error
 
@@ -2346,9 +2346,9 @@ jobs:
         with:
           name: macos-dmg-notary-pending
           path: |
-            dist/macos/pirate-unified-wallet-macos-pending-notarization.dmg
-            dist/macos/pirate-unified-wallet-macos-pending-notarization.dmg.sha256
-            dist/macos/pirate-unified-wallet-macos.notary.json
+            dist/macos/Stashi-Wallet-macos-pending-notarization.dmg
+            dist/macos/Stashi-Wallet-macos-pending-notarization.dmg.sha256
+            dist/macos/Stashi-Wallet-macos.notary.json
             dist/macos/installed-payload-macos.txt
           if-no-files-found: error
 
@@ -2503,8 +2503,8 @@ jobs:
         with:
           name: ios-ipa-signed
           path: |
-            dist/ios/pirate-unified-wallet-ios.ipa
-            dist/ios/pirate-unified-wallet-ios.ipa.sha256
+            dist/ios/Stashi-Wallet-ios.ipa
+            dist/ios/Stashi-Wallet-ios.ipa.sha256
           if-no-files-found: error
 
       - name: Upload IPA to TestFlight
@@ -2515,7 +2515,7 @@ jobs:
           APP_STORE_CONNECT_API_KEY_P8_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_B64 }}
         run: |
           set -euo pipefail
-          IPA_PATH="dist/ios/pirate-unified-wallet-ios.ipa"
+          IPA_PATH="dist/ios/Stashi-Wallet-ios.ipa"
           if [ ! -f "$IPA_PATH" ]; then
             echo "Signed IPA not found at $IPA_PATH" >&2
             exit 1
@@ -2634,14 +2634,14 @@ jobs:
           set -euo pipefail
           bash scripts/collect-github-release-assets.sh release-artifacts release
 
-      - name: Import Pirate Unified Wallet release signing key
+      - name: Import Stashi Wallet release signing key
         env:
           RELEASE_GPG_PRIVATE_KEY_B64: ${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}
         run: |
           set -euo pipefail
           expected_primary="E4FB2399AECCF9B9447DED472CE65343401553A6"
           if [ -z "$RELEASE_GPG_PRIVATE_KEY_B64" ]; then
-            echo "LINUX_GPG_PRIVATE_KEY_B64 must contain the Pirate Unified Wallet release key." >&2
+            echo "LINUX_GPG_PRIVATE_KEY_B64 must contain the Stashi Wallet release key." >&2
             exit 1
           fi
 
@@ -2659,7 +2659,7 @@ jobs:
               awk -F: '$1 == "fpr" { print $10 }'
           )
           if [[ " ${public_fingerprints[*]} " != *" $expected_primary "* ]]; then
-            echo "The repository public key does not match the Pirate Unified Wallet release key." >&2
+            echo "The repository public key does not match the Stashi Wallet release key." >&2
             exit 1
           fi
           if [[ " ${secret_fingerprints[*]} " != *" $expected_primary "* ]]; then
