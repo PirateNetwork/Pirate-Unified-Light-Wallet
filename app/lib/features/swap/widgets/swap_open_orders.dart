@@ -291,7 +291,7 @@ class _SwapHistoryPanelState extends State<SwapHistoryPanel> {
         }
       } else {
         await SharePlus.instance.share(
-          ShareParams(files: [file], text: 'Pirate Wallet swap history'.tr),
+          ShareParams(files: [file], text: 'Stashi Wallet swap history'.tr),
         );
         if (context.mounted) {
           _showExportSnack(context, 'Swap history ready to share.'.tr);

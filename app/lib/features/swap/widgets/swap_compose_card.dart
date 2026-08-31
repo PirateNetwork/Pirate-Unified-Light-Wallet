@@ -9,8 +9,10 @@ import '../../../design/tokens/spacing.dart';
 import '../../../design/tokens/typography.dart';
 import '../../../ui/atoms/p_input.dart';
 
-typedef SwapAssetSelectionCallback =
-    void Function({required bool isPayRow, required SwapAsset asset});
+typedef SwapAssetSelectionCallback = void Function({
+  required bool isPayRow,
+  required SwapAsset asset,
+});
 
 class SwapComposeCard extends StatelessWidget {
   const SwapComposeCard({
@@ -168,7 +170,7 @@ class SwapComposeCard extends StatelessWidget {
                     amount: receiveAmount,
                     hint: isQuoting ? '...' : '0',
                     balanceLabel: isBuy
-                        ? 'To Pirate wallet'.tr
+                        ? 'To Stashi Wallet'.tr
                         : 'To external wallet'.tr,
                     onChanged: onReceiveAmountChanged,
                     onAssetTap: onAssetSelected == null

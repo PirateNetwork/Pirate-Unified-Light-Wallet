@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../atoms/p_button.dart';
 
-/// Pirate Wallet Dialog
+/// Stashi Wallet Dialog
 class PDialog extends StatelessWidget {
   const PDialog({
     super.key,

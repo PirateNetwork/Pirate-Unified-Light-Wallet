@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import 'p_overlay_toast.dart';
 
-/// Pirate Wallet Snackbar
+/// Stashi Wallet Snackbar
 class PSnack {
   PSnack._();
 

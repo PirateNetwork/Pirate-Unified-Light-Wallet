@@ -1,6 +1,6 @@
 # Supernova Sync Engine
 
-Supernova is Pirate Unified Wallet's shielded-chain sync engine. The light server supplies compact chain data; the wallet validates its order, trial-decrypts it locally, updates the Sapling and Ironwood commitment trees, and commits the resulting wallet state.
+Supernova is Stashi Wallet's shielded-chain sync engine. The light server supplies compact chain data; the wallet validates its order, trial-decrypts it locally, updates the Sapling and Ironwood commitment trees, and commits the resulting wallet state.
 
 That sounds simple until it has to be fast, resumable, memory-bounded, private over Tor or I2P, and correct across a crash or reorg. Most of the work described here came from removing unnecessary waiting, decoding, copying, and database contention without weakening any of those requirements.
 
@@ -75,7 +75,7 @@ The integrity envelope was benchmarked separately in an optimized build over 65,
 
 **In plain terms:** Auto mode can use more than one healthy light server for old blocks, but the blocks still enter the wallet as one continuous chain. A stalled server can be replaced without silently bypassing the user's network choice.
 
-**Technical detail:** Auto is a Pirate Unified Wallet policy layered over an explicit core API. Existing SDK, CLI, React Native, and Qortal calls remain single-server unless the caller deliberately supplies a pool. A pool is rejected if its members cross Pirate networks, mix clearnet, onion, or I2P routes, change the connection security mode, or combine automatic failover with a pinned primary.
+**Technical detail:** Auto is a Stashi Wallet policy layered over an explicit core API. Existing SDK, CLI, React Native, and Qortal calls remain single-server unless the caller deliberately supplies a pool. A pool is rejected if its members cross Pirate networks, mix clearnet, onion, or I2P routes, change the connection security mode, or combine automatic failover with a pinned primary.
 
 When Tor is selected, the wallet suggests the native onion endpoints first and then the curated TLS clearnet endpoints, which are also reachable through the active Tor transport. The automatic Tor pool remains onion-only, while a manually selected clearnet endpoint stays confined to Tor until the user changes transport. This keeps the preferred hidden services first without treating a clearnet hostname as permission to bypass Tor.
 

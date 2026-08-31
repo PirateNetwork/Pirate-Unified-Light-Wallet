@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../design/deep_space_theme.dart';
 import '../../core/providers/rust_init_provider.dart';
 import '../../core/providers/wallet_providers.dart';
@@ -62,15 +63,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // App logo or icon
-            Icon(
-              Icons.account_balance_wallet,
-              size: 64,
-              color: AppColors.accentPrimary,
+            Semantics(
+              image: true,
+              label: 'Stashi Wallet logo'.tr,
+              child: Image.asset(
+                'assets/icons/stashi-wallet-logo.png',
+                width: 88,
+                height: 88,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+              ),
             ),
             SizedBox(height: AppSpacing.xl),
             Text(
-              'Pirate Wallet',
+              'Stashi Wallet',
               style: AppTypography.h1.copyWith(color: AppColors.textPrimary),
             ),
             SizedBox(height: AppSpacing.md),

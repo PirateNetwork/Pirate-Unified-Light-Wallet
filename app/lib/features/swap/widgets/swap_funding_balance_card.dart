@@ -414,9 +414,8 @@ class SwapFundingBalanceCard extends StatelessWidget {
     );
     if (validationError != null) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(validationError)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(validationError)));
       }
       return;
     }
@@ -457,7 +456,7 @@ class SwapFundingBalanceCard extends StatelessWidget {
         return AlertDialog(
           title: Text('Sweep ARRR to wallet'.tr),
           content: Text(
-            '${'Send all available'.tr} ${_formatBalance(arrrBalance)} ARRR ${'from the KDF funding wallet back to your current Unified Wallet receive address? Open maker-order funds cannot be swept until the order is cancelled or filled.'.tr}',
+            '${'Send all available'.tr} ${_formatBalance(arrrBalance)} ARRR ${'from the KDF funding wallet back to your current Stashi Wallet receive address? Open maker-order funds cannot be swept until the order is cancelled or filled.'.tr}',
           ),
           actions: [
             TextButton(

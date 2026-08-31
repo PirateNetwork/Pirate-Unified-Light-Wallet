@@ -76,7 +76,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
       // Unlock still requires biometric auth on the unlock screen.
       if (!Platform.isMacOS) {
         final authenticated = await BiometricAuth.authenticate(
-          reason: 'Enable biometric unlock for Pirate Wallet'.tr,
+          reason: 'Enable biometric unlock for Stashi Wallet'.tr,
           biometricOnly: true,
         );
         if (!authenticated) {
@@ -88,9 +88,8 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
       final ready = await _ensurePassphraseCacheReady();
       if (!ready) {
         setState(() {
-          _error =
-              'Biometrics need your passphrase once to finish setup. Try enabling again.'
-                  .tr;
+          _error = 'Biometrics need your passphrase once to finish setup. Try enabling again.'
+              .tr;
         });
         return;
       }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -207,7 +208,7 @@ class DesktopUpdateService {
     final body = await FfiBridge.fetchExternalText(
       url: _releaseApiUrl,
       accept: 'application/vnd.github+json',
-      userAgent: 'PirateWallet-DesktopUpdater',
+      userAgent: 'StashiWallet-DesktopUpdater',
     ).timeout(_networkTimeout);
     final json = jsonDecode(body);
     if (json is! List) {
@@ -308,14 +309,14 @@ class DesktopUpdateService {
     await FfiBridge.downloadExternalToFile(
       url: url,
       destinationPath: destination.path,
-      userAgent: 'PirateWallet-DesktopUpdater',
+      userAgent: 'StashiWallet-DesktopUpdater',
     ).timeout(_networkTimeout);
   }
 
   Future<Uint8List> _downloadBytes(String url) async {
     return FfiBridge.fetchExternalBytes(
       url: url,
-      userAgent: 'PirateWallet-DesktopUpdater',
+      userAgent: 'StashiWallet-DesktopUpdater',
     ).timeout(_networkTimeout);
   }
 
@@ -615,7 +616,6 @@ exit 0
   Future<void> _launchMacDmgUpdater(String dmgPath, String releaseUrl) async {
     final currentExe = File(Platform.resolvedExecutable);
     final appBundle = _resolveMacAppBundlePath(currentExe.path);
-    final appName = appBundle.split('/').last;
     final script = File(
       '${Directory.systemTemp.path}${Platform.pathSeparator}pirate_wallet_update_macos.sh',
     );
@@ -625,7 +625,6 @@ exit 0
 set -euo pipefail
 DMG_PATH=__DMG_PATH__
 CURRENT_APP=__CURRENT_APP__
-APP_NAME=__APP_NAME__
 RELEASE_URL=__RELEASE_URL__
 show_manual() {
   /usr/bin/osascript -e 'display dialog "Automatic update failed. Open the release page to download and install manually." buttons {"OK"} default button "OK"' >/dev/null 2>&1 || true
@@ -658,6 +657,9 @@ do_install() {
   fi
   rm -rf "$backup_app"
   open "$target_app" >/dev/null 2>&1 || true
+  if [ "$CURRENT_APP" != "$target_app" ] && [ -e "$CURRENT_APP" ]; then
+    rm -rf "$CURRENT_APP" >/dev/null 2>&1 || true
+  fi
   return 0
 }
 if [ "${1:-}" = "--install" ]; then
@@ -665,10 +667,6 @@ if [ "${1:-}" = "--install" ]; then
   exit $?
 fi
 sleep 2
-TARGET_APP="$CURRENT_APP"
-if [ ! -w "$(dirname "$TARGET_APP")" ]; then
-  TARGET_APP="/Applications/$APP_NAME"
-fi
 MOUNT_POINT=$(hdiutil attach "$DMG_PATH" -nobrowse -readonly | awk '/\/Volumes\// {print $3; exit}')
 if [ -z "$MOUNT_POINT" ]; then
   open "$DMG_PATH" >/dev/null 2>&1 || true
@@ -681,6 +679,11 @@ if [ -z "$SOURCE_APP" ]; then
   open "$DMG_PATH" >/dev/null 2>&1 || true
   show_manual
   exit 0
+fi
+SOURCE_NAME=$(basename "$SOURCE_APP")
+TARGET_APP="$(dirname "$CURRENT_APP")/$SOURCE_NAME"
+if [ ! -w "$(dirname "$TARGET_APP")" ]; then
+  TARGET_APP="/Applications/$SOURCE_NAME"
 fi
 if ! verify_bundle "$SOURCE_APP"; then
   hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
@@ -707,7 +710,6 @@ show_manual
 '''
             .replaceAll('__DMG_PATH__', _shQuote(dmgPath))
             .replaceAll('__CURRENT_APP__', _shQuote(appBundle))
-            .replaceAll('__APP_NAME__', _shQuote(appName))
             .replaceAll('__RELEASE_URL__', _shQuote(releaseUrl));
     await script.writeAsString(scriptContents, flush: true);
     await Process.run('chmod', <String>['+x', script.path]);

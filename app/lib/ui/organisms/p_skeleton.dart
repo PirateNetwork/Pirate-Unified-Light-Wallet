@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 
-/// Pirate Wallet Skeleton Loader
+/// Stashi Wallet Skeleton Loader
 class PSkeleton extends StatelessWidget {
   const PSkeleton({
     this.width,

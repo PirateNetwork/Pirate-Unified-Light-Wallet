@@ -291,7 +291,7 @@ final class ReleaseVerificationService {
   }
 
   static Future<Uint8List> _defaultDownloadBytes(String url) {
-    return FfiBridge.fetchExternalBytes(url: url, userAgent: 'PirateWallet');
+    return FfiBridge.fetchExternalBytes(url: url, userAgent: 'StashiWallet');
   }
 
   static Future<void> _defaultRetryDelay(Duration duration) {

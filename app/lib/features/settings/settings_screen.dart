@@ -752,7 +752,7 @@ class SettingsScreen extends ConsumerWidget {
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path)],
-        text: 'Pirate Wallet debug log'.tr,
+        text: 'Stashi Wallet debug log'.tr,
       ),
     );
   }

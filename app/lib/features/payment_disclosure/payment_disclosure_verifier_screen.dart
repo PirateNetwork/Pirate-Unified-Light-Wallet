@@ -18,7 +18,7 @@ import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 
-/// Verifies a Unified Wallet payment disclosure.
+/// Verifies a Stashi Wallet payment disclosure.
 class PaymentDisclosureVerifierScreen extends ConsumerStatefulWidget {
   const PaymentDisclosureVerifierScreen({super.key, this.useScaffold = true});
 
@@ -385,9 +385,8 @@ class _DisclosureInputCard extends StatelessWidget {
             controller: controller,
             focusNode: focusNode,
             label: 'Paste disclosure'.tr,
-            hint:
-                'pirate-sapling-payment-disclosure1... or pirate-ironwood-payment-disclosure1...'
-                    .tr,
+            hint: 'pirate-sapling-payment-disclosure1... or pirate-ironwood-payment-disclosure1...'
+                .tr,
             helperText:
                 'You can paste the raw key or text that contains the key.'.tr,
             maxLines: 7,
@@ -428,9 +427,8 @@ class _DisclosureInputCard extends StatelessWidget {
             _InlineNotice(
               icon: Icons.account_balance_wallet_outlined,
               title: 'No active wallet'.tr,
-              message:
-                  "Verification uses the active wallet's configured lightwalletd endpoint to fetch the transaction."
-                      .tr,
+              message: "Verification uses the active wallet's configured lightwalletd endpoint to fetch the transaction."
+                  .tr,
               color: AppColors.warning,
               background: AppColors.warningBackground,
               border: AppColors.warningBorder,

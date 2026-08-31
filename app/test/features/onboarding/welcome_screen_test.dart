@@ -28,7 +28,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Pirate Chain Unified Wallet'), findsOneWidget);
+    expect(find.text('Stashi Wallet'), findsWidgets);
+    expect(find.byKey(const Key('welcome_logo')), findsOneWidget);
     expect(find.text('Get started'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

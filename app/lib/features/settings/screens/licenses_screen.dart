@@ -50,7 +50,7 @@ SOFTWARE.
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Text(
-                  'Pirate Wallet is open-source and distributed under the MIT License.'
+                  'Stashi Wallet is open-source and distributed under the MIT License.'
                       .tr,
                   style: AppTypography.body.copyWith(
                     color: AppColors.textPrimary,

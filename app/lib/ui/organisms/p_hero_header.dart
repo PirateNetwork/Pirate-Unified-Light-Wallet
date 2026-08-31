@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Hero Header
+/// Stashi Wallet Hero Header
 class PHeroHeader extends StatelessWidget {
   const PHeroHeader({
     required this.title,

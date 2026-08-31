@@ -53,7 +53,7 @@ class _OnboardingBiometricsScreenState
 
     try {
       final authenticated = await BiometricAuth.authenticate(
-        reason: 'Enable biometric unlock for Pirate Wallet'.tr,
+        reason: 'Enable biometric unlock for Stashi Wallet'.tr,
         biometricOnly: true,
       );
       if (!authenticated) {
@@ -65,9 +65,8 @@ class _OnboardingBiometricsScreenState
       final passphrase = state.passphrase;
       if (passphrase == null || passphrase.isEmpty) {
         setState(() {
-          _error =
-              'Biometrics need your passphrase once to finish setup. You can enable it later in Settings.'
-                  .tr;
+          _error = 'Biometrics need your passphrase once to finish setup. You can enable it later in Settings.'
+              .tr;
         });
         return;
       }
@@ -127,9 +126,8 @@ class _OnboardingBiometricsScreenState
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error =
-              'Unable to persist biometric preference right now. Please try again.'
-                  .tr;
+          _error = 'Unable to persist biometric preference right now. Please try again.'
+              .tr;
         });
       }
       debugPrint('Failed to complete onboarding biometric skip: $e');

@@ -2,7 +2,7 @@ import '../../core/i18n/arb_text_localizer.dart';
 
 String localizedPrivacyPolicyText() =>
     '''
-Pirate Wallet is designed to minimize data collection.
+Stashi Wallet is designed to minimize data collection.
 The app does not require account registration and does not send seed phrases, private keys, or plaintext passphrases to our servers.
 
 The wallet communicates with your configured lightwalletd endpoint to sync chain data and submit transactions.

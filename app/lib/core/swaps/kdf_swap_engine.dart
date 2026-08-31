@@ -514,7 +514,7 @@ class KdfSwapEngine {
     await _disposeSdk();
 
     policy.assertSupported();
-    // KDF is registered with the same seed as the active Unified Wallet. If a
+    // KDF is registered with the same seed as the active Stashi Wallet. If a
     // swap gets interrupted, the KDF balances remain recoverable in Komodo
     // Wallet by restoring that same seed.
     var seed = await FfiBridge.exportSeedForKdf(walletId);
@@ -567,7 +567,7 @@ class KdfSwapEngine {
             break;
           case _KdfSeedMatch.mismatch:
             throw const KdfSwapEngineException(
-              'The KDF wallet seed does not match the active Unified Wallet.',
+              'The KDF wallet seed does not match the active Stashi Wallet.',
             );
         }
       }
@@ -634,7 +634,7 @@ class KdfSwapEngine {
     final mnemonic = await sdk.auth.getMnemonicPlainText(walletPassword);
     if (mnemonic.plaintextMnemonic?.trim() != expectedSeed.trim()) {
       throw const KdfSwapEngineException(
-        'The KDF wallet seed does not match the active Unified Wallet.',
+        'The KDF wallet seed does not match the active Stashi Wallet.',
       );
     }
   }

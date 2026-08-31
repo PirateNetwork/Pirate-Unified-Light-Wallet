@@ -1,6 +1,6 @@
 import 'package:flutter/animation.dart';
 
-/// Motion curves for Pirate Wallet
+/// Motion curves for Stashi Wallet
 /// Custom easing curves for premium feel
 class PCurves {
   PCurves._();

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+
 import 'curves.dart';
 import 'durations.dart';
 
-/// Micro-interactions for Pirate Wallet
+/// Micro-interactions for Stashi Wallet
 /// Reusable animation patterns
 extension MicroInteractions on Widget {
   /// Hover scale effect
@@ -56,9 +57,8 @@ extension MicroInteractions on Widget {
 
   /// Shimmer effect (loading)
   Widget shimmer({Duration duration = PDurations.verySlow}) {
-    return animate(
-      onPlay: (controller) => controller.repeat(),
-    ).shimmer(duration: duration);
+    return animate(onPlay: (controller) => controller.repeat())
+        .shimmer(duration: duration);
   }
 
   /// Shake effect (error)

@@ -18,7 +18,7 @@
 namespace {
 constexpr char kKeystoreChannelName[] = "com.pirate.wallet/keystore";
 constexpr char kSecurityChannelName[] = "com.pirate.wallet/security";
-constexpr wchar_t kDpapiDescription[] = L"Pirate Wallet Key";
+constexpr wchar_t kDpapiDescription[] = L"Stashi Wallet Key";
 
 #ifndef WDA_EXCLUDEFROMCAPTURE
 #define WDA_EXCLUDEFROMCAPTURE 0x00000011

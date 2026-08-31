@@ -1,4 +1,4 @@
-/// Motion durations for Pirate Wallet
+/// Motion durations for Stashi Wallet
 /// Consistent timing for all animations
 class PDurations {
   PDurations._();

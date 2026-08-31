@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Tag (Chip)
+/// Stashi Wallet Tag (Chip)
 class PTag extends StatelessWidget {
   const PTag({
     required this.label,

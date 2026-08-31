@@ -35,7 +35,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Pirate Chain Unified Wallet',
+      title: 'Stashi Wallet',
       body: LayoutBuilder(
         builder: (context, constraints) {
           final screenSize = MediaQuery.sizeOf(context);
@@ -77,31 +77,23 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.0, end: 1.0),
-                        duration: const Duration(milliseconds: 800),
-                        curve: Curves.easeOut,
-                        builder: (context, value, child) {
-                          return Opacity(
-                            opacity: value,
-                            child: Transform.scale(
-                              scale: 0.8 + (0.2 * value),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: Icon(
-                          Icons.shield_outlined,
-                          size: logoSize,
-                          color: AppColors.accentPrimary,
-                          semanticLabel: 'Pirate Wallet logo'.tr,
+                      Semantics(
+                        key: const Key('welcome_logo'),
+                        image: true,
+                        label: 'Stashi Wallet logo'.tr,
+                        child: Image.asset(
+                          'assets/icons/stashi-wallet-logo.png',
+                          width: logoSize,
+                          height: logoSize,
+                          fit: BoxFit.contain,
+                          excludeFromSemantics: true,
                         ),
                       ),
                       SizedBox(
                         height: isCompactHeight ? AppSpacing.md : AppSpacing.xl,
                       ),
                       Text(
-                        'Pirate Chain Unified Wallet',
+                        'Stashi Wallet',
                         style: titleStyle.copyWith(
                           color: AppColors.textPrimary,
                           height: isMobile ? 1.3 : null,

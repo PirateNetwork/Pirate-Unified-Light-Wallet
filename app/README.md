@@ -1,6 +1,6 @@
 # Flutter Application
 
-This directory contains the Flutter user interface for Pirate Unified Wallet.
+This directory contains the Flutter user interface for Stashi Wallet.
 
 Contents
 --------
@@ -79,6 +79,7 @@ Use the root-level build scripts when you need the packaged outputs that are pub
 Related documentation
 ---------------------
 
+- Stashi Wallet user guide: `../docs/user-guide/README.md`
 - root build and repository notes: `../README.md`
 - security notes: `../docs/security.md`
 - build verification: `../docs/verify-build.md`

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Pirate Wallet</string>
+	<string>Stashi Wallet</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>pirate_wallet</string>
+	<string>Stashi Wallet</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -84,13 +84,13 @@
 	
 	<!-- Privacy Descriptions -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Pirate Wallet needs network access to sync your blockchain data securely via Tor.</string>
+	<string>Stashi Wallet needs network access to sync your blockchain data securely via Tor.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Pirate Wallet uses the camera to scan payment addresses and QR codes.</string>
+	<string>Stashi Wallet uses the camera to scan payment addresses and QR codes.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Use Face ID to unlock Pirate Wallet faster and protect sensitive actions.</string>
+	<string>Use Face ID to unlock Stashi Wallet faster and protect sensitive actions.</string>
 	<key>NSUserTrackingUsageDescription</key>
-	<string>Pirate Wallet does not track you. This permission is required by iOS but will never be used.</string>
+	<string>Stashi Wallet does not track you. This permission is required by iOS but will never be used.</string>
 	
 	<!-- Notification Permissions -->
 	<key>UIUserNotificationSettings</key>

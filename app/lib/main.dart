@@ -38,7 +38,7 @@ bool _appInitialized = false;
 
 void main() async {
   if (_appInitialized) {
-    runApp(const ProviderScope(child: PirateWalletApp()));
+    runApp(const ProviderScope(child: StashiWalletApp()));
     return;
   }
   _appInitialized = true;
@@ -52,7 +52,7 @@ void main() async {
   if (!isTest && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     _singleInstanceLock = await SingleInstanceLock.acquire();
     if (_singleInstanceLock == null) {
-      stderr.writeln('Pirate Wallet is already running.');
+      stderr.writeln('Stashi Wallet is already running.');
       exit(0);
     }
   }
@@ -67,7 +67,7 @@ void main() async {
       size: windowSpec.initialSize,
       minimumSize: windowSpec.minimumSize,
       center: true,
-      title: 'Pirate Wallet',
+      title: 'Stashi Wallet',
       backgroundColor: Color(0xFF0B0F14),
       titleBarStyle: useCustomTitleBar
           ? TitleBarStyle.hidden
@@ -80,7 +80,7 @@ void main() async {
     });
   }
 
-  runApp(const ProviderScope(child: PirateWalletApp()));
+  runApp(const ProviderScope(child: StashiWalletApp()));
 }
 
 @pragma('vm:entry-point')
@@ -164,14 +164,14 @@ class PirateScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
-class PirateWalletApp extends ConsumerStatefulWidget {
-  const PirateWalletApp({super.key});
+class StashiWalletApp extends ConsumerStatefulWidget {
+  const StashiWalletApp({super.key});
 
   @override
-  ConsumerState<PirateWalletApp> createState() => _PirateWalletAppState();
+  ConsumerState<StashiWalletApp> createState() => _StashiWalletAppState();
 }
 
-class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
+class _StashiWalletAppState extends ConsumerState<StashiWalletApp>
     with WindowListener, WidgetsBindingObserver {
   bool _closing = false;
   Color? _lastWindowBackground;
@@ -366,13 +366,12 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
         ? Brightness.dark
         : themeModeSetting.themeMode == ThemeMode.light
         ? Brightness.light
-        : Brightness
-              .dark; // Default to dark, will be updated in builder for system mode
+        : Brightness.dark; // Default to dark, will be updated in builder for system mode
     AppColors.syncWithTheme(brightness);
 
     return MaterialApp.router(
       key: ValueKey(themeModeSetting.themeMode),
-      title: 'Pirate Wallet',
+      title: 'Stashi Wallet',
       debugShowCheckedModeBanner: false,
       scrollBehavior: const PirateScrollBehavior(),
 

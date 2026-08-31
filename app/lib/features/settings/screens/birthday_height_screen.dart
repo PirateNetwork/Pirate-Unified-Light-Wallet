@@ -22,8 +22,15 @@ import '../../../core/i18n/arb_text_localizer.dart';
 
 enum BirthdayHeightInputMode { approxDate, exactHeight }
 
+typedef BirthdayHeightNodeTester = Future<NodeTestResult> Function({
+  required String url,
+  String? tlsPin,
+});
+
 class BirthdayHeightScreen extends ConsumerStatefulWidget {
-  const BirthdayHeightScreen({super.key});
+  const BirthdayHeightScreen({super.key, this.nodeTester});
+
+  final BirthdayHeightNodeTester? nodeTester;
 
   @override
   ConsumerState<BirthdayHeightScreen> createState() =>
@@ -99,7 +106,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
 
     try {
       final config = await ref.read(lightdEndpointConfigProvider.future);
-      final result = await FfiBridge.testNode(
+      final result = await (widget.nodeTester ?? FfiBridge.testNode)(
         url: config.url,
         tlsPin: config.tlsPin,
       );

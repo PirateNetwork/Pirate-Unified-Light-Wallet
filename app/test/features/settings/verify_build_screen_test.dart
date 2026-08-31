@@ -32,12 +32,12 @@ const _verifiedResult = ReleaseVerificationResult(
   releaseUrl: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases/tag/v1.1.9',
   signatureAssetName: 'signatures-v1.1.9.zip',
   checksumAssetName: 'build-payloads-v1.1.9.txt',
-  localArtifactPath: r'C:\Program Files\Pirate Wallet\app.exe',
-  localArtifactName: 'app.exe',
+  localArtifactPath: r'C:\Program Files\Stashi Wallet\Stashi Wallet.exe',
+  localArtifactName: 'Stashi Wallet.exe',
   localHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   expectedHash:
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  matchedChecksumName: 'app.exe',
+  matchedChecksumName: 'Stashi Wallet.exe',
 );
 
 const _unavailableResult = ReleaseVerificationResult(
@@ -47,8 +47,8 @@ const _unavailableResult = ReleaseVerificationResult(
   releaseUrl: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases/tag/v1.1.9',
   signatureAssetName: 'signatures-v1.1.9.zip',
   localArtifactPath:
-      '/Applications/Pirate Wallet.app/Contents/MacOS/Pirate Unified Wallet',
-  localArtifactName: 'Pirate Unified Wallet',
+      '/Applications/Stashi Wallet.app/Contents/MacOS/Stashi Wallet',
+  localArtifactName: 'Stashi Wallet',
   localHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
 );
 
@@ -150,7 +150,7 @@ void main() {
 
     expect(find.text('Check unavailable'), findsOneWidget);
     expect(find.text('Error'), findsNothing);
-    expect(find.text('Pirate Unified Wallet'), findsOneWidget);
+    expect(find.text('Stashi Wallet'), findsOneWidget);
     expect(find.textContaining('does not mean the app failed'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _captureIfRequested(tester, 'verify-build-unavailable-desktop.png');

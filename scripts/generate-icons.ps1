@@ -1,5 +1,5 @@
 param(
-    [string]$SourcePng = "app\\assets\\icons\\p-logo-url-no-bg.png"
+    [string]$SourcePng = "app\\assets\\icons\\stashi-wallet-app-icon.png"
 )
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")

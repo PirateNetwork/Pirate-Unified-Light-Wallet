@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../design/tokens/colors.dart';
 import '../../../design/tokens/spacing.dart';
 import '../../../ui/organisms/p_scaffold.dart';
@@ -21,7 +22,7 @@ class ShowcaseHomeScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             PHeroHeader(
-              title: 'Pirate Wallet Design System'.tr,
+              title: 'Stashi Wallet Design System'.tr,
               subtitle: 'World-class components for premium dark UI'.tr,
             ),
             SizedBox(height: PSpacing.xl),

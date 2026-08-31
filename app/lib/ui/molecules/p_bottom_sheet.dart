@@ -1,10 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Bottom Sheet
+/// Stashi Wallet Bottom Sheet
 class PBottomSheet {
   PBottomSheet._();
 

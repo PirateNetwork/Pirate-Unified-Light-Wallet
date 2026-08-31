@@ -279,7 +279,7 @@ class _ArrrPriceService {
       final uri = Uri.parse(
         'https://api.coingecko.com/api/v3/simple/price?ids=$assetId&vs_currencies=usd',
       );
-      final json = await _downloadJson(uri, userAgent: 'PirateWallet');
+      final json = await _downloadJson(uri, userAgent: 'StashiWallet');
       if (json is! Map) return null;
       final asset = json[assetId];
       if (asset is! Map) return null;
@@ -324,7 +324,7 @@ class _ArrrPriceService {
       final uri = Uri.parse(
         'https://api.coingecko.com/api/v3/simple/price?ids=pirate-chain&vs_currencies=$vsCurrencies',
       );
-      final json = await _downloadJson(uri, userAgent: 'PirateWallet');
+      final json = await _downloadJson(uri, userAgent: 'StashiWallet');
       if (json is! Map) return null;
       final pirate = json['pirate-chain'];
       if (pirate is! Map) return null;
@@ -354,7 +354,7 @@ class _ArrrPriceService {
       final uri = Uri.parse(
         '$_coinPaprikaTicker?quotes=${Uri.encodeQueryComponent(quoteCode)}',
       );
-      final json = await _downloadJson(uri, userAgent: 'PirateWallet');
+      final json = await _downloadJson(uri, userAgent: 'StashiWallet');
       return parseCoinPaprikaPrice(json, quoteCode);
     } catch (_) {
       return null;
@@ -372,7 +372,7 @@ class _ArrrPriceService {
   static Future<double?> _fetchCoinMarketCapUsdFromQuote() async {
     try {
       final uri = Uri.parse(_coinMarketCapQuote);
-      final json = await _downloadJson(uri, userAgent: 'PirateWallet');
+      final json = await _downloadJson(uri, userAgent: 'StashiWallet');
       if (json is! Map) return null;
       final data = json['data'];
       if (data is! List || data.isEmpty) return null;
@@ -391,7 +391,7 @@ class _ArrrPriceService {
   static Future<double?> _fetchCoinMarketCapUsdFromMarketPairs() async {
     try {
       final uri = Uri.parse(_coinMarketCapMarketPairs);
-      final json = await _downloadJson(uri, userAgent: 'PirateWallet');
+      final json = await _downloadJson(uri, userAgent: 'StashiWallet');
       if (json is! Map) return null;
       final data = json['data'];
       if (data is! Map) return null;

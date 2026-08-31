@@ -19,7 +19,9 @@ import '../../core/i18n/arb_text_localizer.dart';
 import 'key_capabilities.dart';
 
 class KeyManagementScreen extends ConsumerStatefulWidget {
-  const KeyManagementScreen({super.key});
+  const KeyManagementScreen({super.key, this.keyLoader});
+
+  final Future<List<KeyGroupInfo>> Function(WalletId walletId)? keyLoader;
 
   static const Key seedAccountsCardKey = Key('seed-accounts-card');
   static const Key importKeysCardKey = Key('import-keys-card');
@@ -58,7 +60,8 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   }
 
   Future<List<KeyGroupInfo>> _fetchKeys(WalletId walletId) {
-    return FfiBridge.listKeyGroups(walletId);
+    return widget.keyLoader?.call(walletId) ??
+        FfiBridge.listKeyGroups(walletId);
   }
 
   void _refresh() {

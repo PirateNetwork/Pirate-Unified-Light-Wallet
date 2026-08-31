@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+
 import 'curves.dart';
 
-/// Page transitions for Pirate Wallet
+/// Page transitions for Stashi Wallet
 class PTransitions {
   PTransitions._();
 

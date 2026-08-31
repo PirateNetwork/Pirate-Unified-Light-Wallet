@@ -1,7 +1,7 @@
-Pirate Unified Wallet
+Stashi Wallet
 =====================
 
-Pirate Unified Wallet is a cross-platform Pirate Chain wallet with a Flutter user interface and a Rust core. The repository includes the application, the Rust wallet and sync crates, build scripts, and the project-owned documentation used for release and verification work.
+Stashi Wallet is a cross-platform Pirate Chain wallet with a Flutter user interface and a Rust core. The repository includes the application, the Rust wallet and sync crates, build scripts, and the project-owned documentation used for release and verification work.
 
 This repository is under active development. Before distributing builds, review the release notes, the security notes, and the verification instructions in `docs/`.
 
@@ -256,6 +256,7 @@ cargo test --all-features --locked
 Documentation index
 -------------------
 
+- Stashi Wallet user guide: `docs/user-guide/README.md`
 - Supernova sync engine architecture and performance: `docs/sync-engine.md`
 - Build verification: `docs/verify-build.md`
 - Security notes: `docs/security.md`

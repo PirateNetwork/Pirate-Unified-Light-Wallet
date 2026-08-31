@@ -237,7 +237,7 @@ static void keystore_method_call_handler(FlMethodChannel* channel,
                                 "keyId and encryptedKey required");
     } else {
       g_autofree gchar* error_message = nullptr;
-      if (!store_secret(key_id, data, length, "Pirate Wallet Key",
+      if (!store_secret(key_id, data, length, "Stashi Wallet Key",
                         &error_message)) {
         response = error_response("KEYSTORE_ERROR",
                                   error_message ? error_message
@@ -276,7 +276,7 @@ static void keystore_method_call_handler(FlMethodChannel* channel,
     } else {
       g_autofree gchar* error_message = nullptr;
       if (!store_secret(kMasterKeyId, data, length,
-                        "Pirate Wallet Master Key", &error_message)) {
+                        "Stashi Wallet Master Key", &error_message)) {
         response = error_response("SEAL_ERROR",
                                   error_message ? error_message
                                                 : "Failed to seal key");
@@ -350,7 +350,7 @@ static void my_application_activate(GApplication* application) {
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "app");
+    gtk_window_set_title(window, "Stashi Wallet");
   }
 
   const DesktopWindowSize initial_size = resolve_initial_window_size(window);

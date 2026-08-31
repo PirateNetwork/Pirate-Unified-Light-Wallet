@@ -1,5 +1,5 @@
 name: pirate_wallet
-description: Pirate Unified Wallet - Privacy-first ARRR wallet
+description: Stashi Wallet - Privacy-first ARRR wallet
 publish_to: 'none'
 version: 1.1.9+10109
 
@@ -143,6 +143,7 @@ flutter:
     - assets/i18n/
     - assets/bip39/
     - assets/security/
+    - assets/icons/
   
   # Fonts (local only)
   fonts:

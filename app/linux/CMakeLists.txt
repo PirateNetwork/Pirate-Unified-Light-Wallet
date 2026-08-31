@@ -4,7 +4,7 @@ project(runner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "pirate_unified_wallet")
+set(BINARY_NAME "stashi_wallet")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
 set(APPLICATION_ID "com.pirate.wallet")
@@ -66,6 +66,7 @@ add_executable(${BINARY_NAME}
   "my_application.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
 )
+set_target_properties(${BINARY_NAME} PROPERTIES OUTPUT_NAME "stashi-wallet")
 
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.

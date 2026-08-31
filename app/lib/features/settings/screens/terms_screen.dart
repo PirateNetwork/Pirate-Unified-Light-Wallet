@@ -27,7 +27,7 @@ class TermsScreen extends StatelessWidget {
               title: 'Terms of Use'.tr,
               body:
                   '''
-Pirate Wallet is self-custody software. You control your seed phrase, private keys, and funds.
+Stashi Wallet is self-custody software. You control your seed phrase, private keys, and funds.
 You are solely responsible for securing recovery material, choosing trusted devices, and confirming transaction details before sending.
 
 Use of this wallet is at your own risk. Transactions on Pirate Chain are irreversible once confirmed.

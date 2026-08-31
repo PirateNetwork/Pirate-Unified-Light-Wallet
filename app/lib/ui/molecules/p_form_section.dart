@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-/// Pirate Wallet Form Section
+/// Stashi Wallet Form Section
 class PFormSection extends StatelessWidget {
   const PFormSection({
     required this.title,
