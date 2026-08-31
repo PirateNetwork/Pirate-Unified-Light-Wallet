@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -193,8 +194,8 @@ Widget _walletApp(
       balanceStreamProvider.overrideWith(
         (ref) => Stream.value(
           Balance(
-            total: BigInt.from(247523456789),
-            spendable: BigInt.from(247523456789),
+            total: BigInt.from(2247523456789),
+            spendable: BigInt.from(2247523456789),
             pending: BigInt.zero,
           ),
         ),
@@ -235,6 +236,59 @@ Widget _walletApp(
       theme: PTheme.dark(),
       home: RepaintBoundary(key: _captureBoundaryKey, child: child),
     ),
+  );
+}
+
+Widget _redactedReceiveScreen() {
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final isDesktop = constraints.maxWidth >= 800;
+
+      Widget blurRegion({
+        required double left,
+        required double top,
+        required double width,
+        required double height,
+        required double radius,
+      }) {
+        return Positioned(
+          left: left,
+          top: top,
+          width: width,
+          height: height,
+          child: IgnorePointer(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: radius, sigmaY: radius),
+                child: ColoredBox(color: Colors.black.withValues(alpha: 0.18)),
+              ),
+            ),
+          ),
+        );
+      }
+
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          const ReceiveScreen(),
+          blurRegion(
+            left: isDesktop ? 586 : 141,
+            top: 235,
+            width: 108,
+            height: 108,
+            radius: 14,
+          ),
+          blurRegion(
+            left: isDesktop ? 377 : 77,
+            top: isDesktop ? 458 : 463,
+            width: isDesktop ? 526 : 236,
+            height: isDesktop ? 34 : 62,
+            radius: 12,
+          ),
+        ],
+      );
+    },
   );
 }
 
@@ -504,13 +558,13 @@ void main() {
       tester,
       size: const Size(390, 844),
       filename: 'receive-phone.png',
-      widget: _walletApp(const ReceiveScreen(), includeReceiveState: true),
+      widget: _walletApp(_redactedReceiveScreen(), includeReceiveState: true),
     );
     await _capture(
       tester,
       size: const Size(1280, 900),
       filename: 'receive-desktop.png',
-      widget: _walletApp(const ReceiveScreen(), includeReceiveState: true),
+      widget: _walletApp(_redactedReceiveScreen(), includeReceiveState: true),
       platform: TargetPlatform.windows,
     );
   });
