@@ -9,10 +9,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/crypto/bip39_wordlist.dart';
 import '../../../core/security/screenshot_protection.dart';
+import '../../../core/services/wallet_name_suggestion.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/tokens/spacing.dart';
 import '../../../core/ffi/generated/models.dart';
+import '../../../core/logging/debug_event_log.dart';
 import '../../../ui/atoms/p_button.dart';
+import '../../../ui/atoms/p_input.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
@@ -29,6 +32,7 @@ class SeedConfirmScreen extends ConsumerStatefulWidget {
 }
 
 class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
+  final TextEditingController _walletNameController = TextEditingController();
   final List<TextEditingController> _wordControllers = List.generate(
     3,
     (_) => TextEditingController(),
@@ -44,6 +48,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
   @override
   void initState() {
     super.initState();
+    _walletNameController.text = _defaultWalletName(1);
     final onboardingState = ref.read(onboardingControllerProvider);
     _wordLanguage =
         onboardingState.mnemonicLanguage ??
@@ -52,13 +57,17 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
     _selectRandomWords();
     unawaited(_loadWordlist());
     // Add listeners to update button state when text changes
-    for (final controller in _wordControllers) {
+    for (final controller in [_walletNameController, ..._wordControllers]) {
       controller.addListener(_onTextChanged);
     }
+    unawaited(_loadSuggestedWalletName());
   }
 
   @override
   void dispose() {
+    _walletNameController
+      ..removeListener(_onTextChanged)
+      ..dispose();
     for (final controller in _wordControllers) {
       controller
         ..removeListener(_onTextChanged)
@@ -113,7 +122,25 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
   }
 
   bool get _isComplete {
-    return _wordControllers.every((c) => c.text.trim().isNotEmpty);
+    return _walletNameController.text.trim().isNotEmpty &&
+        _wordControllers.every((c) => c.text.trim().isNotEmpty);
+  }
+
+  String _defaultWalletName(int number) {
+    return 'My ARRR Wallet {number}'.trArgs({'number': number});
+  }
+
+  Future<void> _loadSuggestedWalletName() async {
+    final initialName = _walletNameController.text;
+    try {
+      final wallets = await ref.read(walletsProvider.future);
+      if (!mounted || _walletNameController.text != initialName) return;
+      _walletNameController.text = _defaultWalletName(
+        nextArrrWalletNumber(wallets.map((wallet) => wallet.name)),
+      );
+    } catch (_) {
+      // A fresh install may not have an initialized wallet registry yet.
+    }
   }
 
   Future<void> _verifyAndProceed() async {
@@ -152,12 +179,11 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
 
       // Verification successful
       ref.read(onboardingControllerProvider.notifier).markSeedBackedUp();
-      ref.read(onboardingControllerProvider.notifier).nextStep();
 
       // Create wallet with the mnemonic we generated
       await ref
           .read(onboardingControllerProvider.notifier)
-          .complete('My Pirate Wallet'.tr);
+          .complete(_walletNameController.text.trim());
 
       if (!mounted) return;
 
@@ -181,9 +207,18 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      unawaited(
+        appendDebugEvent(
+          id: 'log_wallet_setup_error',
+          message: e.toString(),
+          stackTrace: stackTrace,
+          fields: const <String, Object?>{'stage': 'seed_confirmation'},
+        ),
+      );
+      if (!mounted) return;
       setState(() {
-        _error = 'Verification failed: {error}'.trArgs({'error': e});
+        _error = 'Could not continue wallet setup. Try again.'.tr;
         _isVerifying = false;
       });
     }
@@ -208,96 +243,125 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       body: SingleChildScrollView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: contentPadding,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const OnboardingProgressIndicator(currentStep: 6, totalSteps: 6),
-            const SizedBox(height: AppSpacing.xxl),
-            Text(
-              'Enter these words from your seed phrase'.tr,
-              style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
-              textAlign: TextAlign.center,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: AppSpacing.desktopFormMaxWidth,
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              "This confirms you've written down your seed phrase correctly."
-                  .tr,
-              style: AppTypography.body.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xl),
-
-            // Word inputs
-            ...List.generate(3, (i) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                child: _SeedWordInput(
-                  controller: _wordControllers[i],
-                  focusNode: _focusNodes[i],
-                  wordlist: _activeWordlist,
-                  label: 'Word {number}'.trArgs({
-                    'number': _selectedIndices[i],
-                  }),
-                  hint: 'Enter word {number}'.trArgs({
-                    'number': _selectedIndices[i],
-                  }),
-                  textInputAction: i < 2
-                      ? TextInputAction.next
-                      : TextInputAction.done,
-                  autofocus: i == 0,
-                  onSubmitted: () {
-                    if (i < 2) {
-                      _focusNodes[i + 1].requestFocus();
-                    } else {
-                      _verifyAndProceed();
-                    }
-                  },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const OnboardingProgressIndicator(
+                  currentStep: 6,
+                  totalSteps: 6,
                 ),
-              );
-            }),
-
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.error.withValues(alpha: 0.3),
+                const SizedBox(height: AppSpacing.xxl),
+                Text(
+                  'Enter these words from your seed phrase'.tr,
+                  style: AppTypography.h2.copyWith(
+                    color: AppColors.textPrimary,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline, color: AppColors.error, size: 20),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: AppTypography.body.copyWith(
-                          color: AppColors.error,
-                        ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  "This confirms you've written down your seed phrase correctly."
+                      .tr,
+                  style: AppTypography.body.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+
+                PInput(
+                  controller: _walletNameController,
+                  label: 'Wallet name'.tr,
+                  hint: 'Enter a wallet name'.tr,
+                  prefixIcon: Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: AppColors.textSecondary,
+                  ),
+                  textInputAction: TextInputAction.next,
+                  maxLength: 64,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+
+                // Word inputs
+                ...List.generate(3, (i) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                    child: _SeedWordInput(
+                      controller: _wordControllers[i],
+                      focusNode: _focusNodes[i],
+                      wordlist: _activeWordlist,
+                      label: 'Word {number}'.trArgs({
+                        'number': _selectedIndices[i],
+                      }),
+                      hint: 'Enter word {number}'.trArgs({
+                        'number': _selectedIndices[i],
+                      }),
+                      textInputAction: i < 2
+                          ? TextInputAction.next
+                          : TextInputAction.done,
+                      autofocus: i == 0,
+                      onSubmitted: () {
+                        if (i < 2) {
+                          _focusNodes[i + 1].requestFocus();
+                        } else {
+                          _verifyAndProceed();
+                        }
+                      },
+                    ),
+                  );
+                }),
+
+                if (_error != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.3),
                       ),
                     ),
-                  ],
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: AppColors.error,
+                          size: 20,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: AppTypography.body.copyWith(
+                              color: AppColors.error,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: AppSpacing.xl),
+
+                PButton(
+                  text: 'Verify and create wallet'.tr,
+                  onPressed: _isComplete && !_isVerifying
+                      ? _verifyAndProceed
+                      : null,
+                  variant: PButtonVariant.primary,
+                  size: PButtonSize.large,
+                  isLoading: _isVerifying,
                 ),
-              ),
-            ],
-
-            const SizedBox(height: AppSpacing.xl),
-
-            PButton(
-              text: 'Verify and create wallet'.tr,
-              onPressed: _isComplete && !_isVerifying
-                  ? _verifyAndProceed
-                  : null,
-              variant: PButtonVariant.primary,
-              size: PButtonSize.large,
-              isLoading: _isVerifying,
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -595,31 +659,35 @@ class _SeedWordInputState extends State<_SeedWordInput> {
           link: _layerLink,
           child: SizedBox(
             key: _fieldKey,
-            child: TextField(
-              controller: widget.controller,
-              focusNode: widget.focusNode,
-              textInputAction: widget.textInputAction,
-              onSubmitted: (_) {
-                _applyUniqueCompletion();
-                widget.onSubmitted();
-              },
-              autofocus: widget.autofocus,
-              autocorrect: false,
-              enableSuggestions: false,
-              enableIMEPersonalizedLearning: false,
-              keyboardType: TextInputType.visiblePassword,
-              smartDashesType: SmartDashesType.disabled,
-              smartQuotesType: SmartQuotesType.disabled,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp('[a-zA-Z]')),
-                const _LowerCaseTextFormatter(),
-              ],
-              style: inputStyle,
-              decoration: InputDecoration(
-                hintText: widget.hint,
-                filled: true,
-                fillColor: AppColors.backgroundSurface,
-                contentPadding: contentPadding,
+            child: Semantics(
+              label: widget.label,
+              textField: true,
+              child: TextField(
+                controller: widget.controller,
+                focusNode: widget.focusNode,
+                textInputAction: widget.textInputAction,
+                onSubmitted: (_) {
+                  _applyUniqueCompletion();
+                  widget.onSubmitted();
+                },
+                autofocus: widget.autofocus,
+                autocorrect: false,
+                enableSuggestions: false,
+                enableIMEPersonalizedLearning: false,
+                keyboardType: TextInputType.visiblePassword,
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp('[a-zA-Z]')),
+                  const _LowerCaseTextFormatter(),
+                ],
+                style: inputStyle,
+                decoration: InputDecoration(
+                  hintText: widget.hint,
+                  filled: true,
+                  fillColor: AppColors.backgroundSurface,
+                  contentPadding: contentPadding,
+                ),
               ),
             ),
           ),
@@ -631,10 +699,12 @@ class _SeedWordInputState extends State<_SeedWordInput> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          widget.label,
-          style: AppTypography.labelMedium.copyWith(
-            color: AppColors.textSecondary,
+        ExcludeSemantics(
+          child: Text(
+            widget.label,
+            style: AppTypography.labelMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.xs),

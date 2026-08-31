@@ -1,5 +1,7 @@
 // Birthday Picker Screen - Select wallet birthday for sync optimization
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,8 +9,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../config/endpoints.dart' as endpoints;
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/logging/debug_event_log.dart';
 import '../../../core/providers/wallet_providers.dart';
 import '../../../core/services/birthday_height_estimator.dart';
+import '../../../core/services/wallet_name_suggestion.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/input_decorations.dart';
 import '../../../ui/atoms/p_button.dart';
@@ -50,6 +54,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
   ];
 
   final _exactHeightController = TextEditingController();
+  final _walletNameController = TextEditingController();
   BirthdayInputMode _inputMode = BirthdayInputMode.approxDate;
   int _selectedMonth = DateTime.now().month;
   int _selectedYear = DateTime.now().year;
@@ -62,13 +67,33 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
   @override
   void initState() {
     super.initState();
+    _walletNameController.text = _defaultWalletName(1);
     _loadLatestHeight();
+    _loadSuggestedWalletName();
   }
 
   @override
   void dispose() {
     _exactHeightController.dispose();
+    _walletNameController.dispose();
     super.dispose();
+  }
+
+  String _defaultWalletName(int number) {
+    return 'My ARRR Wallet {number}'.trArgs({'number': number});
+  }
+
+  Future<void> _loadSuggestedWalletName() async {
+    final initialName = _walletNameController.text;
+    try {
+      final wallets = await ref.read(walletsProvider.future);
+      if (!mounted || _walletNameController.text != initialName) return;
+      _walletNameController.text = _defaultWalletName(
+        nextArrrWalletNumber(wallets.map((wallet) => wallet.name)),
+      );
+    } catch (_) {
+      // A fresh install may not have an initialized wallet registry yet.
+    }
   }
 
   List<int> get _yearOptions {
@@ -108,17 +133,15 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
         });
       } else {
         setState(() {
-          _heightError =
-              'Tor is still connecting. Latest network height will appear when available.'
-                  .tr;
+          _heightError = 'Tor is still connecting. Latest network height will appear when available.'
+              .tr;
         });
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _heightError =
-            'Tor is still connecting. Latest network height will appear when available.'
-                .tr;
+        _heightError = 'Tor is still connecting. Latest network height will appear when available.'
+            .tr;
       });
     } finally {
       if (mounted) {
@@ -129,6 +152,12 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
 
   Future<void> _completeSetup() async {
     final state = ref.read(onboardingControllerProvider);
+
+    final walletName = _walletNameController.text.trim();
+    if (walletName.isEmpty) {
+      setState(() => _error = 'Please enter a wallet name'.tr);
+      return;
+    }
 
     final hasAppPassphrase = await FfiBridge.hasAppPassphrase();
     if ((state.passphrase == null || state.passphrase!.isEmpty) &&
@@ -157,9 +186,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     try {
       final controller = ref.read(onboardingControllerProvider.notifier);
       await (controller..setBirthdayHeight(selectedHeight)).complete(
-        state.mode == OnboardingMode.create
-            ? 'My Pirate Wallet'.tr
-            : 'Restored Wallet'.tr,
+        walletName,
       );
       if (!mounted) return;
 
@@ -189,13 +216,18 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      unawaited(
+        appendDebugEvent(
+          id: 'log_wallet_setup_error',
+          message: e.toString(),
+          stackTrace: stackTrace,
+          fields: const <String, Object?>{'stage': 'birthday'},
+        ),
+      );
+      if (!mounted) return;
       setState(() {
-        _error =
-            (state.mode == OnboardingMode.import
-                    ? 'Failed to restore wallet: {error}'
-                    : 'Failed to create wallet: {error}')
-                .trArgs({'error': e});
+        _error = 'Could not continue wallet setup. Try again.'.tr;
         _isCreating = false;
       });
     }
@@ -235,302 +267,347 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
               gutter,
               AppSpacing.lg,
             ),
-            child: OnboardingProgressIndicator(
-              currentStep: currentStep,
-              totalSteps: totalSteps,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: AppSpacing.desktopFormMaxWidth,
+                ),
+                child: OnboardingProgressIndicator(
+                  currentStep: currentStep,
+                  totalSteps: totalSteps,
+                ),
+              ),
             ),
           ),
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(gutter, 0, gutter, viewInsets),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    isRestore
-                        ? 'When did this wallet first transact?'.tr
-                        : 'Ready to create your wallet'.tr,
-                    style: AppTypography.h2.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: AppSpacing.desktopFormMaxWidth,
                   ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    isRestore
-                        ? 'Choose an approximate date or enter the exact block height.'
-                              .tr
-                        : 'We will start sync from a recent block height to speed up setup.'
-                              .tr,
-                    style: AppTypography.body.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  PCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      child: Row(
-                        children: [
-                          Icon(Icons.public, color: AppColors.accentPrimary),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              _loadingHeight
-                                  ? 'Fetching latest block height...'.tr
-                                  : tip == null
-                                  ? 'Latest network height unavailable while Tor connects'
-                                        .tr
-                                  : 'Network tip: {height}'.trArgs({
-                                      'height': _formatHeight(tip),
-                                    }),
-                              style: AppTypography.body.copyWith(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          PTextButton(
-                            label: _loadingHeight ? 'Loading'.tr : 'Refresh'.tr,
-                            onPressed: _loadingHeight
-                                ? null
-                                : _loadLatestHeight,
-                            variant: PTextButtonVariant.subtle,
-                          ),
-                        ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        isRestore
+                            ? 'When did this wallet first transact?'.tr
+                            : 'Ready to create your wallet'.tr,
+                        style: AppTypography.h2.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                  ),
-                  if (_heightError != null) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      _heightError!,
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textSecondary,
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        isRestore
+                            ? 'Choose an approximate date or enter the exact block height.'
+                                  .tr
+                            : 'We will start sync from a recent block height to speed up setup.'
+                                  .tr,
+                        style: AppTypography.body.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: AppSpacing.lg),
-                  _ModeCard(
-                    mode: BirthdayInputMode.approxDate,
-                    selected: _inputMode,
-                    title: 'Approximate date'.tr,
-                    subtitle: 'Month and year before your first transaction'.tr,
-                    icon: Icons.calendar_today,
-                    onTap: () => setState(
-                      () => _inputMode = BirthdayInputMode.approxDate,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  _ModeCard(
-                    mode: BirthdayInputMode.exactHeight,
-                    selected: _inputMode,
-                    title: 'Exact block height'.tr,
-                    subtitle: 'Use the precise block height if you know it'.tr,
-                    icon: Icons.pin_outlined,
-                    onTap: () => setState(
-                      () => _inputMode = BirthdayInputMode.exactHeight,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  if (_inputMode == BirthdayInputMode.approxDate) ...[
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownMenuFormField<int>(
-                            initialSelection: _selectedMonth,
-                            label: Text('Month'.tr),
-                            inputDecorationTheme:
-                                PInputDecorations.elevatedDropdown(context),
-                            dropdownMenuEntries: List.generate(
-                              _monthLabels.length,
-                              (index) => DropdownMenuEntry(
-                                value: index + 1,
-                                label: _monthLabels[index],
+                      const SizedBox(height: AppSpacing.lg),
+                      PInput(
+                        controller: _walletNameController,
+                        label: 'Wallet name'.tr,
+                        hint: 'Enter a wallet name'.tr,
+                        prefixIcon: Icon(
+                          Icons.account_balance_wallet_outlined,
+                          color: AppColors.textSecondary,
+                        ),
+                        textInputAction: TextInputAction.next,
+                        maxLength: 64,
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      PCard(
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.public,
+                                color: AppColors.accentPrimary,
                               ),
-                            ),
-                            onSelected: (value) {
-                              if (value == null) return;
-                              setState(() => _selectedMonth = value);
-                            },
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  _loadingHeight
+                                      ? 'Fetching latest block height...'.tr
+                                      : tip == null
+                                      ? 'Latest network height unavailable while Tor connects'
+                                            .tr
+                                      : 'Network tip: {height}'.trArgs({
+                                          'height': _formatHeight(tip),
+                                        }),
+                                  style: AppTypography.body.copyWith(
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              PTextButton(
+                                label: _loadingHeight
+                                    ? 'Loading'.tr
+                                    : 'Refresh'.tr,
+                                onPressed: _loadingHeight
+                                    ? null
+                                    : _loadLatestHeight,
+                                variant: PTextButtonVariant.subtle,
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: DropdownMenuFormField<int>(
-                            initialSelection: _selectedYear,
-                            label: Text('Year'.tr),
-                            inputDecorationTheme:
-                                PInputDecorations.elevatedDropdown(context),
-                            dropdownMenuEntries: _yearOptions
-                                .map(
-                                  (year) => DropdownMenuEntry(
-                                    value: year,
-                                    label: year.toString(),
-                                  ),
-                                )
-                                .toList(),
-                            onSelected: (value) {
-                              if (value == null) return;
-                              setState(() => _selectedYear = value);
-                            },
+                      ),
+                      if (_heightError != null) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          _heightError!,
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],
-                    ),
-                  ] else ...[
-                    PInput(
-                      controller: _exactHeightController,
-                      label: 'Block height'.tr,
-                      hint: 'Enter the exact block height'.tr,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    ),
-                  ],
-                  const SizedBox(height: AppSpacing.lg),
-                  PCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isNarrow = constraints.maxWidth < 360;
-                          final startBlock = Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Start block'.tr,
-                                style: AppTypography.caption.copyWith(
-                                  color: AppColors.textSecondary,
+                      const SizedBox(height: AppSpacing.lg),
+                      _ModeCard(
+                        mode: BirthdayInputMode.approxDate,
+                        selected: _inputMode,
+                        title: 'Approximate date'.tr,
+                        subtitle:
+                            'Month and year before your first transaction'.tr,
+                        icon: Icons.calendar_today,
+                        onTap: () => setState(
+                          () => _inputMode = BirthdayInputMode.approxDate,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      _ModeCard(
+                        mode: BirthdayInputMode.exactHeight,
+                        selected: _inputMode,
+                        title: 'Exact block height'.tr,
+                        subtitle:
+                            'Use the precise block height if you know it'.tr,
+                        icon: Icons.pin_outlined,
+                        onTap: () => setState(
+                          () => _inputMode = BirthdayInputMode.exactHeight,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      if (_inputMode == BirthdayInputMode.approxDate) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownMenuFormField<int>(
+                                initialSelection: _selectedMonth,
+                                label: Text('Month'.tr),
+                                inputDecorationTheme:
+                                    PInputDecorations.elevatedDropdown(context),
+                                dropdownMenuEntries: List.generate(
+                                  _monthLabels.length,
+                                  (index) => DropdownMenuEntry(
+                                    value: index + 1,
+                                    label: _monthLabels[index],
+                                  ),
                                 ),
+                                onSelected: (value) {
+                                  if (value == null) return;
+                                  setState(() => _selectedMonth = value);
+                                },
                               ),
-                              Text(
-                                selectedHeight == null
-                                    ? '--'
-                                    : _formatHeight(selectedHeight),
-                                style: AppTypography.h3.copyWith(
-                                  color: AppColors.accentPrimary,
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: DropdownMenuFormField<int>(
+                                initialSelection: _selectedYear,
+                                label: Text('Year'.tr),
+                                inputDecorationTheme:
+                                    PInputDecorations.elevatedDropdown(context),
+                                dropdownMenuEntries: _yearOptions
+                                    .map(
+                                      (year) => DropdownMenuEntry(
+                                        value: year,
+                                        label: year.toString(),
+                                      ),
+                                    )
+                                    .toList(),
+                                onSelected: (value) {
+                                  if (value == null) return;
+                                  setState(() => _selectedYear = value);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        PInput(
+                          controller: _exactHeightController,
+                          label: 'Block height'.tr,
+                          hint: 'Enter the exact block height'.tr,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.lg),
+                      PCard(
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isNarrow = constraints.maxWidth < 360;
+                              final startBlock = Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Start block'.tr,
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  Text(
+                                    selectedHeight == null
+                                        ? '--'
+                                        : _formatHeight(selectedHeight),
+                                    style: AppTypography.h3.copyWith(
+                                      color: AppColors.accentPrimary,
+                                    ),
+                                  ),
+                                ],
+                              );
+                              final blocksScan = Column(
+                                crossAxisAlignment: isNarrow
+                                    ? CrossAxisAlignment.start
+                                    : CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    'Blocks to scan'.tr,
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  Text(
+                                    blocksToScan == null
+                                        ? '--'
+                                        : '~${_formatHeight(blocksToScan)}',
+                                    style: AppTypography.bodyBold.copyWith(
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              );
+                              if (isNarrow) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    startBlock,
+                                    const SizedBox(height: AppSpacing.md),
+                                    blocksScan,
+                                  ],
+                                );
+                              }
+                              return Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [startBlock, blocksScan],
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      if (_error != null)
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.error.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                color: AppColors.error,
+                                size: 20,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: AppTypography.body.copyWith(
+                                    color: AppColors.error,
+                                  ),
                                 ),
                               ),
                             ],
-                          );
-                          final blocksScan = Column(
-                            crossAxisAlignment: isNarrow
-                                ? CrossAxisAlignment.start
-                                : CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                'Blocks to scan'.tr,
+                          ),
+                        ),
+                      Container(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentPrimary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.accentPrimary.withValues(
+                              alpha: 0.3,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: AppColors.accentPrimary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                isRestore
+                                    ? 'If you are unsure, choose an earlier start. '
+                                              'Sync takes longer but avoids missing activity. '
+                                              'Latest network height is optional during restore and will appear once Tor connects.'
+                                          .tr
+                                    : 'You can use the app while it syncs in the background.'
+                                          .tr,
                                 style: AppTypography.caption.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              Text(
-                                blocksToScan == null
-                                    ? '--'
-                                    : '~${_formatHeight(blocksToScan)}',
-                                style: AppTypography.bodyBold.copyWith(
                                   color: AppColors.textPrimary,
                                 ),
                               ),
-                            ],
-                          );
-                          if (isNarrow) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                startBlock,
-                                const SizedBox(height: AppSpacing.md),
-                                blocksScan,
-                              ],
-                            );
-                          }
-                          return Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [startBlock, blocksScan],
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  if (_error != null)
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-                      decoration: BoxDecoration(
-                        color: AppColors.error.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.error.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            color: AppColors.error,
-                            size: 20,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              _error!,
-                              style: AppTypography.body.copyWith(
-                                color: AppColors.error,
-                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.accentPrimary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.accentPrimary.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: AppColors.accentPrimary,
-                          size: 20,
+                          ],
                         ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            isRestore
-                                ? 'If you are unsure, choose an earlier start. '
-                                          'Sync takes longer but avoids missing activity. '
-                                          'Latest network height is optional during restore and will appear once Tor connects.'
-                                      .tr
-                                : 'You can use the app while it syncs in the background.'
-                                      .tr,
-                            style: AppTypography.caption.copyWith(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: AppSpacing.xxl),
+                    ],
                   ),
-                  const SizedBox(height: AppSpacing.xxl),
-                ],
+                ),
               ),
             ),
           ),
           Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            child: PButton(
-              text: _isCreating
-                  ? 'Creating...'.tr
-                  : (isRestore ? 'Restore wallet'.tr : 'Create wallet'.tr),
-              onPressed: !_isCreating ? _completeSetup : null,
-              variant: PButtonVariant.primary,
-              size: PButtonSize.large,
-              isLoading: _isCreating,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: AppSpacing.desktopFormMaxWidth,
+                ),
+                child: PButton(
+                  text: _isCreating
+                      ? 'Creating...'.tr
+                      : (isRestore ? 'Restore wallet'.tr : 'Create wallet'.tr),
+                  onPressed: !_isCreating ? _completeSetup : null,
+                  variant: PButtonVariant.primary,
+                  size: PButtonSize.large,
+                  isLoading: _isCreating,
+                ),
+              ),
             ),
           ),
         ],
@@ -567,55 +644,52 @@ class _ModeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isSelected = mode == selected;
     return PCard(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            border: isSelected
-                ? Border.all(color: AppColors.accentPrimary, width: 2)
-                : null,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: isSelected
-                    ? AppColors.accentPrimary
-                    : AppColors.textSecondary,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: AppTypography.bodyBold.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          border: isSelected
+              ? Border.all(color: AppColors.accentPrimary, width: 2)
+              : null,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isSelected
+                  ? AppColors.accentPrimary
+                  : AppColors.textSecondary,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppTypography.bodyBold.copyWith(
+                      color: AppColors.textPrimary,
                     ),
-                    Text(
-                      subtitle,
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textSecondary,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              RadioGroup<BirthdayInputMode>(
-                groupValue: selected,
-                onChanged: (_) => onTap(),
-                child: Radio<BirthdayInputMode>(
-                  value: mode,
-                  activeColor: AppColors.accentPrimary,
-                ),
+            ),
+            RadioGroup<BirthdayInputMode>(
+              groupValue: selected,
+              onChanged: (_) => onTap(),
+              child: Radio<BirthdayInputMode>(
+                value: mode,
+                activeColor: AppColors.accentPrimary,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

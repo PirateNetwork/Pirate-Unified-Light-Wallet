@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
 import '../../../ui/atoms/p_button.dart';
+import '../../../ui/atoms/p_checkbox.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
@@ -100,7 +101,8 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
                     const SizedBox(height: AppSpacing.md),
                     _WarningPoint(
                       icon: Icons.backup_outlined,
-                      text: 'Write it down or use a hardware wallet'.tr,
+                      text: 'Write it down and store it offline. Avoid screenshots or digital copies.'
+                          .tr,
                     ),
                   ],
                 ),
@@ -113,30 +115,14 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
               child: ConstrainedBox(
                 key: const Key('seed-backup-acknowledgment'),
                 constraints: const BoxConstraints(maxWidth: 520),
-                child: InkWell(
-                  onTap: () => setState(() => _acknowledged = !_acknowledged),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: Row(
-                      children: [
-                        Checkbox(
-                          value: _acknowledged,
-                          onChanged: (value) =>
-                              setState(() => _acknowledged = value ?? false),
-                          activeColor: AppColors.accentPrimary,
-                        ),
-                        Expanded(
-                          child: Text(
-                            'I understand that losing my seed phrase means losing access to my wallet forever'
-                                .tr,
-                            style: AppTypography.body.copyWith(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: PCheckbox(
+                    value: _acknowledged,
+                    onChanged: (value) =>
+                        setState(() => _acknowledged = value ?? false),
+                    label: 'I understand that losing my seed phrase means losing access to my wallet forever'
+                        .tr,
                   ),
                 ),
               ),

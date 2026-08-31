@@ -37,7 +37,11 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
   void initState() {
     super.initState();
     _selectedLanguage = ref.read(seedPhraseLanguagePreferenceProvider);
-    _loadMnemonic();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadMnemonic();
+      }
+    });
   }
 
   @override
@@ -160,170 +164,203 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                 MediaQuery.of(context).size.width,
                 vertical: AppSpacing.xl,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const OnboardingProgressIndicator(
-                    currentStep: 5,
-                    totalSteps: 6,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: AppSpacing.desktopFormMaxWidth,
                   ),
-                  SizedBox(
-                    height: _seedRevealed ? AppSpacing.lg : AppSpacing.xxl,
-                  ),
-                  Text(
-                    'Write down these 24 words'.tr,
-                    style: AppTypography.h2.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'Store them in a safe place. Anyone with these words can access your wallet.'
-                        .tr,
-                    style: AppTypography.body.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const OnboardingProgressIndicator(
+                        currentStep: 5,
+                        totalSteps: 6,
+                      ),
+                      SizedBox(
+                        height: _seedRevealed ? AppSpacing.lg : AppSpacing.xxl,
+                      ),
+                      Text(
+                        'Write down these 24 words'.tr,
+                        style: AppTypography.h2.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Store them in a safe place. Anyone with these words can access your wallet.'
+                            .tr,
+                        style: AppTypography.body.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
 
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                      vertical: AppSpacing.xs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundSurface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.borderDefault),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<MnemonicLanguage>(
-                        value: _selectedLanguage,
-                        isExpanded: true,
-                        dropdownColor: AppColors.backgroundSurface,
-                        iconEnabledColor: AppColors.textSecondary,
-                        onChanged: (value) {
-                          if (value != null) {
-                            _setSelectedLanguage(value);
-                          }
-                        },
-                        items: supportedMnemonicLanguages
-                            .map(
-                              (language) => DropdownMenuItem(
-                                value: language,
+                      Text(
+                        'Seed phrase language'.tr,
+                        style: AppTypography.labelMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md,
+                          vertical: AppSpacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundElevated,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: AppColors.borderStrong,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.translate,
+                              color: AppColors.accentPrimary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<MnemonicLanguage>(
+                                  value: _selectedLanguage,
+                                  isExpanded: true,
+                                  dropdownColor: AppColors.backgroundElevated,
+                                  focusColor: AppColors.focusRingSubtle,
+                                  icon: Icon(
+                                    Icons.expand_more,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      _setSelectedLanguage(value);
+                                    }
+                                  },
+                                  items: supportedMnemonicLanguages
+                                      .map(
+                                        (language) => DropdownMenuItem(
+                                          value: language,
+                                          child: Text(
+                                            language.nativeLabel,
+                                            style: AppTypography.body.copyWith(
+                                              color: AppColors.textPrimary,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(growable: false),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: AppSpacing.xl),
+
+                      if (!_seedRevealed) ...[
+                        // Hidden seed - show reveal button
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSurface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.borderDefault),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.visibility_off,
+                                size: 48,
+                                color: AppColors.textSecondary,
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              Text(
+                                'Tap to reveal your seed phrase'.tr,
+                                style: AppTypography.body.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.lg),
+                              PButton(
+                                text: 'Reveal seed phrase'.tr,
+                                onPressed: _revealSeed,
+                                variant: PButtonVariant.primary,
+                                size: PButtonSize.medium,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else ...[
+                        // Revealed seed - show words
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSurface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.borderDefault),
+                          ),
+                          child: _mnemonic == null
+                              ? const Center(child: CircularProgressIndicator())
+                              : SeedPhraseGrid(words: _mnemonic!.split(' ')),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        PButton(
+                          text: 'Copy to clipboard'.tr,
+                          onPressed: _copyToClipboard,
+                          variant: PButtonVariant.secondary,
+                          size: PButtonSize.medium,
+                        ),
+                      ],
+
+                      const SizedBox(height: AppSpacing.xl),
+
+                      if (_seedRevealed) ...[
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.warning.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                color: AppColors.warning,
+                                size: 20,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
                                 child: Text(
-                                  language.nativeLabel,
-                                  style: AppTypography.body.copyWith(
+                                  "Make sure you've written it down before continuing"
+                                      .tr,
+                                  style: AppTypography.caption.copyWith(
                                     color: AppColors.textPrimary,
                                   ),
                                 ),
                               ),
-                            )
-                            .toList(growable: false),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  if (!_seedRevealed) ...[
-                    // Hidden seed - show reveal button
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.xl),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSurface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.borderDefault),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.visibility_off,
-                            size: 48,
-                            color: AppColors.textSecondary,
+                            ],
                           ),
-                          const SizedBox(height: AppSpacing.md),
-                          Text(
-                            'Tap to reveal your seed phrase'.tr,
-                            style: AppTypography.body.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.lg),
-                          PButton(
-                            text: 'Reveal seed phrase'.tr,
-                            onPressed: _revealSeed,
-                            variant: PButtonVariant.primary,
-                            size: PButtonSize.medium,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    // Revealed seed - show words
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSurface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.borderDefault),
-                      ),
-                      child: _mnemonic == null
-                          ? const Center(child: CircularProgressIndicator())
-                          : SeedPhraseGrid(words: _mnemonic!.split(' ')),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    PButton(
-                      text: 'Copy to clipboard'.tr,
-                      onPressed: _copyToClipboard,
-                      variant: PButtonVariant.secondary,
-                      size: PButtonSize.medium,
-                    ),
-                  ],
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  if (_seedRevealed) ...[
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.warning.withValues(alpha: 0.3),
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            color: AppColors.warning,
-                            size: 20,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              "Make sure you've written it down before continuing"
-                                  .tr,
-                              style: AppTypography.caption.copyWith(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    PButton(
-                      text: "I've backed it up".tr,
-                      onPressed: _proceed,
-                      variant: PButtonVariant.primary,
-                      size: PButtonSize.large,
-                    ),
-                  ],
-                ],
+                        const SizedBox(height: AppSpacing.lg),
+                        PButton(
+                          text: "I've backed it up".tr,
+                          onPressed: _proceed,
+                          variant: PButtonVariant.primary,
+                          size: PButtonSize.large,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
     );
