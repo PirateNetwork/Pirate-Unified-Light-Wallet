@@ -23,7 +23,6 @@
   "Accounts #{first}–#{last}": "Accounts #{first}–#{last}",
   "Accounts are added in order and remain even when empty.": "Accounts are added in order and remain even when empty.",
   "Accounts {accounts} added. Scan started.": "Accounts {accounts} added. Scan started.",
-  "Actions": "Actions",
   "Active": "Active",
   "Active Wallet": "Active Wallet",
   "Activity": "Activity",
