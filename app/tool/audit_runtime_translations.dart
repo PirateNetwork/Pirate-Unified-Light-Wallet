@@ -112,19 +112,16 @@ final class _TranslationVisitor extends RecursiveAstVisitor<void> {
   bool isInsideTranslation(AstNode node) {
     AstNode? current = node.parent;
     while (current != null && current is! Statement) {
-      if (current case PropertyAccess(
-        propertyName: final propertyName,
-      ) when const {'tr', 'trArgs'}.contains(propertyName.name)) {
+      if (current case PropertyAccess(propertyName: final propertyName)
+          when const {'tr', 'trArgs'}.contains(propertyName.name)) {
         return true;
       }
-      if (current case PrefixedIdentifier(
-        identifier: final identifier,
-      ) when const {'tr', 'trArgs'}.contains(identifier.name)) {
+      if (current case PrefixedIdentifier(identifier: final identifier)
+          when const {'tr', 'trArgs'}.contains(identifier.name)) {
         return true;
       }
-      if (current case MethodInvocation(
-        methodName: final methodName,
-      ) when methodName.name == 'trArgs') {
+      if (current case MethodInvocation(methodName: final methodName)
+          when methodName.name == 'trArgs') {
         return true;
       }
       current = current.parent;
@@ -283,9 +280,7 @@ bool shouldTranslateUiLiteral(String path, String value) {
     'i2p_first_use_ack',
     'ltc1... or L...',
     'obfs4',
-    'Pirate Chain Unified Wallet',
-    'Pirate Unified Wallet',
-    'Pirate Wallet',
+    'Stashi Wallet',
     'Snowflake',
     'socks5',
     'status',
@@ -348,9 +343,8 @@ bool looksLikeHumanText(String value) {
   if (trimmed.startsWith(RegExp('(https?://|package:|dart:|assets/|lib/)')) ||
       trimmed.startsWith(RegExp(r'[-^\\./_(]')) ||
       trimmed.contains(r'\') ||
-      RegExp(
-        r'\.(dart|json|yaml|yml|csv|txt|log|png|svg|so|dll|dylib)$',
-      ).hasMatch(trimmed) ||
+      RegExp(r'\.(dart|json|yaml|yml|csv|txt|log|png|svg|so|dll|dylib)$')
+          .hasMatch(trimmed) ||
       RegExp(r'^[a-z][A-Za-z0-9_]*$').hasMatch(trimmed) ||
       RegExp(r'^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$').hasMatch(trimmed) ||
       RegExp(r'^[A-Z0-9_./:+-]{2,12}$').hasMatch(trimmed)) {
@@ -387,9 +381,11 @@ Map<String, String> readArb(File file) {
   };
 }
 
-Set<String> placeholders(String value) => RegExp(
-  r'\{([A-Za-z][A-Za-z0-9_]*)\}',
-).allMatches(value).map((match) => match.group(1)!).toSet();
+Set<String> placeholders(String value) =>
+    RegExp(r'\{([A-Za-z][A-Za-z0-9_]*)\}')
+        .allMatches(value)
+        .map((match) => match.group(1)!)
+        .toSet();
 
 int newlineCount(String value) => '\n'.allMatches(value).length;
 
@@ -443,9 +439,9 @@ Set<String> protectedLiterals(String source) {
         for (final term in protectedRuntimeTerms)
           if (source.contains(term)) term,
       }..addAll(
-        RegExp(
-          r'https?://[^\s<>"\]]+',
-        ).allMatches(source).map((match) => match.group(0)!),
+        RegExp(r'https?://[^\s<>"\]]+')
+            .allMatches(source)
+            .map((match) => match.group(0)!),
       );
   return literals;
 }
@@ -589,9 +585,8 @@ void main(List<String> arguments) {
           '${localeFile.path}: edge whitespace differs for ${jsonEncode(key)}',
         );
       }
-      if (RegExp(
-        r'[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]',
-      ).hasMatch(value)) {
+      if (RegExp(r'[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]')
+          .hasMatch(value)) {
         localeProblems.add(
           '${localeFile.path}: hidden direction or formatting character in '
           '${jsonEncode(key)}',

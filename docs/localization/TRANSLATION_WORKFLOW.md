@@ -16,7 +16,7 @@ Translate user-facing language, including:
 Do not translate:
 
 - ARB keys or placeholder names such as `{ticker}`, `{error}`, or `{walletName}`
-- product and protocol names such as `Pirate Wallet`, `Pirate Unified Wallet`, `ARRR`, `LTC`, `vARRR`, `KDF`, `Snowflake`, `obfs4`, `Face ID`, and `Bitcoin`
+- product and protocol names such as `Stashi Wallet`, `Stashi Wallet`, `ARRR`, `LTC`, `vARRR`, `KDF`, `Snowflake`, `obfs4`, `Face ID`, and `Bitcoin`
 - addresses, hashes, transaction IDs, URLs, paths, filenames, extensions, and numeric examples
 - internal error codes, JSON/RPC field names, log messages, and error-matching fragments
 - the bundled MIT License text
