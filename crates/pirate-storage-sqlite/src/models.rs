@@ -262,6 +262,11 @@ pub struct TransactionRecord {
     pub fee: u64,
     /// Memo (from first note with memo)
     pub memo: Option<Vec<u8>>,
+    /// Whether the locally scanned chain passed this transaction's expiry height
+    /// without observing a confirmation.
+    pub expired: bool,
+    /// Consensus expiry height for wallet-authored transactions.
+    pub expiry_height: Option<u32>,
 }
 
 /// Wallet-authored details retained independently of chain-derived state.
@@ -277,4 +282,9 @@ pub struct OutgoingTransactionIntent {
     pub fee: u64,
     /// Unix timestamp recorded after a successful broadcast.
     pub broadcast_at: i64,
+    /// Consensus height after which an unmined transaction is invalid.
+    ///
+    /// Zero is reserved for intents written by wallet versions that did not
+    /// persist this value.
+    pub expiry_height: u32,
 }

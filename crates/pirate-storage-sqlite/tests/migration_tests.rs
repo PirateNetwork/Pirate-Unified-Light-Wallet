@@ -102,7 +102,7 @@ fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
         )
         .unwrap();
 
-    assert_eq!(version, 38);
+    assert_eq!(version, 39);
     assert_eq!(sapling_checkpoint, 12345);
     assert_eq!(orchard_checkpoint, 67890);
     assert_eq!(retained_tables, 2);
@@ -137,7 +137,7 @@ fn test_v33_adds_durable_outgoing_transaction_intents() {
         )
         .unwrap();
 
-    assert_eq!(version, 38);
+    assert_eq!(version, 39);
     assert_eq!(table_count, 1);
 }
 
@@ -212,7 +212,7 @@ fn test_v34_adds_ironwood_activation_height_to_sync_state() {
         )
         .unwrap();
 
-    assert_eq!(version, 38);
+    assert_eq!(version, 39);
     assert_eq!(activation_height, None);
     assert_eq!(migration_marker, "completed");
 }
@@ -361,7 +361,7 @@ fn test_v38_adds_ordered_full_diversifier_indices() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(version, 38);
+    assert_eq!(version, 39);
     assert_eq!(marker, "completed");
 
     let lower = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
@@ -409,6 +409,55 @@ fn test_v38_adds_ordered_full_diversifier_indices() {
             [&lower],
         )
         .is_err());
+}
+
+#[test]
+fn test_v39_adds_outgoing_transaction_expiry_height() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+    migrations::run_migrations(&conn).unwrap();
+
+    conn.execute_batch(
+        "DROP TABLE outgoing_transaction_intents;
+         CREATE TABLE outgoing_transaction_intents (
+             txid TEXT PRIMARY KEY,
+             account_id BLOB NOT NULL,
+             amount BLOB NOT NULL,
+             fee BLOB NOT NULL,
+             broadcast_at INTEGER NOT NULL
+         );
+         DELETE FROM schema_version;
+         INSERT INTO schema_version (version) VALUES (38);",
+    )
+    .unwrap();
+
+    migrations::run_migrations(&conn).unwrap();
+
+    let version: i32 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let expiry_column_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('outgoing_transaction_intents')
+             WHERE name = 'expiry_height'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let marker: String = conn
+        .query_row(
+            "SELECT value FROM migration_state
+             WHERE key = 'v39_outgoing_transaction_expiry'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(version, 39);
+    assert_eq!(expiry_column_count, 1);
+    assert_eq!(marker, "completed");
 }
 
 #[test]

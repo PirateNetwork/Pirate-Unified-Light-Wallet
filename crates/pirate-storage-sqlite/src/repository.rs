@@ -1125,6 +1125,7 @@ impl<'a> Repository<'a> {
         amount: u64,
         fee: u64,
         broadcast_at: i64,
+        expiry_height: u32,
     ) -> Result<()> {
         let txid = txid_hex.trim().to_ascii_lowercase();
         if txid.len() != 64 || !txid.chars().all(|character| character.is_ascii_hexdigit()) {
@@ -1143,19 +1144,21 @@ impl<'a> Repository<'a> {
         let tx = self.db.conn().unchecked_transaction()?;
         tx.execute(
             "INSERT INTO outgoing_transaction_intents
-                (txid, account_id, amount, fee, broadcast_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+                (txid, account_id, amount, fee, broadcast_at, expiry_height)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(txid) DO UPDATE SET
                 account_id = excluded.account_id,
                 amount = excluded.amount,
                 fee = excluded.fee,
-                broadcast_at = excluded.broadcast_at",
+                broadcast_at = excluded.broadcast_at,
+                expiry_height = excluded.expiry_height",
             params![
                 txid,
                 encrypted_account_id,
                 encrypted_amount,
                 encrypted_fee,
-                broadcast_at
+                broadcast_at,
+                expiry_height
             ],
         )?;
         tx.execute(
@@ -1179,7 +1182,7 @@ impl<'a> Repository<'a> {
         account_id: i64,
     ) -> Result<Vec<OutgoingTransactionIntent>> {
         let mut stmt = self.db.conn().prepare(
-            "SELECT txid, account_id, amount, fee, broadcast_at
+            "SELECT txid, account_id, amount, fee, broadcast_at, expiry_height
              FROM outgoing_transaction_intents
              ORDER BY broadcast_at DESC, txid DESC",
         )?;
@@ -1191,12 +1194,21 @@ impl<'a> Repository<'a> {
                     row.get::<_, Vec<u8>>(2)?,
                     row.get::<_, Vec<u8>>(3)?,
                     row.get::<_, i64>(4)?,
+                    row.get::<_, u32>(5)?,
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut intents = Vec::new();
-        for (txid, encrypted_account_id, encrypted_amount, encrypted_fee, broadcast_at) in rows {
+        for (
+            txid,
+            encrypted_account_id,
+            encrypted_amount,
+            encrypted_fee,
+            broadcast_at,
+            expiry_height,
+        ) in rows
+        {
             if self.decrypt_int64(&encrypted_account_id)? != account_id {
                 continue;
             }
@@ -1212,9 +1224,147 @@ impl<'a> Repository<'a> {
                     Error::Storage("Stored transaction fee is negative".to_string())
                 })?,
                 broadcast_at,
+                expiry_height,
             });
         }
         Ok(intents)
+    }
+
+    fn outgoing_transaction_is_confirmed(&self, txid: &str) -> Result<bool> {
+        let mut candidates = vec![txid.to_string()];
+        if let Some(reversed) = reverse_txid_hex(txid) {
+            if reversed != txid {
+                candidates.push(reversed);
+            }
+        }
+        Ok(self
+            .get_transaction_heights(&candidates)?
+            .values()
+            .any(|height| *height > 0))
+    }
+
+    /// Give pre-expiry-schema outgoing intents a conservative reconciliation
+    /// height measured from the wallet's stable, locally scanned tip.
+    ///
+    /// Waiting a full transaction lifetime after the upgrade avoids guessing
+    /// the original signing height and prevents a legacy pending entry from
+    /// being released while it could still be mined.
+    pub fn initialize_legacy_outgoing_expiries(
+        &self,
+        account_id: i64,
+        local_height: u64,
+        transaction_lifetime: u32,
+    ) -> Result<u64> {
+        let expiry_height = local_height
+            .saturating_add(u64::from(transaction_lifetime))
+            .min(u64::from(u32::MAX)) as u32;
+        let mut updated = 0u64;
+
+        for intent in self.get_outgoing_transaction_intents(account_id)? {
+            if intent.expiry_height != 0 || self.outgoing_transaction_is_confirmed(&intent.txid)? {
+                continue;
+            }
+            updated = updated.saturating_add(self.db.conn().execute(
+                "UPDATE outgoing_transaction_intents
+                 SET expiry_height = ?1
+                 WHERE txid = ?2 AND expiry_height = 0",
+                params![expiry_height, intent.txid],
+            )? as u64);
+        }
+
+        Ok(updated)
+    }
+
+    /// Release notes locked by wallet-authored transactions that are now
+    /// consensus-invalid because the locally scanned chain passed their expiry
+    /// height without observing a confirmation.
+    pub fn release_expired_outgoing_notes(
+        &self,
+        account_id: i64,
+        local_height: u64,
+    ) -> Result<u64> {
+        let mut expired_txids = std::collections::HashSet::<[u8; 32]>::new();
+        for intent in self.get_outgoing_transaction_intents(account_id)? {
+            if intent.expiry_height == 0
+                || local_height <= u64::from(intent.expiry_height)
+                || self.outgoing_transaction_is_confirmed(&intent.txid)?
+            {
+                continue;
+            }
+            let Ok(mut direct) = hex::decode(&intent.txid) else {
+                continue;
+            };
+            if direct.len() != 32 {
+                continue;
+            }
+            let mut direct_bytes = [0u8; 32];
+            direct_bytes.copy_from_slice(&direct);
+            expired_txids.insert(direct_bytes);
+            direct.reverse();
+            let mut reversed_bytes = [0u8; 32];
+            reversed_bytes.copy_from_slice(&direct);
+            expired_txids.insert(reversed_bytes);
+        }
+        if expired_txids.is_empty() {
+            return Ok(0);
+        }
+
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, spent, spent_txid
+             FROM notes
+             WHERE spent_txid IS NOT NULL",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Vec<u8>>(1)?,
+                    row.get::<_, Vec<u8>>(2)?,
+                    row.get::<_, Option<Vec<u8>>>(3)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        drop(stmt);
+
+        let mut release_ids = Vec::new();
+        for (id, encrypted_account_id, encrypted_spent, encrypted_spent_txid) in rows {
+            if self.decrypt_int64(&encrypted_account_id)? != account_id
+                || !self.decrypt_bool(&encrypted_spent)?
+            {
+                continue;
+            }
+            let Some(spent_txid) = self.decrypt_optional_blob(encrypted_spent_txid)? else {
+                continue;
+            };
+            let Ok(spent_txid) = <[u8; 32]>::try_from(spent_txid.as_slice()) else {
+                continue;
+            };
+            if !expired_txids.contains(&spent_txid) {
+                continue;
+            }
+            release_ids.push(id);
+        }
+        if release_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let encrypted_unspent = self.encrypt_bool(false)?;
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+        let mut released = 0u64;
+        for id in release_ids {
+            if let Err(error) = conn.execute(
+                "UPDATE notes SET spent = ?1, spent_txid = NULL WHERE id = ?2",
+                params![encrypted_unspent.clone(), id],
+            ) {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(error.into());
+            }
+            released = released.saturating_add(1);
+        }
+        conn.execute_batch("COMMIT;")?;
+
+        Ok(released)
     }
 
     /// Insert or update an outgoing memo for a transaction.
@@ -3998,7 +4148,7 @@ impl<'a> Repository<'a> {
         &self,
         account_id: i64,
         limit: Option<u32>,
-        _current_height: u64,
+        current_height: u64,
         _min_depth: u64,
         split_transfers: bool,
     ) -> Result<Vec<TransactionRecord>> {
@@ -4057,6 +4207,7 @@ impl<'a> Repository<'a> {
             intent_amount: Option<i64>,
             intent_fee: Option<u64>,
             intent_broadcast_at: Option<i64>,
+            intent_expiry_height: Option<u32>,
             memo: Option<Vec<u8>>,
             saw_internal: bool,
             saw_unknown_scope: bool,
@@ -4072,6 +4223,7 @@ impl<'a> Repository<'a> {
                     intent_amount: None,
                     intent_fee: None,
                     intent_broadcast_at: None,
+                    intent_expiry_height: None,
                     memo: None,
                     saw_internal: false,
                     saw_unknown_scope: false,
@@ -4228,6 +4380,7 @@ impl<'a> Repository<'a> {
             entry.intent_amount = Some(intent_amount);
             entry.intent_fee = Some(intent.fee);
             entry.intent_broadcast_at = Some(intent.broadcast_at);
+            entry.intent_expiry_height = (intent.expiry_height > 0).then_some(intent.expiry_height);
         }
 
         let txid_keys: Vec<String> = tx_map.keys().cloned().collect();
@@ -4335,6 +4488,10 @@ impl<'a> Repository<'a> {
                 .saturating_sub(fee_i64);
             let outgoing_amount = entry.intent_amount.unwrap_or(chain_outgoing_amount);
             let has_outgoing = entry.sent > 0 || entry.intent_amount.is_some();
+            let expired = entry.height <= 0
+                && entry
+                    .intent_expiry_height
+                    .is_some_and(|height| current_height > u64::from(height));
 
             let can_split = split_transfers
                 && entry.received_external > 0
@@ -4384,6 +4541,8 @@ impl<'a> Repository<'a> {
                     amount: -outgoing_amount,
                     fee,
                     memo: memo.clone(),
+                    expired,
+                    expiry_height: entry.intent_expiry_height,
                 });
                 transactions.push(TransactionRecord {
                     txid,
@@ -4392,6 +4551,8 @@ impl<'a> Repository<'a> {
                     amount: entry.received_external,
                     fee: 0,
                     memo,
+                    expired: false,
+                    expiry_height: None,
                 });
             } else if self_transfer {
                 let transfer_amount = entry.intent_amount.unwrap_or(entry.received_external);
@@ -4402,6 +4563,8 @@ impl<'a> Repository<'a> {
                     amount: -transfer_amount,
                     fee,
                     memo: memo.clone(),
+                    expired,
+                    expiry_height: entry.intent_expiry_height,
                 });
                 transactions.push(TransactionRecord {
                     txid,
@@ -4410,6 +4573,8 @@ impl<'a> Repository<'a> {
                     amount: transfer_amount,
                     fee: 0,
                     memo,
+                    expired: false,
+                    expiry_height: None,
                 });
             } else if entry.intent_amount.is_some() {
                 transactions.push(TransactionRecord {
@@ -4419,6 +4584,8 @@ impl<'a> Repository<'a> {
                     amount: -outgoing_amount,
                     fee,
                     memo,
+                    expired,
+                    expiry_height: entry.intent_expiry_height,
                 });
             } else {
                 transactions.push(TransactionRecord {
@@ -4428,6 +4595,8 @@ impl<'a> Repository<'a> {
                     amount: net_amount,
                     fee,
                     memo,
+                    expired: false,
+                    expiry_height: None,
                 });
             }
         }
@@ -4482,12 +4651,14 @@ impl<'a> Repository<'a> {
         // confirmed chain history. Within each group, retain deterministic
         // newest-first ordering.
         transactions.sort_by(|a, b| {
-            let a_pending = a.height <= 0;
-            let b_pending = b.height <= 0;
+            let a_pending = a.height <= 0 && !a.expired;
+            let b_pending = b.height <= 0 && !b.expired;
             b_pending
                 .cmp(&a_pending)
                 .then_with(|| {
                     if a_pending && b_pending {
+                        b.timestamp.cmp(&a.timestamp)
+                    } else if a.expired && b.expired {
                         b.timestamp.cmp(&a.timestamp)
                     } else {
                         b.height.cmp(&a.height)
@@ -7449,6 +7620,7 @@ mod tests {
             250_000_000,
             10_000,
             1_700_000_000,
+            4_000_040,
         )
         .unwrap();
 
@@ -7469,6 +7641,7 @@ mod tests {
                 amount: 250_000_000,
                 fee: 10_000,
                 broadcast_at: 1_700_000_000,
+                expiry_height: 4_000_040,
             }]
         );
 
@@ -7515,6 +7688,7 @@ mod tests {
             250_000_000,
             10_000,
             2_000,
+            140,
         )
         .unwrap();
 
@@ -7576,6 +7750,155 @@ mod tests {
     }
 
     #[test]
+    fn expired_outgoing_intent_releases_locked_notes_after_scanned_height_passes_expiry() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Expired outgoing intent".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let spend_txid = vec![0x55; 32];
+        let spend_txid_hex = txid_hex_from_bytes(&spend_txid);
+        insert_received_note(
+            &repo,
+            account_id,
+            vec![0x11; 32],
+            NoteType::Sapling,
+            0,
+            500_000_000,
+            100,
+            None,
+            None,
+            false,
+            0x31,
+        );
+        assert!(repo
+            .mark_note_spent_by_nullifier_with_txid(account_id, &[0x31; 32], &spend_txid,)
+            .unwrap());
+        repo.upsert_outgoing_transaction_intent(
+            account_id,
+            &spend_txid_hex,
+            250_000_000,
+            10_000,
+            2_000,
+            140,
+        )
+        .unwrap();
+
+        assert!(repo.get_unspent_notes(account_id).unwrap().is_empty());
+        assert_eq!(
+            repo.release_expired_outgoing_notes(account_id, 140)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            repo.release_expired_outgoing_notes(account_id, 141)
+                .unwrap(),
+            1
+        );
+        assert_eq!(repo.get_unspent_notes(account_id).unwrap().len(), 1);
+
+        let history = repo
+            .get_transactions_with_options(account_id, None, 141, 1, true)
+            .unwrap();
+        let expired = history
+            .iter()
+            .find(|tx| tx.txid == spend_txid_hex)
+            .expect("expired outgoing transaction");
+        assert!(expired.expired);
+        assert_eq!(expired.expiry_height, Some(140));
+    }
+
+    #[test]
+    fn confirmed_outgoing_intent_never_releases_its_spent_notes() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Confirmed outgoing intent".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let spend_txid = vec![0x66; 32];
+        let spend_txid_hex = txid_hex_from_bytes(&spend_txid);
+        insert_received_note(
+            &repo,
+            account_id,
+            vec![0x22; 32],
+            NoteType::Sapling,
+            0,
+            500_000_000,
+            100,
+            None,
+            None,
+            false,
+            0x41,
+        );
+        assert!(repo
+            .mark_note_spent_by_nullifier_with_txid(account_id, &[0x41; 32], &spend_txid,)
+            .unwrap());
+        repo.upsert_outgoing_transaction_intent(
+            account_id,
+            &spend_txid_hex,
+            250_000_000,
+            10_000,
+            2_000,
+            140,
+        )
+        .unwrap();
+        repo.upsert_transaction(&spend_txid_hex, 130, 2_100, 10_000)
+            .unwrap();
+
+        assert_eq!(
+            repo.release_expired_outgoing_notes(account_id, 141)
+                .unwrap(),
+            0
+        );
+        assert!(repo.get_unspent_notes(account_id).unwrap().is_empty());
+        let history = repo
+            .get_transactions_with_options(account_id, None, 141, 1, true)
+            .unwrap();
+        let confirmed = history
+            .iter()
+            .find(|tx| tx.txid == spend_txid_hex)
+            .expect("confirmed outgoing transaction");
+        assert!(!confirmed.expired);
+    }
+
+    #[test]
+    fn legacy_outgoing_intent_waits_one_full_lifetime_after_upgrade() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Legacy outgoing intent".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let txid = "77".repeat(32);
+        repo.upsert_outgoing_transaction_intent(account_id, &txid, 20, 1, 2_000, 0)
+            .unwrap();
+
+        assert_eq!(
+            repo.initialize_legacy_outgoing_expiries(account_id, 4_000_000, 40)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            repo.initialize_legacy_outgoing_expiries(account_id, 4_000_010, 40)
+                .unwrap(),
+            0
+        );
+        let intents = repo.get_outgoing_transaction_intents(account_id).unwrap();
+        assert_eq!(intents[0].expiry_height, 4_000_040);
+    }
+
+    #[test]
     fn pending_transactions_sort_before_confirmed_history() {
         let db = test_db();
         let repo = Repository::new(&db);
@@ -7604,10 +7927,24 @@ mod tests {
             .unwrap();
         let older_pending = "33".repeat(32);
         let newer_pending = "44".repeat(32);
-        repo.upsert_outgoing_transaction_intent(account_id, &older_pending, 20, 1, 2_000)
-            .unwrap();
-        repo.upsert_outgoing_transaction_intent(account_id, &newer_pending, 30, 1, 3_000)
-            .unwrap();
+        repo.upsert_outgoing_transaction_intent(
+            account_id,
+            &older_pending,
+            20,
+            1,
+            2_000,
+            4_000_040,
+        )
+        .unwrap();
+        repo.upsert_outgoing_transaction_intent(
+            account_id,
+            &newer_pending,
+            30,
+            1,
+            3_000,
+            4_000_040,
+        )
+        .unwrap();
 
         let history = repo
             .get_transactions_with_options(account_id, None, 4_000_000, 1, true)
