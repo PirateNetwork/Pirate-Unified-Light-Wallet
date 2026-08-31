@@ -149,7 +149,7 @@ void main() {
     );
 
     expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Actions'), findsOneWidget);
+    expect(find.text('Wallet'), findsOneWidget);
     expect(find.text('Activity'), findsOneWidget);
     expect(find.byTooltip('Settings'), findsOneWidget);
     expect(find.byKey(DesktopStatusBar.barKey), findsOneWidget);
@@ -163,7 +163,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Beranda'), findsOneWidget);
-    expect(find.text('Tindakan'), findsOneWidget);
+    expect(find.text('Dompet'), findsOneWidget);
     expect(find.text('Aktivitas'), findsOneWidget);
     expect(find.byTooltip('Pengaturan'), findsOneWidget);
     expect(find.text('Home'), findsNothing);

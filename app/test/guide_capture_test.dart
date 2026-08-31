@@ -511,7 +511,7 @@ void main() {
     );
   });
 
-  testWidgets('captures payment actions on phone and desktop', (tester) async {
+  testWidgets('captures wallet hub on phone and desktop', (tester) async {
     final sheet = PaySheet(
       onSend: () {},
       onReceive: () {},

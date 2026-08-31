@@ -27,7 +27,7 @@ void main() {
               PNavDestination(
                 icon: Icons.payments_outlined,
                 selectedIcon: Icons.payments,
-                label: 'Actions',
+                label: 'Wallet',
               ),
               PNavDestination(icon: Icons.settings_outlined, label: 'Settings'),
             ],
@@ -58,7 +58,7 @@ void main() {
     expect(decoration.borderRadius, BorderRadius.circular(PSpacing.radiusSM));
 
     final selectedLabel = tester.widget<Text>(
-      find.descendant(of: selectedItemFinder, matching: find.text('Actions')),
+      find.descendant(of: selectedItemFinder, matching: find.text('Wallet')),
     );
     expect(selectedLabel.style!.fontSize, 12);
     expect(selectedLabel.style!.fontWeight, PTypography.regular);
@@ -119,7 +119,7 @@ void main() {
             onDestinationSelected: (_) {},
             destinations: const [
               PNavDestination(icon: Icons.home_outlined, label: 'Home'),
-              PNavDestination(icon: Icons.payments_outlined, label: 'Actions'),
+              PNavDestination(icon: Icons.payments_outlined, label: 'Wallet'),
             ],
           ),
         ),
@@ -161,7 +161,7 @@ void main() {
               PNavDestination(icon: Icons.home_outlined, label: 'Home'),
               PNavDestination(
                 icon: Icons.payments_outlined,
-                label: 'Actions',
+                label: 'Wallet',
                 isPay: true,
               ),
               PNavDestination(
