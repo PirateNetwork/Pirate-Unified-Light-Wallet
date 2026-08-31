@@ -2,12 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/design/theme.dart';
 import 'package:pirate_wallet/features/settings/providers/preferences_providers.dart';
 import 'package:pirate_wallet/features/settings/screens/outbound_api_screen.dart';
+
+import '../../support/test_font_loader.dart';
 
 const _captureBoundaryKey = ValueKey('outbound-api-capture');
 
@@ -84,9 +85,7 @@ Future<void> _captureIfRequested(WidgetTester tester, String filename) async {
 
 void main() {
   setUpAll(() async {
-    final sora = FontLoader('Sora')
-      ..addFont(rootBundle.load('assets/fonts/Sora/Sora.ttf'));
-    await sora.load();
+    await loadTestFont('Sora', 'assets/fonts/Sora/Sora.ttf');
   });
 
   testWidgets('phone layout discloses price providers without overflow', (
