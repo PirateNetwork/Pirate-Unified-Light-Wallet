@@ -8,6 +8,7 @@ Widget _testApp({
   required double textScale,
   String amountText = '+77999.9997 ARRR',
   String? addressLabel,
+  bool isExpired = false,
   VoidCallback? onTap,
 }) {
   return MaterialApp(
@@ -25,6 +26,7 @@ Widget _testApp({
             child: TransactionRowV2(
               isReceived: true,
               isConfirmed: true,
+              isExpired: isExpired,
               amountText: amountText,
               timestamp: DateTime.now().subtract(const Duration(days: 3)),
               memo: 'Thank you',
@@ -120,5 +122,19 @@ void main() {
 
     semantics.properties.onTap!();
     expect(taps, 1);
+  });
+
+  testWidgets('announces an expired transaction as expired', (tester) async {
+    await tester.pumpWidget(
+      _testApp(width: 320, textScale: 1, isExpired: true),
+    );
+
+    expect(find.text('Expired'), findsOneWidget);
+    final semantics = tester.widget<Semantics>(
+      find.byKey(TransactionRowV2.semanticsKey),
+    );
+    expect(semantics.properties.label, contains('Expired'));
+    expect(semantics.properties.label, isNot(contains('Confirmed')));
+    expect(tester.takeException(), isNull);
   });
 }
