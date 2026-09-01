@@ -68,6 +68,36 @@ function Save-ResizedPng {
     $bmp.Dispose()
 }
 
+function Save-ResizedOpaquePng {
+    param(
+        [System.Drawing.Image]$Source,
+        [int]$Size,
+        [string]$Path,
+        [System.Drawing.Color]$BackgroundColor
+    )
+    $dir = Split-Path $Path
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $bmp = New-Object System.Drawing.Bitmap -ArgumentList @(
+        $Size,
+        $Size,
+        [System.Drawing.Imaging.PixelFormat]::Format24bppRgb
+    )
+    $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+    $gfx.Clear($BackgroundColor)
+    $gfx.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $gfx.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $gfx.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $gfx.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $gfx.DrawImage($Source, 0, 0, $Size, $Size)
+    $gfx.Dispose()
+
+    $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp.Dispose()
+}
+
 function Get-PngBytes {
     param(
         [System.Drawing.Image]$Source,
@@ -154,6 +184,15 @@ $srcImage = [System.Drawing.Image]::FromFile($srcPath)
 try {
     $square = New-SquareImage -Source $srcImage
 
+    $sourceBitmap = New-Object System.Drawing.Bitmap -ArgumentList $srcImage
+    try {
+        if ($sourceBitmap.GetPixel(0, 0).A -ne 0) {
+            throw "Source app icon must have a transparent outer edge: $srcPath"
+        }
+    } finally {
+        $sourceBitmap.Dispose()
+    }
+
     $macDir = Join-Path $root "app\\macos\\Runner\\Assets.xcassets\\AppIcon.appiconset"
     $macMap = @{
         16 = "app_icon_16.png"
@@ -169,6 +208,8 @@ try {
     }
 
     $iosDir = Join-Path $root "app\\ios\\Runner\\Assets.xcassets\\AppIcon.appiconset"
+    # Apple rejects App Store icons with alpha. Other platforms keep the
+    # transparent master; iOS receives the same mark on an opaque neutral base.
     $iosTargets = @(
         @{ Size = 20; File = "Icon-App-20x20@1x.png" },
         @{ Size = 40; File = "Icon-App-20x20@2x.png" },
@@ -187,7 +228,11 @@ try {
         @{ Size = 1024; File = "Icon-App-1024x1024@1x.png" }
     )
     foreach ($target in $iosTargets) {
-        Save-ResizedPng -Source $square -Size $target.Size -Path (Join-Path $iosDir $target.File)
+        Save-ResizedOpaquePng `
+            -Source $square `
+            -Size $target.Size `
+            -Path (Join-Path $iosDir $target.File) `
+            -BackgroundColor ([System.Drawing.Color]::White)
     }
 
     $androidDir = Join-Path $root "app\\android\\app\\src\\main\\res"
