@@ -26,6 +26,8 @@ void main() {
       ),
     );
 
+    expect(find.text('Wallets'), findsOneWidget);
+
     expect(kAtomicSwapsEnabled, isFalse);
 
     final sendAction = find.ancestor(

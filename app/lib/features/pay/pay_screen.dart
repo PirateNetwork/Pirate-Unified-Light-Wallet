@@ -14,7 +14,7 @@ import '../../core/i18n/arb_text_localizer.dart';
 import '../../core/platform/platform_utils.dart';
 import '../../core/swaps/swap_availability.dart';
 
-/// Action hub for desktop and deep links.
+/// Wallets hub for desktop and deep links.
 class PayScreen extends StatelessWidget {
   const PayScreen({super.key, this.useScaffold = true});
 
@@ -44,10 +44,10 @@ class PayScreen extends StatelessWidget {
         return content;
       }
       return PScaffold(
-        title: 'Wallet'.tr,
+        title: 'Wallets'.tr,
         useSafeArea: false,
         appBar: PAppBar(
-          title: 'Wallet'.tr,
+          title: 'Wallets'.tr,
           subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
           actions: appBarActions,
         ),
@@ -56,11 +56,11 @@ class PayScreen extends StatelessWidget {
     }
 
     return PScaffold(
-      title: 'Wallet'.tr,
+      title: 'Wallets'.tr,
       appBar: desktopPlatform
           ? null
           : PAppBar(
-              title: 'Wallet'.tr,
+              title: 'Wallets'.tr,
               subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
               actions: appBarActions,
             ),
@@ -69,7 +69,7 @@ class PayScreen extends StatelessWidget {
   }
 }
 
-/// Mobile wallet sheet with primary payment tools.
+/// Mobile Wallets sheet with primary payment tools.
 class PaySheet extends StatelessWidget {
   const PaySheet({
     required this.onSend,
@@ -185,7 +185,7 @@ class PaySheet extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Wallet'.tr,
+                    'Wallets'.tr,
                     style: PTypography.heading4(color: AppColors.textPrimary),
                   ),
                   const SizedBox(height: PSpacing.xs),
