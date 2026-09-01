@@ -42,6 +42,11 @@ export interface PirateWalletAccountStorageConfig {
   storagePath?: string | null
 }
 
+export interface PirateWalletSecureAccountStorageConfig {
+  accountId: string
+  storagePath?: string | null
+}
+
 export interface LightdEndpointConfig {
   host: string
   port: number
@@ -80,6 +85,44 @@ export interface NodeTestResult {
   responseTimeMs: number
   serverVersion: string | null
   chainName: string | null
+}
+
+export type SpendabilityReasonCode =
+  | 'OK'
+  | 'ERR_SYNC_FINALIZING'
+  | 'ERR_WITNESS_REPAIR_QUEUED'
+  | 'ERR_RESCAN_REQUIRED'
+
+export interface SpendabilityStatus {
+  spendable: boolean
+  rescanRequired: boolean
+  targetHeight: number
+  anchorHeight: number
+  validatedAnchorHeight: number
+  repairQueued: boolean
+  reasonCode: SpendabilityReasonCode
+}
+
+export interface WalletSigningStatus {
+  protectionEnabled: boolean
+  unlocked: boolean
+}
+
+export interface EndpointHealthDiagnostic {
+  endpoint: string
+  healthy: boolean
+  active: boolean
+  tipHeight: number | null
+  latencyMs: number | null
+  reason: string | null
+}
+
+export interface EndpointPoolDiagnostics {
+  walletId: string
+  configuredEndpoint: string
+  activeEndpoint: string | null
+  automaticFailover: boolean
+  endpoints: EndpointHealthDiagnostic[]
 }
 
 export interface Acknowledgement {
@@ -230,6 +273,7 @@ export class PirateWalletSdk {
   advancedKeyManagement: PirateWalletAdvancedKeyManagement
   invoke(requestJson: string, pretty?: boolean): Promise<string>
   configureAccountStorage(config: PirateWalletAccountStorageConfig): Promise<any>
+  configureSecureAccountStorage(config: PirateWalletSecureAccountStorageConfig): Promise<any>
   createSynchronizer(walletId: string, config?: SynchronizerConfig): PirateWalletSynchronizer
   buildInfoJson(pretty?: boolean): Promise<string>
   buildInfo(): Promise<any>
@@ -255,6 +299,7 @@ export class PirateWalletSdk {
   validateConsensusBranch(walletId: string): Promise<any>
   getLightdEndpoint(walletId: string): Promise<string>
   getLightdEndpointConfig(walletId: string): Promise<LightdEndpointConfig>
+  getLightdEndpointPoolDiagnostics(walletId: string): Promise<EndpointPoolDiagnostics>
   setLightdEndpoint(request: SetLightdEndpointRequest): Promise<Acknowledgement>
   setLightdEndpoint(walletId: string, url: string, tlsPin?: string | null): Promise<Acknowledgement>
   setLightdEndpointPool(request: SetLightdEndpointPoolRequest): Promise<Acknowledgement>
@@ -276,7 +321,12 @@ export class PirateWalletSdk {
   listAddressBalances(walletId: string, keyId?: number | null): Promise<any[]>
   getBalance(walletId: string): Promise<Balance>
   getShieldedPoolBalances(walletId: string): Promise<ShieldedPoolBalances>
-  getSpendabilityStatus(walletId: string): Promise<any>
+  getSpendabilityStatus(walletId: string): Promise<SpendabilityStatus>
+  enableWalletSigningProtection(walletId: string, sessionCredential: string): Promise<WalletSigningStatus>
+  unlockWalletSigning(walletId: string, sessionCredential: string): Promise<WalletSigningStatus>
+  lockWalletSigning(walletId: string): Promise<WalletSigningStatus>
+  lockAllWalletSigning(): Promise<Acknowledgement>
+  getWalletSigningStatus(walletId: string): Promise<WalletSigningStatus>
   listTransactions(walletId: string, limit?: number | null): Promise<TransactionInfo[]>
   fetchTransactionMemo(walletId: string, txId: string, outputIndex?: number | null): Promise<string | null>
   getTransactionDetails(walletId: string, txId: string): Promise<TransactionDetails | null>
@@ -291,6 +341,8 @@ export class PirateWalletSdk {
   rescan(walletIdOrRequest: any, fromHeight?: number | null): Promise<any>
   buildTransaction(walletIdOrRequest: any, outputs?: TransactionOutput | TransactionOutput[] | null, fee?: AmountInput | null): Promise<PendingTransaction>
   signTransaction(walletId: string, pending: PendingTransaction): Promise<any>
+  broadcastTransaction(walletId: string, signed: any): Promise<string>
+  /** @deprecated Pass walletId so endpoint and repair handling stay wallet-scoped. */
   broadcastTransaction(signed: any): Promise<string>
   send(walletId: string, outputsOrOutput: TransactionOutput | TransactionOutput[], fee?: AmountInput | null): Promise<string>
   exportSaplingViewingKey(walletId: string): Promise<string>

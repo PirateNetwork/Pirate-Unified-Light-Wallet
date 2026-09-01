@@ -562,6 +562,27 @@ class PirateWalletSdk {
     return unwrapEnvelope(response, 'configure_wallet_storage')
   }
 
+  async configureSecureAccountStorage(config) {
+    if (!config || typeof config !== 'object') {
+      throw new Error('configureSecureAccountStorage requires a config object.')
+    }
+    const accountId = String(config.accountId || '').trim()
+    if (!accountId) {
+      throw new Error('configureSecureAccountStorage requires accountId.')
+    }
+    const storagePath =
+      typeof config.storagePath === 'string' && config.storagePath.length > 0
+        ? config.storagePath
+        : null
+    if (typeof this._native.configureSecureAccountStorage !== 'function') {
+      throw new Error(
+        'PirateWalletReactNative native module does not expose configureSecureAccountStorage. Rebuild the app with the current native module.'
+      )
+    }
+    const response = await this._native.configureSecureAccountStorage(accountId, storagePath)
+    return unwrapEnvelope(response, 'configure_wallet_storage')
+  }
+
   buildInfoJson(pretty = false) {
     return this.invoke(buildRequest('get_build_info'), pretty)
   }
@@ -706,6 +727,12 @@ class PirateWalletSdk {
     })
   }
 
+  getLightdEndpointPoolDiagnostics(walletId) {
+    return this._call('get_lightd_endpoint_pool_diagnostics', {
+      wallet_id: requireNonEmptyString(walletId, 'walletId')
+    })
+  }
+
   setLightdEndpoint(requestOrWalletId, url = null, tlsPin = null) {
     const request =
       typeof requestOrWalletId === 'object' && requestOrWalletId !== null
@@ -797,6 +824,36 @@ class PirateWalletSdk {
 
   getSpendabilityStatus(walletId) {
     return this._call('get_spendability_status', { wallet_id: walletId })
+  }
+
+  enableWalletSigningProtection(walletId, sessionCredential) {
+    return this._call('enable_wallet_signing_protection', {
+      wallet_id: requireNonEmptyString(walletId, 'walletId'),
+      session_credential: requireNonEmptyString(sessionCredential, 'sessionCredential')
+    })
+  }
+
+  unlockWalletSigning(walletId, sessionCredential) {
+    return this._call('unlock_wallet_signing', {
+      wallet_id: requireNonEmptyString(walletId, 'walletId'),
+      session_credential: requireNonEmptyString(sessionCredential, 'sessionCredential')
+    })
+  }
+
+  lockWalletSigning(walletId) {
+    return this._call('lock_wallet_signing', {
+      wallet_id: requireNonEmptyString(walletId, 'walletId')
+    })
+  }
+
+  lockAllWalletSigning() {
+    return this._call('lock_all_wallet_signing')
+  }
+
+  getWalletSigningStatus(walletId) {
+    return this._call('get_wallet_signing_status', {
+      wallet_id: requireNonEmptyString(walletId, 'walletId')
+    })
   }
 
   listTransactions(walletId, limit = null) {
@@ -908,8 +965,17 @@ class PirateWalletSdk {
     })
   }
 
-  broadcastTransaction(signed) {
-    return this._callRaw('broadcast_tx', { signed })
+  broadcastTransaction(walletIdOrSigned, signed = null) {
+    const walletScoped = typeof walletIdOrSigned === 'string'
+    if (walletScoped && (!signed || typeof signed !== 'object')) {
+      throw new Error('broadcastTransaction requires a signed transaction.')
+    }
+    return this._callRaw('broadcast_tx', {
+      wallet_id: walletScoped
+        ? requireNonEmptyString(walletIdOrSigned, 'walletId')
+        : null,
+      signed: walletScoped ? signed : walletIdOrSigned
+    })
   }
 
   async send(walletId, outputsOrOutput, fee = null) {
@@ -918,7 +984,7 @@ class PirateWalletSdk {
       : [outputsOrOutput]
     const pending = await this.buildTransaction(walletId, outputs, fee)
     const signed = await this.signTransaction(walletId, pending)
-    return this.broadcastTransaction(signed)
+    return this.broadcastTransaction(walletId, signed)
   }
 
   exportSaplingViewingKey(walletId) {

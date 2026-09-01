@@ -559,6 +559,10 @@ public class PirateWalletSdk(
             ),
         )
 
+    public fun broadcastTransaction(walletId: String, signed: SignedTransaction): String =
+        parseString(invokeResult("broadcast_tx", "wallet_id" to walletId, "signed" to signed))
+
+    @Deprecated("Pass walletId so broadcast endpoint and repair handling remain wallet-scoped")
     public fun broadcastTransaction(signed: SignedTransaction): String =
         parseString(invokeResult("broadcast_tx", "signed" to signed))
 
@@ -568,7 +572,7 @@ public class PirateWalletSdk(
         fee: Long? = null,
     ): String {
         val signed = signTransaction(walletId, buildTransaction(walletId, outputs, fee))
-        return broadcastTransaction(signed)
+        return broadcastTransaction(walletId, signed)
     }
 
     public fun send(

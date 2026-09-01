@@ -23,6 +23,12 @@ function createMockNativeModule() {
       calls.push('configure_wallet_storage')
       return ok(null)
     },
+    async configureSecureAccountStorage(accountId, storagePath) {
+      assert.strictEqual(accountId, 'edge-account-secure')
+      assert.strictEqual(storagePath, null)
+      calls.push('configure_secure_wallet_storage')
+      return ok(null)
+    },
     async invoke(requestJson) {
       const request = JSON.parse(requestJson)
       calls.push(request.method)
@@ -62,6 +68,21 @@ function createMockNativeModule() {
             automatic_failover: true,
             failover_endpoints: ['https://lightwalletd1.cryptoforge.cc:443'],
             is_configured: true
+          })
+        case 'get_lightd_endpoint_pool_diagnostics':
+          return ok({
+            wallet_id: 'wallet-1',
+            configured_endpoint: 'https://lightd1.pirate.black:443',
+            active_endpoint: 'https://lightwalletd1.cryptoforge.cc:443',
+            automatic_failover: true,
+            endpoints: [{
+              endpoint: 'https://lightwalletd1.cryptoforge.cc:443',
+              healthy: true,
+              active: true,
+              tip_height: 4200000,
+              latency_ms: 95,
+              reason: null
+            }]
           })
         case 'set_lightd_endpoint':
           assert.strictEqual(request.wallet_id, 'wallet-1')
@@ -130,8 +151,30 @@ function createMockNativeModule() {
             size: 3
           })
         case 'broadcast_tx':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
           assert.strictEqual(request.signed.txid, 'tx-1')
           return ok('tx-1')
+        case 'get_spendability_status':
+          return ok({
+            spendable: false,
+            rescan_required: false,
+            target_height: 4200001,
+            anchor_height: 4199990,
+            validated_anchor_height: 4199980,
+            repair_queued: true,
+            reason_code: 'ERR_WITNESS_REPAIR_QUEUED'
+          })
+        case 'enable_wallet_signing_protection':
+        case 'unlock_wallet_signing':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
+          assert.strictEqual(request.session_credential, 'edge-account-session-secret')
+          return ok({ protection_enabled: true, unlocked: true })
+        case 'lock_wallet_signing':
+          return ok({ protection_enabled: true, unlocked: false })
+        case 'lock_all_wallet_signing':
+          return ok({ acknowledged: true })
+        case 'get_wallet_signing_status':
+          return ok({ protection_enabled: true, unlocked: false })
         case 'sync_status':
           return ok({
             local_height: 120,
@@ -195,6 +238,7 @@ async function main() {
     passphrase: 'EdgeAccountSecretPassphrase123!',
     storagePath: '/tmp/pirate-wallet/edge-account-a'
   })
+  await sdk.configureSecureAccountStorage({ accountId: 'edge-account-secure' })
 
   const buildInfo = await sdk.buildInfo()
   assert.strictEqual(buildInfo.version, '1.2.3')
@@ -217,6 +261,9 @@ async function main() {
   assert.deepStrictEqual(endpointConfig.failoverEndpoints, [
     'https://lightwalletd1.cryptoforge.cc:443'
   ])
+  const poolDiagnostics = await sdk.getLightdEndpointPoolDiagnostics('wallet-1')
+  assert.strictEqual(poolDiagnostics.activeEndpoint, 'https://lightwalletd1.cryptoforge.cc:443')
+  assert.strictEqual(poolDiagnostics.endpoints[0].latencyMs, 95)
 
   const endpointTest = await sdk.testLightdEndpoint(
     'https://lightwalletd1.cryptoforge.cc:443'
@@ -297,8 +344,21 @@ async function main() {
   assert.strictEqual(pending.outputs[0].amount, '9007199254740993')
 
   const signed = await sdk.signTransaction('wallet-1', pending)
-  const txid = await sdk.broadcastTransaction(signed)
+  const txid = await sdk.broadcastTransaction('wallet-1', signed)
   assert.strictEqual(txid, 'tx-1')
+
+  const spendability = await sdk.getSpendabilityStatus('wallet-1')
+  assert.strictEqual(spendability.repairQueued, true)
+  assert.strictEqual(spendability.reasonCode, 'ERR_WITNESS_REPAIR_QUEUED')
+  const signing = await sdk.enableWalletSigningProtection(
+    'wallet-1',
+    'edge-account-session-secret'
+  )
+  assert.strictEqual(signing.unlocked, true)
+  await sdk.unlockWalletSigning('wallet-1', 'edge-account-session-secret')
+  assert.strictEqual((await sdk.lockWalletSigning('wallet-1')).unlocked, false)
+  assert.strictEqual((await sdk.getWalletSigningStatus('wallet-1')).protectionEnabled, true)
+  assert.strictEqual((await sdk.lockAllWalletSigning()).acknowledged, true)
 
   const synchronizer = sdk.createSynchronizer('wallet-1')
   const snapshot = await synchronizer.refresh()

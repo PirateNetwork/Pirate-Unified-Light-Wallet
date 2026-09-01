@@ -24,6 +24,7 @@ Pod::Spec.new do |s|
   s.source       = { :path => "." }
   s.source_files = "ios/PirateWalletReactNative.m"
   s.vendored_frameworks = "ios/Frameworks/PirateWalletNative.xcframework"
+  s.frameworks = "Security"
 
   s.dependency "React-Core"
 end

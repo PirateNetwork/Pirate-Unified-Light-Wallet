@@ -458,6 +458,14 @@ public final class PirateWalletSDK {
         )
     }
 
+    public func broadcastTransaction(walletId: String, signed: SignedTransaction) throws -> String {
+        try stringResult("broadcast_tx", params: [
+            "wallet_id": walletId,
+            "signed": try encodableJSONObject(signed),
+        ])
+    }
+
+    @available(*, deprecated, message: "Pass walletId so broadcast endpoint and repair handling remain wallet-scoped")
     public func broadcastTransaction(_ signed: SignedTransaction) throws -> String {
         try stringResult("broadcast_tx", params: ["signed": try encodableJSONObject(signed)])
     }
@@ -468,7 +476,7 @@ public final class PirateWalletSDK {
         fee: Int64? = nil
     ) throws -> String {
         let signed = try signTransaction(walletId: walletId, pending: buildTransaction(walletId: walletId, outputs: outputs, fee: fee))
-        return try broadcastTransaction(signed)
+        return try broadcastTransaction(walletId: walletId, signed: signed)
     }
 
     public func send(
@@ -1191,6 +1199,14 @@ extension PirateWalletSDK {
         )
     }
 
+    public func broadcastTransactionAsync(walletId: String, signed: SignedTransaction) async throws -> String {
+        try await stringResultAsync("broadcast_tx", params: [
+            "wallet_id": walletId,
+            "signed": try encodableJSONObject(signed),
+        ])
+    }
+
+    @available(*, deprecated, message: "Pass walletId so broadcast endpoint and repair handling remain wallet-scoped")
     public func broadcastTransactionAsync(_ signed: SignedTransaction) async throws -> String {
         try await stringResultAsync("broadcast_tx", params: ["signed": try encodableJSONObject(signed)])
     }
@@ -1202,7 +1218,7 @@ extension PirateWalletSDK {
     ) async throws -> String {
         let pending = try await buildTransactionAsync(walletId: walletId, outputs: outputs, fee: fee)
         let signed = try await signTransactionAsync(walletId: walletId, pending: pending)
-        return try await broadcastTransactionAsync(signed)
+        return try await broadcastTransactionAsync(walletId: walletId, signed: signed)
     }
 
     public func sendAsync(

@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
 #import <React/RCTBridgeModule.h>
+#import <Security/Security.h>
+#import <string.h>
 @import PirateWalletNative;
 
 @interface PirateWalletReactNative : NSObject <RCTBridgeModule>
@@ -64,45 +66,152 @@ RCT_REMAP_METHOD(configureAccountStorage,
   }
 
   NSError *error = nil;
-  NSString *baseDir = [self storagePathForAccountId:accountId storagePath:storagePath error:&error];
-  if (baseDir == nil) {
+  NSString *response = [self configureStorageForAccountId:accountId
+                                                passphrase:passphrase
+                                               storagePath:storagePath
+                                                     error:&error];
+  if (response == nil) {
     reject(@"PIRATE_WALLET_CONFIGURE_STORAGE_ERROR", error.localizedDescription, error);
     return;
   }
 
+  resolve(response);
+}
+
+RCT_REMAP_METHOD(configureSecureAccountStorage,
+                 configureSecureAccountStorage:(NSString *)accountId
+                 storagePath:(NSString *)storagePath
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject)
+{
+  if ((id)storagePath == [NSNull null]) {
+    storagePath = nil;
+  }
+  if (accountId == nil || accountId.length == 0) {
+    reject(@"PIRATE_WALLET_CONFIGURE_STORAGE_ERROR", @"accountId must not be empty", nil);
+    return;
+  }
+
+  NSError *error = nil;
+  NSString *passphrase = [self secureRegistryPassphraseForAccountId:accountId error:&error];
+  if (passphrase == nil) {
+    reject(@"PIRATE_WALLET_CONFIGURE_STORAGE_ERROR", error.localizedDescription, error);
+    return;
+  }
+  NSString *response = [self configureStorageForAccountId:accountId
+                                                passphrase:passphrase
+                                               storagePath:storagePath
+                                                     error:&error];
+  if (response == nil) {
+    reject(@"PIRATE_WALLET_CONFIGURE_STORAGE_ERROR", error.localizedDescription, error);
+    return;
+  }
+  resolve(response);
+}
+
+- (NSString *)configureStorageForAccountId:(NSString *)accountId
+                                 passphrase:(NSString *)passphrase
+                                storagePath:(NSString *)storagePath
+                                      error:(NSError **)error
+{
+  NSString *baseDir = [self storagePathForAccountId:accountId storagePath:storagePath error:error];
+  if (baseDir == nil) {
+    return nil;
+  }
   NSDictionary *request = @{
     @"method": @"configure_wallet_storage",
     @"base_dir": baseDir,
     @"passphrase": passphrase
   };
-  NSData *requestData = [NSJSONSerialization dataWithJSONObject:request options:0 error:&error];
+  NSData *requestData = [NSJSONSerialization dataWithJSONObject:request options:0 error:error];
   if (requestData == nil) {
-    reject(@"PIRATE_WALLET_CONFIGURE_STORAGE_ERROR", error.localizedDescription, error);
-    return;
+    return nil;
   }
-
   NSString *requestJson = [[NSString alloc] initWithData:requestData encoding:NSUTF8StringEncoding];
   if (requestJson == nil) {
-    reject(@"PIRATE_WALLET_CONFIGURE_STORAGE_ERROR", @"Storage configuration request was not valid UTF-8.", nil);
-    return;
+    if (error != nil) {
+      *error = [NSError errorWithDomain:@"PirateWalletReactNative"
+                                   code:3
+                               userInfo:@{NSLocalizedDescriptionKey: @"Storage configuration request was not valid UTF-8."}];
+    }
+    return nil;
   }
-
-  const char *requestCString = [requestJson UTF8String];
-  char *responsePtr = pirate_wallet_service_invoke_json(requestCString, NO);
+  char *responsePtr = pirate_wallet_service_invoke_json([requestJson UTF8String], NO);
   if (responsePtr == NULL) {
-    reject(@"PIRATE_WALLET_CONFIGURE_STORAGE_ERROR", @"Wallet service returned a null response.", nil);
-    return;
+    if (error != nil) {
+      *error = [NSError errorWithDomain:@"PirateWalletReactNative"
+                                   code:4
+                               userInfo:@{NSLocalizedDescriptionKey: @"Wallet service returned a null response."}];
+    }
+    return nil;
   }
-
   NSString *response = [NSString stringWithUTF8String:responsePtr];
   pirate_wallet_service_free_string(responsePtr);
+  if (response == nil && error != nil) {
+    *error = [NSError errorWithDomain:@"PirateWalletReactNative"
+                                 code:5
+                             userInfo:@{NSLocalizedDescriptionKey: @"Wallet service returned invalid UTF-8."}];
+  }
+  return response;
+}
 
-  if (response == nil) {
-    reject(@"PIRATE_WALLET_CONFIGURE_STORAGE_ERROR", @"Wallet service returned invalid UTF-8.", nil);
-    return;
+- (NSString *)secureRegistryPassphraseForAccountId:(NSString *)accountId error:(NSError **)error
+{
+  NSString *service = @"com.pirate.wallet.reactnative.registry";
+  NSDictionary *lookup = @{
+    (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+    (__bridge id)kSecAttrService: service,
+    (__bridge id)kSecAttrAccount: accountId,
+    (__bridge id)kSecReturnData: @YES,
+    (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne
+  };
+  CFTypeRef result = NULL;
+  OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)lookup, &result);
+  if (status == errSecSuccess) {
+    NSData *data = CFBridgingRelease(result);
+    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+  }
+  if (status != errSecItemNotFound) {
+    if (error != nil) {
+      *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:status userInfo:nil];
+    }
+    return nil;
   }
 
-  resolve(response);
+  uint8_t bytes[32];
+  status = SecRandomCopyBytes(kSecRandomDefault, sizeof(bytes), bytes);
+  if (status != errSecSuccess) {
+    if (error != nil) {
+      *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:status userInfo:nil];
+    }
+    return nil;
+  }
+  NSData *random = [NSData dataWithBytes:bytes length:sizeof(bytes)];
+  memset(bytes, 0, sizeof(bytes));
+  NSString *passphrase = [random base64EncodedStringWithOptions:0];
+  NSDictionary *insert = @{
+    (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+    (__bridge id)kSecAttrService: service,
+    (__bridge id)kSecAttrAccount: accountId,
+    (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    (__bridge id)kSecValueData: [passphrase dataUsingEncoding:NSUTF8StringEncoding]
+  };
+  status = SecItemAdd((__bridge CFDictionaryRef)insert, NULL);
+  if (status == errSecDuplicateItem) {
+    CFTypeRef duplicateResult = NULL;
+    status = SecItemCopyMatching((__bridge CFDictionaryRef)lookup, &duplicateResult);
+    if (status == errSecSuccess) {
+      NSData *data = CFBridgingRelease(duplicateResult);
+      return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    }
+  }
+  if (status != errSecSuccess) {
+    if (error != nil) {
+      *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:status userInfo:nil];
+    }
+    return nil;
+  }
+  return passphrase;
 }
 
 - (NSString *)storagePathForAccountId:(NSString *)accountId
