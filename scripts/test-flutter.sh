@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run Flutter unit/widget tests without invoking dependency asset transformers.
+# Flutter 3.47 widget tests need the application asset bundle for fonts, images,
+# and framework shaders. Network-backed dependency downloads remain disabled.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,4 +50,4 @@ FLUTTER_BIN="$(resolve_flutter)" || {
 
 export OVERRIDE_DEFI_API_DOWNLOAD=false
 cd "$PROJECT_ROOT/app"
-exec "$FLUTTER_BIN" test --no-test-assets "$@"
+exec "$FLUTTER_BIN" test "$@"
