@@ -43,6 +43,7 @@ mod shardtree_serialization;
 /// SQLite shardtree store implementation used for canonical witness/anchor state.
 pub mod shardtree_store;
 pub mod spendability_state;
+pub mod spending_protection;
 pub mod sync_state;
 pub mod watch_only;
 

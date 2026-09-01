@@ -247,6 +247,19 @@ pub struct WalletSecret {
     pub created_at: i64,
 }
 
+/// Metadata for an opt-in wallet-scoped signing credential.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SigningProtectionRecord {
+    /// Wallet protected by the credential.
+    pub wallet_id: String,
+    /// Wallet account whose spending material is protected.
+    pub account_id: i64,
+    /// Argon2id salt used to derive the session encryption key.
+    pub kdf_salt: Vec<u8>,
+    /// Authenticated ciphertext used to verify a supplied credential.
+    pub credential_check: Vec<u8>,
+}
+
 /// Transaction record for querying transaction history
 #[derive(Debug, Clone)]
 pub struct TransactionRecord {

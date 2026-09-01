@@ -6,7 +6,7 @@ use crate::address_book::ColorTag;
 use crate::frontier_witness::{
     construct_anchor_witnesses_from_db_state, resolve_orchard_anchor_from_db_state,
 };
-use crate::{models::*, Database, Error, Result};
+use crate::{models::*, spending_protection, Database, Error, MasterKey, Result};
 use pirate_core::keys::{ExtendedSpendingKey, IronwoodExtendedSpendingKey};
 use pirate_core::DEFAULT_FEE;
 use pirate_params::consensus::ConsensusParams;
@@ -287,6 +287,63 @@ impl<'a> Repository<'a> {
         match encrypted {
             Some(e) => self.decrypt_blob(&e).map(Some),
             None => Ok(None),
+        }
+    }
+
+    fn reveal_spending_blob(&self, encrypted: &[u8]) -> Result<Option<Vec<u8>>> {
+        let value = self.decrypt_blob(encrypted)?;
+        spending_protection::reveal_for_active_session(&value)
+    }
+
+    fn reveal_optional_spending_blob(&self, encrypted: Option<Vec<u8>>) -> Result<Option<Vec<u8>>> {
+        match encrypted {
+            Some(value) => self.reveal_spending_blob(&value),
+            None => Ok(None),
+        }
+    }
+
+    fn protected_wallet_for_account(&self, account_id: i64) -> Result<Option<String>> {
+        self.db
+            .conn()
+            .query_row(
+                "SELECT wallet_id FROM signing_key_protection WHERE account_id = ?1",
+                [account_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    fn encrypt_spending_blob_for_wallet(&self, wallet_id: &str, value: &[u8]) -> Result<Vec<u8>> {
+        let value = if self.get_signing_protection(wallet_id)?.is_some() {
+            spending_protection::protect_for_active_session(wallet_id, value)?
+        } else {
+            value.to_vec()
+        };
+        self.encrypt_blob(&value)
+    }
+
+    fn encrypt_optional_spending_blob_for_wallet(
+        &self,
+        wallet_id: &str,
+        value: Option<&[u8]>,
+    ) -> Result<Option<Vec<u8>>> {
+        value
+            .map(|value| self.encrypt_spending_blob_for_wallet(wallet_id, value))
+            .transpose()
+    }
+
+    fn encrypt_optional_spending_blob_for_account(
+        &self,
+        account_id: i64,
+        value: Option<&[u8]>,
+    ) -> Result<Option<Vec<u8>>> {
+        match (self.protected_wallet_for_account(account_id)?, value) {
+            (Some(wallet_id), Some(value)) => self
+                .encrypt_spending_blob_for_wallet(&wallet_id, value)
+                .map(Some),
+            (None, Some(value)) => self.encrypt_blob(value).map(Some),
+            (_, None) => Ok(None),
         }
     }
 
@@ -1973,12 +2030,18 @@ impl<'a> Repository<'a> {
         Ok(WalletSecret {
             wallet_id: secret.wallet_id.clone(), // Stored plaintext as canonical lookup key
             account_id: secret.account_id,       // Will be encrypted in upsert_wallet_secret
-            extsk: self.encrypt_blob(&secret.extsk)?,
+            extsk: self.encrypt_spending_blob_for_wallet(&secret.wallet_id, &secret.extsk)?,
             dfvk: self.encrypt_optional_blob(secret.dfvk.as_deref())?, // Encrypt viewing key for privacy
-            orchard_extsk: self.encrypt_optional_blob(secret.orchard_extsk.as_deref())?,
+            orchard_extsk: self.encrypt_optional_spending_blob_for_wallet(
+                &secret.wallet_id,
+                secret.orchard_extsk.as_deref(),
+            )?,
             sapling_ivk: self.encrypt_optional_blob(secret.sapling_ivk.as_deref())?, // Encrypt viewing key for privacy
             orchard_ivk: self.encrypt_optional_blob(secret.orchard_ivk.as_deref())?, // Encrypt viewing key for privacy
-            encrypted_mnemonic: self.encrypt_optional_blob(secret.encrypted_mnemonic.as_deref())?,
+            encrypted_mnemonic: self.encrypt_optional_spending_blob_for_wallet(
+                &secret.wallet_id,
+                secret.encrypted_mnemonic.as_deref(),
+            )?,
             mnemonic_language: secret.mnemonic_language.clone(),
             created_at: secret.created_at, // Will be encrypted in upsert_wallet_secret
         })
@@ -2006,12 +2069,14 @@ impl<'a> Repository<'a> {
             let encrypted_created_at: Vec<u8> = row.get(9)?;
 
             let account_id = self.decrypt_int64(&encrypted_account_id)?;
-            let extsk = self.decrypt_blob(&encrypted_extsk)?;
+            let extsk = self
+                .reveal_spending_blob(&encrypted_extsk)?
+                .unwrap_or_default();
             let dfvk = self.decrypt_optional_blob(encrypted_dfvk)?; // Decrypt viewing key for privacy
-            let orchard_extsk = self.decrypt_optional_blob(encrypted_orchard_extsk)?;
+            let orchard_extsk = self.reveal_optional_spending_blob(encrypted_orchard_extsk)?;
             let sapling_ivk = self.decrypt_optional_blob(encrypted_sapling_ivk)?; // Decrypt viewing key for privacy
             let orchard_ivk = self.decrypt_optional_blob(encrypted_orchard_ivk)?; // Decrypt viewing key for privacy
-            let encrypted_mnemonic = self.decrypt_optional_blob(encrypted_mnemonic)?;
+            let encrypted_mnemonic = self.reveal_optional_spending_blob(encrypted_mnemonic)?;
             let created_at = self.decrypt_int64(&encrypted_created_at)?;
 
             return Ok(Some(WalletSecret {
@@ -2029,6 +2094,141 @@ impl<'a> Repository<'a> {
         }
 
         Ok(None)
+    }
+
+    /// Load wallet-scoped signing protection metadata.
+    pub fn get_signing_protection(
+        &self,
+        wallet_id: &str,
+    ) -> Result<Option<SigningProtectionRecord>> {
+        self.db
+            .conn()
+            .query_row(
+                "SELECT wallet_id, account_id, kdf_salt, credential_check FROM signing_key_protection WHERE wallet_id = ?1",
+                [wallet_id],
+                |row| {
+                    Ok(SigningProtectionRecord {
+                        wallet_id: row.get(0)?,
+                        account_id: row.get(1)?,
+                        kdf_salt: row.get(2)?,
+                        credential_check: row.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Atomically wrap every spend-capable field for one wallet with a
+    /// wallet-scoped key. Viewing material remains available to sync.
+    pub fn enable_signing_protection(
+        &self,
+        wallet_id: &str,
+        account_id: i64,
+        kdf_salt: &[u8],
+        credential_check: &[u8],
+        signing_key: &MasterKey,
+    ) -> Result<()> {
+        if self.get_signing_protection(wallet_id)?.is_some() {
+            return Err(Error::Validation(
+                "wallet signing protection is already enabled".to_string(),
+            ));
+        }
+
+        let secret = self
+            .get_wallet_secret(wallet_id)?
+            .ok_or_else(|| Error::NotFound(format!("wallet secret {wallet_id}")))?;
+        if secret.account_id != account_id {
+            return Err(Error::Validation(
+                "wallet signing account does not match wallet secret".to_string(),
+            ));
+        }
+        let account_keys = self.get_account_keys(account_id)?;
+        let has_spending_material = !secret.extsk.is_empty()
+            || secret.orchard_extsk.is_some()
+            || secret.encrypted_mnemonic.is_some()
+            || account_keys.iter().any(|key| {
+                key.sapling_extsk.is_some()
+                    || key.orchard_extsk.is_some()
+                    || key.encrypted_mnemonic.is_some()
+            });
+        if !has_spending_material {
+            return Err(Error::Validation(
+                "watch-only wallets have no spending material to protect".to_string(),
+            ));
+        }
+
+        let protect = |value: &[u8]| -> Result<Vec<u8>> {
+            if value.is_empty() {
+                Ok(Vec::new())
+            } else {
+                spending_protection::protect_with_key(wallet_id, signing_key, value)
+            }
+        };
+        let protect_optional =
+            |value: Option<&[u8]>| -> Result<Option<Vec<u8>>> { value.map(protect).transpose() };
+        let encrypted_secret = WalletSecret {
+            wallet_id: secret.wallet_id.clone(),
+            account_id: secret.account_id,
+            extsk: self.encrypt_blob(&protect(&secret.extsk)?)?,
+            dfvk: self.encrypt_optional_blob(secret.dfvk.as_deref())?,
+            orchard_extsk: self.encrypt_optional_blob(
+                protect_optional(secret.orchard_extsk.as_deref())?.as_deref(),
+            )?,
+            sapling_ivk: self.encrypt_optional_blob(secret.sapling_ivk.as_deref())?,
+            orchard_ivk: self.encrypt_optional_blob(secret.orchard_ivk.as_deref())?,
+            encrypted_mnemonic: self.encrypt_optional_blob(
+                protect_optional(secret.encrypted_mnemonic.as_deref())?.as_deref(),
+            )?,
+            mnemonic_language: secret.mnemonic_language.clone(),
+            created_at: secret.created_at,
+        };
+
+        let mut encrypted_keys = Vec::with_capacity(account_keys.len());
+        for key in account_keys {
+            encrypted_keys.push(AccountKey {
+                id: key.id,
+                account_id: key.account_id,
+                key_type: key.key_type,
+                key_scope: key.key_scope,
+                label: key.label,
+                birthday_height: key.birthday_height,
+                created_at: key.created_at,
+                spendable: key.spendable,
+                sapling_extsk: self.encrypt_optional_blob(
+                    protect_optional(key.sapling_extsk.as_deref())?.as_deref(),
+                )?,
+                sapling_dfvk: self.encrypt_optional_blob(key.sapling_dfvk.as_deref())?,
+                orchard_extsk: self.encrypt_optional_blob(
+                    protect_optional(key.orchard_extsk.as_deref())?.as_deref(),
+                )?,
+                orchard_fvk: self.encrypt_optional_blob(key.orchard_fvk.as_deref())?,
+                encrypted_mnemonic: self.encrypt_optional_blob(
+                    protect_optional(key.encrypted_mnemonic.as_deref())?.as_deref(),
+                )?,
+            });
+        }
+
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let result = (|| -> Result<()> {
+            self.upsert_wallet_secret(&encrypted_secret)?;
+            for key in &encrypted_keys {
+                self.upsert_account_key(key)?;
+            }
+            conn.execute(
+                "INSERT INTO signing_key_protection (wallet_id, account_id, kdf_salt, credential_check) VALUES (?1, ?2, ?3, ?4)",
+                params![wallet_id, account_id, kdf_salt, credential_check],
+            )?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => conn.execute_batch("COMMIT").map_err(Into::into),
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
     }
 
     /// Reconcile the primary seed key with the wallet secret without discarding
@@ -2566,11 +2766,20 @@ impl<'a> Repository<'a> {
             birthday_height: key.birthday_height,
             created_at: key.created_at,
             spendable: key.spendable,
-            sapling_extsk: self.encrypt_optional_blob(key.sapling_extsk.as_deref())?,
+            sapling_extsk: self.encrypt_optional_spending_blob_for_account(
+                key.account_id,
+                key.sapling_extsk.as_deref(),
+            )?,
             sapling_dfvk: self.encrypt_optional_blob(key.sapling_dfvk.as_deref())?,
-            orchard_extsk: self.encrypt_optional_blob(key.orchard_extsk.as_deref())?,
+            orchard_extsk: self.encrypt_optional_spending_blob_for_account(
+                key.account_id,
+                key.orchard_extsk.as_deref(),
+            )?,
             orchard_fvk: self.encrypt_optional_blob(key.orchard_fvk.as_deref())?,
-            encrypted_mnemonic: self.encrypt_optional_blob(key.encrypted_mnemonic.as_deref())?,
+            encrypted_mnemonic: self.encrypt_optional_spending_blob_for_account(
+                key.account_id,
+                key.encrypted_mnemonic.as_deref(),
+            )?,
         })
     }
 
@@ -2637,11 +2846,11 @@ impl<'a> Repository<'a> {
                 birthday_height,
                 created_at,
                 spendable: spendable_raw != 0,
-                sapling_extsk: self.decrypt_optional_blob(sapling_extsk)?,
+                sapling_extsk: self.reveal_optional_spending_blob(sapling_extsk)?,
                 sapling_dfvk: self.decrypt_optional_blob(sapling_dfvk)?,
-                orchard_extsk: self.decrypt_optional_blob(orchard_extsk)?,
+                orchard_extsk: self.reveal_optional_spending_blob(orchard_extsk)?,
                 orchard_fvk: self.decrypt_optional_blob(orchard_fvk)?,
-                encrypted_mnemonic: self.decrypt_optional_blob(encrypted_mnemonic)?,
+                encrypted_mnemonic: self.reveal_optional_spending_blob(encrypted_mnemonic)?,
             });
         }
 
@@ -2713,11 +2922,11 @@ impl<'a> Repository<'a> {
             birthday_height,
             created_at,
             spendable: spendable_raw != 0,
-            sapling_extsk: self.decrypt_optional_blob(sapling_extsk)?,
+            sapling_extsk: self.reveal_optional_spending_blob(sapling_extsk)?,
             sapling_dfvk: self.decrypt_optional_blob(sapling_dfvk)?,
-            orchard_extsk: self.decrypt_optional_blob(orchard_extsk)?,
+            orchard_extsk: self.reveal_optional_spending_blob(orchard_extsk)?,
             orchard_fvk: self.decrypt_optional_blob(orchard_fvk)?,
-            encrypted_mnemonic: self.decrypt_optional_blob(encrypted_mnemonic)?,
+            encrypted_mnemonic: self.reveal_optional_spending_blob(encrypted_mnemonic)?,
         }))
     }
 
