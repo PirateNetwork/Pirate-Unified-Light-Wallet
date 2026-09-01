@@ -274,7 +274,7 @@ fn test_mark_repair_pending_without_enqueue_does_not_insert_queue_rows() {
 }
 
 #[test]
-fn test_mark_sync_finalizing_clears_stale_repair_flags() {
+fn test_mark_sync_finalizing_preserves_repair_until_anchor_validation() {
     let db = test_db();
     let spendability = SpendabilityStateStorage::new(&db);
 
@@ -287,16 +287,19 @@ fn test_mark_sync_finalizing_clears_stale_repair_flags() {
     assert!(!state.spendable);
     assert!(!state.rescan_required);
     assert!(
-        !state.repair_queued,
-        "sync-finalizing should clear queued flag"
+        state.repair_queued,
+        "repair must remain durable while active"
     );
-    assert_eq!(
-        state.repair_from_height, 0,
-        "repair_from_height should be reset"
-    );
+    assert_eq!(state.repair_from_height, 777);
     assert_eq!(state.target_height, 1000);
     assert_eq!(state.anchor_height, 990);
-    assert_eq!(state.reason_code, "ERR_SYNC_FINALIZING");
+    assert_eq!(state.reason_code, "ERR_WITNESS_REPAIR_QUEUED");
+
+    spendability.mark_validated(1000, 990).unwrap();
+    let validated = spendability.load_state().unwrap();
+    assert!(!validated.repair_queued);
+    assert_eq!(validated.repair_from_height, 0);
+    assert_eq!(validated.reason_code, "OK");
 }
 
 #[test]

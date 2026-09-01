@@ -137,12 +137,15 @@ fn load_spendability_status_internal(wallet_id: &str) -> Result<SpendabilityStat
     let state = storage.load_state()?;
     let scan_queue = ScanQueueStorage::new(db);
     let queue_has_work = scan_queue.next_found_note_range()?.is_some();
+    // Queue rows may be consumed before witness reconstruction and anchor
+    // validation finish. Preserve the durable repair latch through that work.
+    let repair_pending = state.repair_queued || queue_has_work;
 
     let epoch_ok = state.anchor_height != 0 && state.validated_anchor_height >= state.anchor_height;
-    let spendable = !state.rescan_required && !queue_has_work && epoch_ok;
+    let spendable = !state.rescan_required && !repair_pending && epoch_ok;
     let reason_code = if state.rescan_required {
         SPENDABILITY_REASON_ERR_RESCAN_REQUIRED.to_string()
-    } else if queue_has_work {
+    } else if repair_pending {
         SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED.to_string()
     } else if spendable {
         "OK".to_string()
@@ -156,7 +159,7 @@ fn load_spendability_status_internal(wallet_id: &str) -> Result<SpendabilityStat
         target_height: state.target_height,
         anchor_height: state.anchor_height,
         validated_anchor_height: state.validated_anchor_height,
-        repair_queued: queue_has_work,
+        repair_queued: repair_pending,
         reason_code,
     })
 }

@@ -479,10 +479,9 @@ impl<'a> SpendabilityStateStorage<'a> {
                 END,
                 target_height = ?1,
                 anchor_height = ?2,
-                repair_queued = 0,
-                repair_from_height = 0,
                 reason_code = CASE
                     WHEN required_rescan_from_height > 0 THEN reason_code
+                    WHEN repair_queued != 0 THEN 'ERR_WITNESS_REPAIR_QUEUED'
                     ELSE 'ERR_SYNC_FINALIZING'
                 END,
                 updated_at = ?3
@@ -497,8 +496,11 @@ impl<'a> SpendabilityStateStorage<'a> {
         Ok(())
     }
 
-    /// Record a validated anchor and mark the wallet spendable unless a
-    /// verified-key historical replay is still required.
+    /// Record a validated anchor and finish any durable witness repair.
+    ///
+    /// This is the only ordinary sync transition that clears `repair_queued`:
+    /// reaching the finalization phase alone does not prove that the rebuilt
+    /// witnesses and selected anchor are valid for spending.
     pub fn mark_validated(&self, target_height: u64, anchor_height: u64) -> Result<()> {
         let target_height = to_sql_i64(target_height)?;
         let anchor_height = to_sql_i64(anchor_height)?;
