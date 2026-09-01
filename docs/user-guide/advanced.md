@@ -61,7 +61,7 @@ Automatic restore discovery checks the standard account and the old wallet's bou
 
 Payment disclosure tools can prove selected facts about a transaction to someone you choose. Disclosure data can reveal information that is otherwise shielded.
 
-1. Open the payment disclosure tool from Wallet.
+1. Open the payment disclosure tool from Wallets.
 2. Read exactly what the proof or disclosure will reveal.
 3. Verify the transaction and recipient.
 4. Share it only with the intended party.

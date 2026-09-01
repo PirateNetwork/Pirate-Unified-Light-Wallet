@@ -7,7 +7,7 @@ If you are moving from Treasure Chest or Pirate Wallet Lite, start with [Moving 
 ## Contents
 
 1. [Install and set up the wallet](getting-started.md)
-2. [Home, Wallet, Activity, and Settings](wallet-basics.md)
+2. [Home, Wallets, Activity, and Settings](wallet-basics.md)
 3. [Receive and send ARRR](send-receive.md)
 4. [Seed accounts, keys, and addresses](keys-and-accounts.md)
 5. [Move from Treasure Chest or Pirate Wallet Lite](migration.md)

@@ -758,7 +758,7 @@ void main() {
     await _capture(
       tester,
       size: const Size(1097, 706),
-      filename: 'actions-laptop.png',
+      filename: 'wallets-laptop.png',
       widget: _walletApp(
         const AppShell(location: '/pay', child: PayScreen(useScaffold: false)),
       ),
