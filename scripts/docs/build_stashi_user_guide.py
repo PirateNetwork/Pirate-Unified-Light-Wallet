@@ -4,8 +4,19 @@ import argparse
 import html
 import re
 from pathlib import Path
+from typing import Any
 
 from PIL import Image as PILImage
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import (
+    ArrayObject,
+    BooleanObject,
+    DecodedStreamObject,
+    DictionaryObject,
+    NameObject,
+    NumberObject,
+    TextStringObject,
+)
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -38,9 +49,9 @@ CHAPTERS = [
     ("send-receive.md", "Receive and send ARRR"),
     ("keys-and-accounts.md", "Seed accounts, keys, and addresses"),
     ("migration.md", "Move from Treasure Chest or Pirate Wallet Lite"),
-    ("network-and-sync.md", "Network privacy and synchronization"),
+    ("network-and-sync.md", "Network privacy and synchronisation"),
     ("security-and-backups.md", "Backups and wallet security"),
-    ("settings-and-verification.md", "Settings and build verification"),
+    ("settings-and-verification.md", "Settings and release verification"),
     ("troubleshooting.md", "Troubleshooting"),
     ("advanced.md", "Advanced use"),
 ]
@@ -71,6 +82,124 @@ styles.add(ParagraphStyle(
     name="GuideBody", fontName=BODY_FONT, fontSize=9.4, leading=14.1,
     textColor=INK, spaceAfter=6.5,
 ))
+
+
+def _begin_accessibility_tag(
+    canvas,
+    role: str,
+    *,
+    alt_text: str | None = None,
+    title: str | None = None,
+) -> int:
+    records: list[dict[str, Any]] = canvas._accessibility_records
+    counters: dict[int, int] = canvas._accessibility_mcid_counters
+    stack: list[int] = canvas._accessibility_tag_stack
+    page_index = canvas.getPageNumber() - 1
+    mcid = counters.get(page_index, 0)
+    counters[page_index] = mcid + 1
+    record_id = len(records)
+    records.append(
+        {
+            "id": record_id,
+            "page": page_index,
+            "mcid": mcid,
+            "role": role,
+            "alt_text": alt_text,
+            "title": title,
+            "parent": stack[-1] if stack else None,
+        }
+    )
+    stack.append(record_id)
+    canvas._code.append(f"/{role} <</MCID {mcid}>> BDC")
+    return record_id
+
+
+def _end_accessibility_tag(canvas, record_id: int) -> None:
+    stack: list[int] = canvas._accessibility_tag_stack
+    if not stack or stack[-1] != record_id:
+        raise RuntimeError("PDF accessibility tag stack is unbalanced")
+    canvas._code.append("EMC")
+    stack.pop()
+
+
+class AccessibleParagraph(Paragraph):
+    def __init__(
+        self,
+        *args,
+        accessibility_role: str = "P",
+        alt_text: str | None = None,
+        structure_title: str | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.accessibility_role = accessibility_role
+        self.accessibility_alt_text = alt_text
+        self.accessibility_title = structure_title
+
+    def drawOn(self, canvas, x, y, _sW=0):
+        record_id = _begin_accessibility_tag(
+            canvas,
+            self.accessibility_role,
+            alt_text=self.accessibility_alt_text,
+            title=self.accessibility_title,
+        )
+        try:
+            return super().drawOn(canvas, x, y, _sW)
+        finally:
+            _end_accessibility_tag(canvas, record_id)
+
+    def split(self, avail_width, avail_height):
+        parts = super().split(avail_width, avail_height)
+        for part in parts:
+            if isinstance(part, AccessibleParagraph):
+                part.accessibility_role = self.accessibility_role
+                part.accessibility_alt_text = self.accessibility_alt_text
+                part.accessibility_title = self.accessibility_title
+        return parts
+
+
+class AccessibleImage(Image):
+    def __init__(self, *args, alt_text: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.accessibility_alt_text = alt_text
+
+    def drawOn(self, canvas, x, y, _sW=0):
+        record_id = _begin_accessibility_tag(
+            canvas,
+            "Figure",
+            alt_text=self.accessibility_alt_text,
+        )
+        try:
+            return super().drawOn(canvas, x, y, _sW)
+        finally:
+            _end_accessibility_tag(canvas, record_id)
+
+
+class AccessibleTable(Table):
+    def drawOn(self, canvas, x, y, _sW=0):
+        record_id = _begin_accessibility_tag(canvas, "Table")
+        try:
+            return super().drawOn(canvas, x, y, _sW)
+        finally:
+            _end_accessibility_tag(canvas, record_id)
+
+
+class AccessibleListFlowable(ListFlowable):
+    def drawOn(self, canvas, x, y, _sW=0):
+        record_id = _begin_accessibility_tag(canvas, "L")
+        try:
+            return super().drawOn(canvas, x, y, _sW)
+        finally:
+            _end_accessibility_tag(canvas, record_id)
+
+
+class AccessibleTableOfContents(TableOfContents):
+    def drawOn(self, canvas, x, y, _sW=0):
+        record_id = _begin_accessibility_tag(canvas, "TOC")
+        try:
+            return super().drawOn(canvas, x, y, _sW)
+        finally:
+            _end_accessibility_tag(canvas, record_id)
 styles.add(ParagraphStyle(
     name="GuideSmall", parent=styles["GuideBody"], fontSize=7.7,
     leading=11.2, textColor=MUTED,
@@ -159,7 +288,13 @@ def inline(text: str, current_file: str) -> str:
     return text
 
 
-def image_flowable(relative: str, cell_width: float, max_height: float = 108 * mm):
+def image_flowable(
+    relative: str,
+    cell_width: float,
+    *,
+    alt_text: str,
+    max_height: float = 108 * mm,
+):
     path = GUIDE / relative
     with PILImage.open(path) as source:
         width, height = source.size
@@ -172,7 +307,12 @@ def image_flowable(relative: str, cell_width: float, max_height: float = 108 * m
     if draw_height > max_height:
         draw_height = max_height
         draw_width = draw_height * ratio
-    result = Image(str(path), width=draw_width, height=draw_height)
+    result = AccessibleImage(
+        str(path),
+        width=draw_width,
+        height=draw_height,
+        alt_text=alt_text,
+    )
     result.hAlign = "CENTER"
     return result
 
@@ -195,13 +335,30 @@ def parse_table(lines: list[str], start: int, current_file: str):
         for column, cell in enumerate(row):
             match = re.fullmatch(r"!\[([^]]*)\]\(([^)]+)\)", cell)
             if match:
-                output_row.append(image_flowable(match.group(2), column_widths[column]))
+                output_row.append(
+                    image_flowable(
+                        match.group(2),
+                        column_widths[column],
+                        alt_text=match.group(1),
+                    )
+                )
             else:
                 style = styles["GuideCaption"] if image_table and row_index == 0 else styles["GuideTable"]
-                output_row.append(Paragraph(inline(cell, current_file), style))
+                output_row.append(
+                    AccessibleParagraph(
+                        inline(cell, current_file),
+                        style,
+                        accessibility_role="TH" if row_index == 0 else "TD",
+                    )
+                )
         output_row.extend([""] * (column_count - len(output_row)))
         rows.append(output_row)
-    table = Table(rows, colWidths=column_widths, repeatRows=1 if not image_table else 0, hAlign="LEFT")
+    table = AccessibleTable(
+        rows,
+        colWidths=column_widths,
+        repeatRows=1,
+        hAlign="LEFT",
+    )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), LIGHT_BLUE if not image_table else PANEL),
         ("TEXTCOLOR", (0, 0), (-1, -1), INK),
@@ -216,11 +373,61 @@ def parse_table(lines: list[str], start: int, current_file: str):
     return table, index
 
 
+def _list_flowables(
+    records: list[tuple[bool, int, str]],
+    current_file: str,
+) -> list[AccessibleListFlowable]:
+    def build_level(position: int, indent: int):
+        ordered = records[position][0]
+        items: list[ListItem] = []
+        while position < len(records):
+            item_ordered, item_indent, value = records[position]
+            if item_indent < indent or (item_indent == indent and item_ordered != ordered):
+                break
+            if item_indent > indent:
+                nested, position = build_level(position, item_indent)
+                if not items:
+                    raise ValueError("Nested list item has no parent")
+                items[-1]._flowables = tuple(items[-1]._flowables) + (nested,)
+                continue
+            item_content = AccessibleParagraph(
+                inline(value, current_file),
+                styles["GuideBody"],
+                accessibility_role="LI",
+            )
+            items.append(ListItem(item_content, leftIndent=4))
+            position += 1
+
+        options = (
+            {"bulletType": "1", "start": 1}
+            if ordered
+            else {"bulletType": "bullet", "start": "\u2022"}
+        )
+        return (
+            AccessibleListFlowable(
+                items,
+                leftIndent=17,
+                bulletFontName=BODY_FONT,
+                bulletFontSize=8.5,
+                spaceAfter=6,
+                **options,
+            ),
+            position,
+        )
+
+    result: list[AccessibleListFlowable] = []
+    position = 0
+    while position < len(records):
+        flowable, position = build_level(position, records[position][1])
+        result.append(flowable)
+    return result
+
+
 def parse_markdown(file_name: str, *, include_h1: bool = True):
     lines = (GUIDE / file_name).read_text(encoding="utf-8").splitlines()
     story = []
     index = 0
-    list_items: list[tuple[bool, str]] = []
+    list_items: list[tuple[bool, int, str]] = []
     code_lines: list[str] = []
     in_code = False
 
@@ -228,23 +435,7 @@ def parse_markdown(file_name: str, *, include_h1: bool = True):
         nonlocal list_items
         if not list_items:
             return
-        ordered = list_items[0][0]
-        items = [ListItem(Paragraph(inline(value, file_name), styles["GuideBody"]), leftIndent=4) for _, value in list_items]
-        list_options = (
-            {"bulletType": "1", "start": 1}
-            if ordered
-            else {"bulletType": "bullet", "start": "\u2022"}
-        )
-        story.append(
-            ListFlowable(
-                items,
-                leftIndent=17,
-                bulletFontName=MEDIUM_FONT,
-                bulletFontSize=8.5,
-                spaceAfter=6,
-                **list_options,
-            )
-        )
+        story.extend(_list_flowables(list_items, file_name))
         list_items = []
 
     while index < len(lines):
@@ -253,7 +444,13 @@ def parse_markdown(file_name: str, *, include_h1: bool = True):
         if stripped.startswith("```"):
             flush_list()
             if in_code:
-                story.append(Paragraph("<br/>".join(html.escape(item) for item in code_lines), styles["GuideCode"]))
+                story.append(
+                    AccessibleParagraph(
+                        "<br/>".join(html.escape(item) for item in code_lines),
+                        styles["GuideCode"],
+                        accessibility_role="Code",
+                    )
+                )
                 code_lines = []
             in_code = not in_code
             index += 1
@@ -266,15 +463,36 @@ def parse_markdown(file_name: str, *, include_h1: bool = True):
             flush_list()
             index += 1
             continue
+        if stripped == "<!-- page-break -->":
+            flush_list()
+            story.append(PageBreak())
+            index += 1
+            continue
         if stripped.startswith("|") and index + 1 < len(lines) and lines[index + 1].strip().startswith("|"):
             flush_list()
             table, index = parse_table(lines, index, file_name)
-            story.extend([table, Spacer(1, 7)])
+            story.append(KeepTogether([table, Spacer(1, 7)]))
             continue
         image_match = re.fullmatch(r"!\[([^]]*)\]\(([^)]+)\)", stripped)
         if image_match:
             flush_list()
-            story.extend([Paragraph(inline(image_match.group(1), file_name), styles["GuideCaption"]), image_flowable(image_match.group(2), A4[0] - 36 * mm), Spacer(1, 7)])
+            story.append(
+                KeepTogether(
+                    [
+                        AccessibleParagraph(
+                            inline(image_match.group(1), file_name),
+                            styles["GuideCaption"],
+                            accessibility_role="Caption",
+                        ),
+                        image_flowable(
+                            image_match.group(2),
+                            A4[0] - 36 * mm,
+                            alt_text=image_match.group(1),
+                        ),
+                        Spacer(1, 7),
+                    ]
+                )
+            )
             index += 1
             continue
         heading = re.match(r"^(#{1,3})\s+(.+)$", stripped)
@@ -286,21 +504,24 @@ def parse_markdown(file_name: str, *, include_h1: bool = True):
                 index += 1
                 continue
             anchor = anchor_for(file_name) if level == 1 else anchor_for(file_name, title)
-            paragraph = Paragraph(inline(title, file_name), styles[f"GuideH{level}"])
+            paragraph = AccessibleParagraph(
+                inline(title, file_name),
+                styles[f"GuideH{level}"],
+                accessibility_role=f"H{level + 1}",
+                structure_title=title,
+            )
             paragraph._bookmarkName = anchor
             paragraph._outlineLevel = level - 1
             paragraph._tocText = title
             story.append(paragraph)
             index += 1
             continue
-        ordered = re.match(r"^\d+\.\s+(.+)$", stripped)
-        bullet = re.match(r"^-\s+(.+)$", stripped)
-        if ordered or bullet:
-            is_ordered = ordered is not None
-            value = (ordered or bullet).group(1)
-            if list_items and list_items[-1][0] != is_ordered:
-                flush_list()
-            list_items.append((is_ordered, value))
+        list_match = re.match(r"^(\s*)(\d+\.|-)\s+(.+)$", line)
+        if list_match:
+            is_ordered = list_match.group(2) != "-"
+            indent = len(list_match.group(1).expandtabs(2))
+            value = list_match.group(3)
+            list_items.append((is_ordered, indent, value))
             index += 1
             continue
         flush_list()
@@ -312,7 +533,12 @@ def parse_markdown(file_name: str, *, include_h1: bool = True):
                 break
             paragraph_lines.append(candidate)
             index += 1
-        story.append(Paragraph(inline(" ".join(paragraph_lines), file_name), styles["GuideBody"]))
+        story.append(
+            AccessibleParagraph(
+                inline(" ".join(paragraph_lines), file_name),
+                styles["GuideBody"],
+            )
+        )
     flush_list()
     return story
 
@@ -334,9 +560,17 @@ class GuideDocTemplate(BaseDocTemplate):
         frame = Frame(self.leftMargin, self.bottomMargin, self.width, self.height, id="normal")
         self.addPageTemplates(PageTemplate(id="guide", frames=[frame], onPage=self.draw_page))
 
+    def beforeDocument(self):
+        super().beforeDocument()
+        self._accessibility_records: list[dict[str, Any]] = []
+        self.canv._accessibility_records = self._accessibility_records
+        self.canv._accessibility_mcid_counters = {}
+        self.canv._accessibility_tag_stack = []
+
     def draw_page(self, canvas, doc):
         if doc.page <= 1:
             return
+        canvas._code.append("/Artifact BMC")
         canvas.saveState()
         canvas.setStrokeColor(LINE)
         canvas.setLineWidth(0.5)
@@ -346,6 +580,7 @@ class GuideDocTemplate(BaseDocTemplate):
         canvas.drawString(18 * mm, 8.7 * mm, "Stashi Wallet user guide")
         canvas.drawRightString(A4[0] - 18 * mm, 8.7 * mm, str(doc.page))
         canvas.restoreState()
+        canvas._code.append("EMC")
 
     def afterFlowable(self, flowable):
         bookmark = getattr(flowable, "_bookmarkName", None)
@@ -364,19 +599,37 @@ def build_story():
     logo = ROOT / "app" / "assets" / "icons" / "stashi-wallet-logo.png"
     story.extend([
         Spacer(1, 26 * mm),
-        Image(str(logo), width=42 * mm, height=42 * mm),
+        AccessibleImage(
+            str(logo),
+            width=42 * mm,
+            height=42 * mm,
+            alt_text="Stashi Wallet logo",
+        ),
         Spacer(1, 10 * mm),
-        Paragraph("Stashi Wallet", styles["CoverTitle"]),
-        Paragraph("User guide", styles["CoverSub"]),
+        AccessibleParagraph(
+            "Stashi Wallet",
+            styles["CoverTitle"],
+            accessibility_role="H1",
+            structure_title="Stashi Wallet",
+        ),
+        AccessibleParagraph("User guide", styles["CoverSub"]),
         Spacer(1, 10 * mm),
-        Paragraph("Setup, recovery, payments, privacy, key management, verification, and troubleshooting.", styles["CoverSub"]),
+        AccessibleParagraph(
+            "Setup, recovery, payments, privacy, key management, verification, and troubleshooting.",
+            styles["CoverSub"],
+        ),
         Spacer(1, 50 * mm),
-        Paragraph("Desktop and Mobile", styles["GuideCaption"]),
-        Paragraph("Pirate Chain Foundation", styles["CoverSub"]),
+        AccessibleParagraph("Mobile and desktop", styles["GuideCaption"]),
+        AccessibleParagraph("Pirate Chain Foundation", styles["CoverSub"]),
         PageBreak(),
-        Paragraph("Contents", styles["TocTitle"]),
+        AccessibleParagraph(
+            "Contents",
+            styles["TocTitle"],
+            accessibility_role="H2",
+            structure_title="Contents",
+        ),
     ])
-    toc = TableOfContents()
+    toc = AccessibleTableOfContents()
     toc.levelStyles = [
         ParagraphStyle(name="TOC1", fontName=MEDIUM_FONT, fontSize=10, leading=15, leftIndent=0, firstLineIndent=0, textColor=INK, spaceBefore=3),
         ParagraphStyle(name="TOC2", fontName=BODY_FONT, fontSize=8.2, leading=12, leftIndent=12, firstLineIndent=0, textColor=MUTED),
@@ -404,6 +657,159 @@ def build_story():
     return story
 
 
+def add_accessibility_structure(
+    source: Path,
+    destination: Path,
+    records: list[dict[str, Any]],
+) -> None:
+    if not records:
+        raise ValueError("The guide did not produce any accessibility tags")
+
+    reader = PdfReader(source)
+    writer = PdfWriter()
+    writer.clone_document_from_reader(reader)
+
+    records = [dict(record) for record in records]
+    tagged_pages = {record["page"] for record in records}
+    for page_index, page in enumerate(writer.pages):
+        if page_index in tagged_pages:
+            continue
+
+        prefix = DecodedStreamObject()
+        prefix.set_data(b"/TOC <</MCID 0>> BDC\n")
+        suffix = DecodedStreamObject()
+        suffix.set_data(b"\nEMC\n")
+        existing_contents = page.get("/Contents")
+        if isinstance(existing_contents, ArrayObject):
+            content_parts = list(existing_contents)
+        elif existing_contents is None:
+            content_parts = []
+        else:
+            content_parts = [existing_contents]
+        page[NameObject("/Contents")] = ArrayObject(
+            [
+                writer._add_object(prefix),
+                *content_parts,
+                writer._add_object(suffix),
+            ]
+        )
+        records.append(
+            {
+                "id": len(records),
+                "page": page_index,
+                "mcid": 0,
+                "role": "TOC",
+                "alt_text": None,
+                "title": "Contents continued",
+                "parent": None,
+            }
+        )
+
+    structure_root = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/StructTreeRoot"),
+        }
+    )
+    structure_root_ref = writer._add_object(structure_root)
+    document_element = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/StructElem"),
+            NameObject("/S"): NameObject("/Document"),
+            NameObject("/P"): structure_root_ref,
+        }
+    )
+    document_element_ref = writer._add_object(document_element)
+
+    element_refs = []
+    for record in records:
+        page_index = record["page"]
+        if page_index < 0 or page_index >= len(writer.pages):
+            raise ValueError(f"Accessibility tag references invalid page {page_index + 1}")
+        element = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/StructElem"),
+                NameObject("/S"): NameObject(f"/{record['role']}"),
+                NameObject("/Pg"): writer.pages[page_index].indirect_reference,
+            }
+        )
+        if record.get("alt_text"):
+            element[NameObject("/Alt")] = TextStringObject(record["alt_text"])
+        if record.get("title"):
+            element[NameObject("/T")] = TextStringObject(record["title"])
+        element_refs.append(writer._add_object(element))
+
+    child_ids: dict[int, list[int]] = {record["id"]: [] for record in records}
+    top_level_ids: list[int] = []
+    for record in records:
+        parent_id = record["parent"]
+        if parent_id is None:
+            top_level_ids.append(record["id"])
+        else:
+            child_ids[parent_id].append(record["id"])
+
+    for record, element_ref in zip(records, element_refs, strict=True):
+        element = element_ref.get_object()
+        parent_id = record["parent"]
+        element[NameObject("/P")] = (
+            document_element_ref if parent_id is None else element_refs[parent_id]
+        )
+        contents = ArrayObject([NumberObject(record["mcid"])])
+        contents.extend(element_refs[child_id] for child_id in child_ids[record["id"]])
+        element[NameObject("/K")] = contents[0] if len(contents) == 1 else contents
+
+    document_element[NameObject("/K")] = ArrayObject(
+        [element_refs[record_id] for record_id in top_level_ids]
+    )
+    structure_root[NameObject("/K")] = ArrayObject([document_element_ref])
+
+    records_by_page: dict[int, list[dict[str, Any]]] = {}
+    for record in records:
+        records_by_page.setdefault(record["page"], []).append(record)
+
+    parent_tree_numbers = ArrayObject()
+    for page_index, page_records in sorted(records_by_page.items()):
+        page_records.sort(key=lambda item: item["mcid"])
+        expected_mcids = list(range(len(page_records)))
+        actual_mcids = [item["mcid"] for item in page_records]
+        if actual_mcids != expected_mcids:
+            raise ValueError(
+                f"Page {page_index + 1} has non-contiguous marked-content identifiers"
+            )
+        writer.pages[page_index][NameObject("/StructParents")] = NumberObject(
+            page_index
+        )
+        writer.pages[page_index][NameObject("/Tabs")] = NameObject("/S")
+        parent_tree_numbers.extend(
+            [
+                NumberObject(page_index),
+                ArrayObject([element_refs[item["id"]] for item in page_records]),
+            ]
+        )
+
+    parent_tree = DictionaryObject(
+        {
+            NameObject("/Nums"): parent_tree_numbers,
+        }
+    )
+    structure_root[NameObject("/ParentTree")] = writer._add_object(parent_tree)
+    structure_root[NameObject("/ParentTreeNextKey")] = NumberObject(
+        max(records_by_page) + 1
+    )
+
+    root = writer.root_object
+    root[NameObject("/StructTreeRoot")] = structure_root_ref
+    root[NameObject("/MarkInfo")] = DictionaryObject(
+        {NameObject("/Marked"): BooleanObject(True)}
+    )
+    root[NameObject("/Lang")] = TextStringObject("en-GB")
+    root[NameObject("/ViewerPreferences")] = DictionaryObject(
+        {NameObject("/DisplayDocTitle"): BooleanObject(True)}
+    )
+
+    with destination.open("wb") as output_stream:
+        writer.write(output_stream)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the Stashi Wallet user guide PDF.")
     parser.add_argument(
@@ -418,8 +824,15 @@ def parse_args() -> argparse.Namespace:
 def main():
     output = parse_args().output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    doc = GuideDocTemplate(str(output))
-    doc.multiBuild(build_story())
+    temporary_directory = ROOT / "tmp" / "pdfs"
+    temporary_directory.mkdir(parents=True, exist_ok=True)
+    intermediate = temporary_directory / "Stashi-Wallet-User-Guide-untagged.pdf"
+    doc = GuideDocTemplate(str(intermediate))
+    try:
+        doc.multiBuild(build_story())
+        add_accessibility_structure(intermediate, output, doc._accessibility_records)
+    finally:
+        intermediate.unlink(missing_ok=True)
     print(output)
 
 

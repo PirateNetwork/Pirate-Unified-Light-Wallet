@@ -16,6 +16,18 @@ python scripts/docs/verify_stashi_user_guide.py
 The default output is `output/pdf/Stashi-Wallet-User-Guide.pdf`. Use
 `--output <path>` when building a review copy elsewhere.
 
+## Editorial and accessibility requirements
+
+The published guide uses British English and the term `Mobile` for handheld
+layouts. Markdown image descriptions become alternative text in the generated
+PDF. The generator also creates document structure tags, a single level-one
+heading for the product name, level-two chapter headings, tagged lists and
+tables, bookmarks, and a British English document language declaration.
+
+The verifier rejects missing image descriptions, disallowed editorial terms,
+an invalid heading hierarchy, untagged pages, or missing accessibility
+metadata. Run it after every guide build.
+
 ## Publication
 
 `.github/workflows/user-guide-pages.yml` builds and validates the guide when its

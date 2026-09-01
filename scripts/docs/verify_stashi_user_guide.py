@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from pypdf import PdfReader
-from pypdf.generic import Destination
+from pypdf.generic import Destination, DictionaryObject, IndirectObject
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,9 +20,9 @@ REQUIRED_SECTIONS = (
     "Receive and send ARRR",
     "Seed accounts, keys, and addresses",
     "Move from Treasure Chest or Pirate Wallet Lite",
-    "Network privacy and synchronization",
+    "Network privacy and synchronisation",
     "Backups and wallet security",
-    "Settings and build verification",
+    "Settings and release verification",
     "Troubleshooting",
     "Advanced use",
 )
@@ -63,6 +63,35 @@ def validate_markdown_links() -> None:
         raise ValueError("Broken guide links:\n" + "\n".join(failures))
 
 
+def validate_editorial_language() -> None:
+    failures: list[str] = []
+    banned_terms = {
+        "phone": "Mobile",
+        "app": "application",
+        "color": "colour",
+        "organization": "organisation",
+        "finalizing": "finalising",
+        "minimize": "minimise",
+        "synchronization": "synchronisation",
+    }
+    for source in sorted(GUIDE.glob("*.md")):
+        text = source.read_text(encoding="utf-8")
+        visible_text = re.sub(r"\]\([^)]+\)", "]", text)
+        visible_text = re.sub(r"`[^`]+`", "", visible_text)
+        for term, replacement in banned_terms.items():
+            if re.search(rf"\b{re.escape(term)}\b", visible_text, re.IGNORECASE):
+                failures.append(
+                    f"{source.relative_to(ROOT)}: use {replacement!r} instead of {term!r}"
+                )
+        for match in re.finditer(r"!\[([^]]*)\]\([^)]+\)", text):
+            if not match.group(1).strip():
+                failures.append(
+                    f"{source.relative_to(ROOT)}: image is missing alternative text"
+                )
+    if failures:
+        raise ValueError("Guide editorial checks failed:\n" + "\n".join(failures))
+
+
 def outline_titles(items: list[object]) -> list[str]:
     titles: list[str] = []
     for item in items:
@@ -92,6 +121,65 @@ def count_images(reader: PdfReader) -> int:
             if reference.get_object().get("/Subtype") == "/Image":
                 count += 1
     return count
+
+
+def dereference(value):
+    return value.get_object() if isinstance(value, IndirectObject) else value
+
+
+def structure_elements(value):
+    value = dereference(value)
+    if isinstance(value, list):
+        for item in value:
+            yield from structure_elements(item)
+        return
+    if not isinstance(value, DictionaryObject):
+        return
+    if value.get("/Type") == "/StructElem":
+        yield value
+    children = value.get("/K")
+    if children is not None:
+        yield from structure_elements(children)
+
+
+def validate_accessibility(reader: PdfReader, image_count: int) -> None:
+    root = reader.trailer["/Root"]
+    mark_info = dereference(root.get("/MarkInfo"))
+    if not mark_info or not bool(mark_info.get("/Marked")):
+        raise ValueError("Guide PDF is not marked as a tagged document")
+    if root.get("/Lang") != "en-GB":
+        raise ValueError(f"Guide PDF language is not en-GB: {root.get('/Lang')!r}")
+
+    structure_root = root.get("/StructTreeRoot")
+    if structure_root is None:
+        raise ValueError("Guide PDF has no structure tree")
+    structure_root = dereference(structure_root)
+    if structure_root.get("/ParentTree") is None:
+        raise ValueError("Guide PDF structure tree has no parent tree")
+
+    elements = list(structure_elements(structure_root.get("/K")))
+    roles = [str(element.get("/S")) for element in elements]
+    if roles.count("/H1") != 1:
+        raise ValueError(f"Guide must contain exactly one H1 tag; found {roles.count('/H1')}")
+    if roles.count("/H2") < len(REQUIRED_SECTIONS):
+        raise ValueError(
+            f"Guide has only {roles.count('/H2')} H2 tags; expected at least {len(REQUIRED_SECTIONS)}"
+        )
+
+    figures = [element for element in elements if element.get("/S") == "/Figure"]
+    if len(figures) < image_count:
+        raise ValueError(
+            f"Guide has {image_count} images but only {len(figures)} Figure tags"
+        )
+    missing_alt = [element for element in figures if not str(element.get("/Alt", "")).strip()]
+    if missing_alt:
+        raise ValueError(f"Guide has {len(missing_alt)} Figure tags without alternative text")
+
+    for page_number, page in enumerate(reader.pages, 1):
+        if page.get("/StructParents") is None:
+            raise ValueError(f"Guide page {page_number} has no StructParents entry")
+        if page.get("/Tabs") != "/S":
+            raise ValueError(f"Guide page {page_number} does not use structure tab order")
 
 
 def validate_pdf(path: Path) -> None:
@@ -130,6 +218,8 @@ def validate_pdf(path: Path) -> None:
     if image_count < 20:
         raise ValueError(f"Guide has only {image_count} images; expected at least 20")
 
+    validate_accessibility(reader, image_count)
+
     print(
         f"Verified {path}: {page_count} pages, {len(titles)} bookmarks, "
         f"{link_count} links, {image_count} images"
@@ -144,6 +234,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     validate_markdown_links()
+    validate_editorial_language()
     validate_pdf(parse_args().pdf.resolve())
 
 
