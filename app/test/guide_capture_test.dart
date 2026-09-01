@@ -26,6 +26,7 @@ import 'package:pirate_wallet/features/keys/keys_screen.dart';
 import 'package:pirate_wallet/features/onboarding/screens/backup_warning_screen.dart';
 import 'package:pirate_wallet/features/onboarding/screens/birthday_picker_screen.dart';
 import 'package:pirate_wallet/features/onboarding/screens/create_or_import_screen.dart';
+import 'package:pirate_wallet/features/onboarding/screens/ivk_import_screen.dart';
 import 'package:pirate_wallet/features/onboarding/screens/seed_confirm_screen.dart';
 import 'package:pirate_wallet/features/onboarding/screens/seed_display_screen.dart';
 import 'package:pirate_wallet/features/onboarding/screens/seed_import_screen.dart';
@@ -848,6 +849,53 @@ void main() {
       filename: 'spending-key-import-desktop.png',
       widget: _walletApp(const ImportSpendingKeyScreen()),
       platform: TargetPlatform.windows,
+    );
+  });
+
+  testWidgets('captures view-only wallet fields on mobile and desktop', (
+    tester,
+  ) async {
+    await _capture(
+      tester,
+      size: const Size(390, 844),
+      filename: 'view-only-wallet-mobile.png',
+      widget: _walletApp(const ViewingKeysImportScreen()),
+    );
+    await _capture(
+      tester,
+      size: const Size(1280, 900),
+      filename: 'view-only-wallet-desktop.png',
+      widget: _walletApp(const ViewingKeysImportScreen()),
+      platform: TargetPlatform.windows,
+    );
+  });
+
+  testWidgets('captures viewing-key import on mobile and desktop', (
+    tester,
+  ) async {
+    Future<void> openViewingKeyImport(WidgetTester tester) async {
+      await tester.tap(find.text('Viewing Key'));
+    }
+
+    Widget keys() => _walletApp(
+      KeyManagementScreen(keyLoader: (_) async => DecoyData.keyGroups()),
+    );
+    await _capture(
+      tester,
+      size: const Size(390, 844),
+      filename: 'viewing-key-import-mobile.png',
+      widget: keys(),
+      interact: openViewingKeyImport,
+      captureOverlay: true,
+    );
+    await _capture(
+      tester,
+      size: const Size(1280, 900),
+      filename: 'viewing-key-import-desktop.png',
+      widget: keys(),
+      platform: TargetPlatform.windows,
+      interact: openViewingKeyImport,
+      captureOverlay: true,
     );
   });
 
