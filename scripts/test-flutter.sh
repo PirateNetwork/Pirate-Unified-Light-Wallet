@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Flutter 3.47 widget tests need the application asset bundle for fonts, images,
-# and framework shaders. Network-backed dependency downloads remain disabled.
+# and framework shaders. Materialize the pinned Komodo assets before Flutter
+# invokes its dependency transformer so the test build remains deterministic.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,5 +50,6 @@ FLUTTER_BIN="$(resolve_flutter)" || {
 }
 
 export OVERRIDE_DEFI_API_DOWNLOAD=false
+bash "$PROJECT_ROOT/scripts/prepare-komodo-assets.sh"
 cd "$PROJECT_ROOT/app"
 exec "$FLUTTER_BIN" test "$@"
