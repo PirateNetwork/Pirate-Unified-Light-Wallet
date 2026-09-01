@@ -20,7 +20,7 @@
     
     <application
         android:label="Stashi Wallet"
-        android:name="${applicationName}"
+        android:name=".StashiApplication"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">
         
