@@ -965,6 +965,7 @@ pub(super) fn change_app_passphrase(
     ensure_wallet_registry_loaded()?;
 
     sync_control::clear_passphrase_change_sync_state();
+    spending_protection::lock_all_signing_sessions();
     tracing::info!("App passphrase updated successfully");
     Ok(())
 }

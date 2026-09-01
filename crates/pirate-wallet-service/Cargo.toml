@@ -33,6 +33,7 @@ sha2 = "0.10"
 tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+zeroize = { workspace = true, features = ["std"] }
 zcash_client_backend = { workspace = true }
 zcash_keys = { workspace = true }
 zcash_note_encryption = { workspace = true }

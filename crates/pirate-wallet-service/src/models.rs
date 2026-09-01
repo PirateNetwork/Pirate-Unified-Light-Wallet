@@ -395,6 +395,48 @@ pub struct SpendabilityStatus {
     pub reason_code: String,
 }
 
+/// State of the optional wallet-scoped signing credential.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletSigningStatus {
+    /// Whether spend-capable material has a second wallet-scoped encryption layer.
+    pub protection_enabled: bool,
+    /// Whether the signing key is currently present in process memory.
+    pub unlocked: bool,
+}
+
+/// Point-in-time readiness result for one configured lightwalletd endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EndpointHealthDiagnostic {
+    /// Endpoint URL.
+    pub endpoint: String,
+    /// Whether connectivity, compact-cache readiness, and canonical-chain checks passed.
+    pub healthy: bool,
+    /// Whether the validated pool selected this endpoint for requests.
+    pub active: bool,
+    /// Latest block height reported by the endpoint.
+    pub tip_height: Option<u64>,
+    /// End-to-end probe latency in milliseconds.
+    pub latency_ms: Option<u64>,
+    /// Stable diagnostic detail when the endpoint was rejected or unavailable.
+    pub reason: Option<String>,
+}
+
+/// Point-in-time diagnostics for a wallet's configured lightwalletd pool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EndpointPoolDiagnostics {
+    /// Wallet whose endpoint policy was inspected.
+    pub wallet_id: WalletId,
+    /// Configured primary endpoint.
+    pub configured_endpoint: String,
+    /// Endpoint selected after readiness and same-chain validation, or `None`
+    /// when no candidate passed the complete probe.
+    pub active_endpoint: Option<String>,
+    /// Whether automatic failover is configured.
+    pub automatic_failover: bool,
+    /// Health result for every configured candidate, including the primary.
+    pub endpoints: Vec<EndpointHealthDiagnostic>,
+}
+
 /// Network tunnel mode
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TunnelMode {

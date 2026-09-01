@@ -5,13 +5,13 @@ use serde_json::{json, to_value, Value};
 pub use crate::{
     AddressBalanceInfo, AddressBookColorTag, AddressBookEntryFfi, AddressInfo, AddressValidation,
     AddressedDeposit, Balance, BuildInfo, CheckpointInfo, ConsensusBranchValidation,
-    DepositAddressScope, FeeInfo, KeyExportInfo, KeyGroupInfo, KeyTypeInfo, LightdEndpoint,
-    NodeTestResult, NoteInfo, Output, PaymentDisclosure, PaymentDisclosureVerification, PendingTx,
-    QortalP2shRedeemRequest, QortalP2shSendRequest, QortalSendRequest, SeedExportWarnings,
-    ShieldedPoolBalances, SignedTx, SpendabilityStatus, SyncLogEntryFfi, SyncMode, SyncStatus,
-    TransactionCursor, TransactionDetails, TransactionPage, TransactionRecipient, TunnelMode,
-    TxInfo, VerifiedSpendingKeyImport, VerifiedSpendingKeyPool, WalletId, WalletMeta,
-    WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
+    DepositAddressScope, EndpointPoolDiagnostics, FeeInfo, KeyExportInfo, KeyGroupInfo,
+    KeyTypeInfo, LightdEndpoint, NodeTestResult, NoteInfo, Output, PaymentDisclosure,
+    PaymentDisclosureVerification, PendingTx, QortalP2shRedeemRequest, QortalP2shSendRequest,
+    QortalSendRequest, SeedExportWarnings, ShieldedPoolBalances, SignedTx, SpendabilityStatus,
+    SyncLogEntryFfi, SyncMode, SyncStatus, TransactionCursor, TransactionDetails, TransactionPage,
+    TransactionRecipient, TunnelMode, TxInfo, VerifiedSpendingKeyImport, VerifiedSpendingKeyPool,
+    WalletId, WalletMeta, WalletSigningStatus, WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
 };
 pub use pirate_core::{MnemonicInspection, MnemonicLanguage};
 
@@ -109,6 +109,21 @@ pub enum WalletServiceRequest {
         wallet_id: WalletId,
     },
     GetSpendabilityStatus {
+        wallet_id: WalletId,
+    },
+    EnableWalletSigningProtection {
+        wallet_id: WalletId,
+        session_credential: String,
+    },
+    UnlockWalletSigning {
+        wallet_id: WalletId,
+        session_credential: String,
+    },
+    LockWalletSigning {
+        wallet_id: WalletId,
+    },
+    LockAllWalletSigning,
+    GetWalletSigningStatus {
         wallet_id: WalletId,
     },
     ListKeyGroups {
@@ -279,6 +294,9 @@ pub enum WalletServiceRequest {
     GetLightdEndpointConfig {
         wallet_id: WalletId,
     },
+    GetLightdEndpointPoolDiagnostics {
+        wallet_id: WalletId,
+    },
     SetLightdEndpoint {
         wallet_id: WalletId,
         url: String,
@@ -352,6 +370,8 @@ pub enum WalletServiceRequest {
         pending: PendingTx,
     },
     BroadcastTx {
+        #[serde(default)]
+        wallet_id: Option<WalletId>,
         signed: SignedTx,
     },
     StartSeedExport {
@@ -612,6 +632,27 @@ impl WalletService {
             WalletServiceRequest::GetSpendabilityStatus { wallet_id } => {
                 serialize(ffi::get_spendability_status(wallet_id)?)
             }
+            WalletServiceRequest::EnableWalletSigningProtection {
+                wallet_id,
+                session_credential,
+            } => serialize(ffi::enable_wallet_signing_protection(
+                wallet_id,
+                session_credential,
+            )?),
+            WalletServiceRequest::UnlockWalletSigning {
+                wallet_id,
+                session_credential,
+            } => serialize(ffi::unlock_wallet_signing(wallet_id, session_credential)?),
+            WalletServiceRequest::LockWalletSigning { wallet_id } => {
+                serialize(ffi::lock_wallet_signing(wallet_id)?)
+            }
+            WalletServiceRequest::LockAllWalletSigning => {
+                ffi::lock_all_wallet_signing()?;
+                Ok(ack())
+            }
+            WalletServiceRequest::GetWalletSigningStatus { wallet_id } => {
+                serialize(ffi::get_wallet_signing_status(wallet_id)?)
+            }
             WalletServiceRequest::ListKeyGroups { wallet_id } => {
                 serialize(ffi::list_key_groups(wallet_id)?)
             }
@@ -795,6 +836,9 @@ impl WalletService {
             WalletServiceRequest::GetLightdEndpointConfig { wallet_id } => {
                 serialize(ffi::get_lightd_endpoint_config(wallet_id)?)
             }
+            WalletServiceRequest::GetLightdEndpointPoolDiagnostics { wallet_id } => {
+                serialize(ffi::get_lightd_endpoint_pool_diagnostics(wallet_id).await?)
+            }
             WalletServiceRequest::SetLightdEndpoint {
                 wallet_id,
                 url,
@@ -895,9 +939,12 @@ impl WalletService {
             WalletServiceRequest::SignTx { wallet_id, pending } => {
                 serialize(ffi::sign_tx(wallet_id, pending)?)
             }
-            WalletServiceRequest::BroadcastTx { signed } => {
-                serialize(ffi::broadcast_tx(signed).await?)
-            }
+            WalletServiceRequest::BroadcastTx { wallet_id, signed } => match wallet_id {
+                Some(wallet_id) => {
+                    serialize(ffi::broadcast_tx_for_wallet(wallet_id, signed).await?)
+                }
+                None => serialize(ffi::broadcast_tx(signed).await?),
+            },
             WalletServiceRequest::StartSeedExport { wallet_id } => {
                 serialize(ffi::start_seed_export(wallet_id)?)
             }

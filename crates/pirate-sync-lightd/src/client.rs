@@ -372,6 +372,8 @@ pub struct EndpointHealth {
     pub healthy: bool,
     /// Latest reported block height when available.
     pub tip_height: Option<u64>,
+    /// Total readiness and canonical-chain probe latency in milliseconds.
+    pub latency_ms: Option<u64>,
     /// Diagnostic reason when the endpoint is unavailable or rejected.
     pub reason: Option<String>,
 }
@@ -1900,6 +1902,7 @@ impl LightClient {
                         endpoint: candidate.endpoint,
                         healthy: false,
                         tip_height: None,
+                        latency_ms: None,
                         reason: Some("endpoint has not completed validation".to_string()),
                     })
             })
@@ -2087,6 +2090,11 @@ impl LightClient {
             .filter_map(|(index, probe)| probe.as_ref().map(|probe| (index, probe.elapsed)))
             .collect::<HashMap<_, _>>();
         let active_index = preferred_active_endpoint(&healthy_indices, &tips, &probe_latencies);
+        for (index, entry) in health.iter_mut().enumerate() {
+            entry.latency_ms = probe_latencies
+                .get(&index)
+                .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
+        }
         if let Some(channel) = active_index
             .and_then(|index| probes[index].as_ref())
             .map(|probe| probe.channel.clone())
@@ -2119,6 +2127,14 @@ impl LightClient {
             })
             .collect();
         health
+    }
+
+    /// Return the endpoint currently selected by the validated pool.
+    pub async fn active_endpoint(&self) -> String {
+        let active_index = self.endpoint_pool.read().await.active_index;
+        self.endpoint_candidate(active_index)
+            .map(|candidate| candidate.endpoint)
+            .unwrap_or_else(|| self.config.endpoint.clone())
     }
 
     fn endpoint_tip_refresh_timeout(&self) -> Duration {

@@ -104,6 +104,7 @@ fn append_key_import_persisted(
 }
 
 pub(super) fn export_sapling_viewing_key(wallet_id: WalletId) -> Result<String> {
+    require_wallet_signing_session(&wallet_id)?;
     let wallet = get_wallet_meta(&wallet_id)?;
 
     if wallet.watch_only {
@@ -118,11 +119,11 @@ pub(super) fn export_sapling_viewing_key(wallet_id: WalletId) -> Result<String> 
     let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
         .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?;
     let network_type = address_prefix_network_type(&wallet_id)?;
-
     Ok(extsk.to_xfvk_bech32_for_network(network_type))
 }
 
 pub(super) fn export_ironwood_viewing_key(wallet_id: WalletId) -> Result<String> {
+    require_wallet_signing_session(&wallet_id)?;
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
@@ -147,7 +148,11 @@ pub(super) fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> 
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
 
-    ensure_primary_account_key(&repo, &wallet_id, &secret)?;
+    if repo.get_signing_protection(&wallet_id)?.is_none()
+        || spending_protection::is_signing_session_unlocked(&wallet_id)
+    {
+        ensure_primary_account_key(&repo, &wallet_id, &secret)?;
+    }
     let keys = repo.get_account_keys(secret.account_id)?;
     let seed_derived = repo
         .get_seed_derived_account_keys(secret.account_id)?
@@ -195,6 +200,7 @@ pub(super) fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> 
 }
 
 pub(super) fn export_key_group_keys(wallet_id: WalletId, key_id: i64) -> Result<KeyExportInfo> {
+    require_wallet_signing_session(&wallet_id)?;
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?

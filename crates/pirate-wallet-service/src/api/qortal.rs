@@ -167,8 +167,8 @@ pub async fn qortal_send(wallet_id: WalletId, request: QortalSendRequest) -> Res
         key_filter.clone(),
         None,
     )?;
-    let signed = sign_tx_filtered(wallet_id, pending, key_filter, None)?;
-    tx_flow::broadcast_tx(signed).await
+    let signed = sign_tx_filtered(wallet_id.clone(), pending, key_filter, None)?;
+    tx_flow::broadcast_tx_for_wallet(wallet_id, signed).await
 }
 
 struct LocalQortalTransaction {

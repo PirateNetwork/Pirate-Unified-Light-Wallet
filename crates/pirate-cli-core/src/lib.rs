@@ -725,7 +725,12 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             SendCommand::Broadcast { signed_json } => {
                 let signed: SignedTx = serde_json::from_str(&signed_json)
                     .map_err(|e| anyhow!("Invalid signed transaction JSON: {}", e))?;
-                service.execute(Req::BroadcastTx { signed }).await
+                service
+                    .execute(Req::BroadcastTx {
+                        wallet_id: None,
+                        signed,
+                    })
+                    .await
             }
         },
         Command::Send {
@@ -1134,7 +1139,10 @@ async fn legacy_send(service: &WalletService, request_json: &str) -> Result<Valu
         .await?;
     let signed: SignedTx = serde_json::from_value(signed)?;
     let txid = service
-        .execute(WalletServiceRequest::BroadcastTx { signed })
+        .execute(WalletServiceRequest::BroadcastTx {
+            wallet_id: None,
+            signed,
+        })
         .await?;
     Ok(json!({ "txid": txid }))
 }

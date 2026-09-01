@@ -62,6 +62,7 @@ pub(super) fn export_seed_with_passphrase(
     mnemonic_language: Option<pirate_core::MnemonicLanguage>,
 ) -> Result<Vec<String>> {
     super::panic_duress::ensure_not_decoy("Seed export")?;
+    super::require_wallet_signing_session(&wallet_id)?;
     let manager = SEED_EXPORT.read();
 
     if manager.state() != ExportFlowState::AwaitingPassphrase {

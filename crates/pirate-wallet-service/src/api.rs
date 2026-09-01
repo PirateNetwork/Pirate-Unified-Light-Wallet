@@ -39,9 +39,10 @@ use pirate_storage_sqlite::{
     address_book::ColorTag as DbColorTag,
     passphrase_store, platform_keystore,
     security::{generate_salt, AppPassphrase, EncryptionAlgorithm, MasterKey, SealedKey},
-    Account, AccountKey, Address as StoredAddress, AddressScope as StoredAddressScope, AddressType,
-    Database, EncryptionKey, KeyScope, KeyType, KeystoreResult, NoteType as StoredNoteType,
-    ReceivedNoteRecord, Repository, ScanQueueStorage, SpendabilityStateStorage, WalletSecret,
+    spending_protection, Account, AccountKey, Address as StoredAddress,
+    AddressScope as StoredAddressScope, AddressType, Database, EncryptionKey, KeyScope, KeyType,
+    KeystoreResult, NoteType as StoredNoteType, ReceivedNoteRecord, Repository, ScanQueueStorage,
+    SpendabilityStateStorage, WalletSecret,
 };
 use pirate_sync_lightd::client::{LightClient, RetryConfig};
 use pirate_sync_lightd::SyncEngine;
@@ -66,6 +67,7 @@ use zcash_note_encryption::try_output_recovery_with_ovk;
 use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
 use zcash_protocol::consensus::BlockHeight;
+use zeroize::Zeroizing;
 
 pub(crate) mod address_book;
 pub(crate) mod addresses;
@@ -782,6 +784,7 @@ fn reset_runtime_state_for_storage_switch() {
     }
 
     sync_control::clear_all_runtime_state();
+    spending_protection::lock_all_signing_sessions();
     encrypted_db::invalidate_all_wallet_db_caches();
     endpoint::clear_cached_lightd_endpoints();
     passphrase_store::clear_passphrase();
@@ -901,6 +904,121 @@ pub fn get_spendability_status(wallet_id: WalletId) -> Result<SpendabilityStatus
     sync_control::get_spendability_status(wallet_id)
 }
 
+fn signing_credential_marker(wallet_id: &str) -> Vec<u8> {
+    format!("pirate-wallet-signing-session/v1/{wallet_id}").into_bytes()
+}
+
+/// Add a wallet-scoped encryption layer to all spend-capable key material.
+///
+/// This is opt-in so existing Flutter, CLI, and native consumers keep their
+/// current unlock contract. Viewing keys and synchronized chain data remain
+/// usable while the signing session is locked.
+pub fn enable_wallet_signing_protection(
+    wallet_id: WalletId,
+    session_credential: String,
+) -> Result<WalletSigningStatus> {
+    ensure_not_decoy("Enable wallet signing protection")?;
+    let credential = Zeroizing::new(session_credential);
+    if credential.len() < 16 {
+        return Err(anyhow!(
+            "A wallet signing credential must contain at least 16 characters"
+        ));
+    }
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
+    let salt = generate_salt();
+    let key = AppPassphrase::derive_key(&credential, &salt)
+        .map_err(|error| anyhow!("Failed to derive wallet signing key: {error}"))?;
+    let credential_check = key
+        .encrypt(&signing_credential_marker(&wallet_id))
+        .map_err(|error| anyhow!("Failed to protect wallet signing credential: {error}"))?;
+
+    repo.enable_signing_protection(
+        &wallet_id,
+        secret.account_id,
+        &salt,
+        &credential_check,
+        &key,
+    )?;
+    spending_protection::unlock_signing_session(wallet_id.clone(), key);
+    Ok(WalletSigningStatus {
+        protection_enabled: true,
+        unlocked: true,
+    })
+}
+
+/// Unlock signing for one protected wallet for the lifetime of this process session.
+pub fn unlock_wallet_signing(
+    wallet_id: WalletId,
+    session_credential: String,
+) -> Result<WalletSigningStatus> {
+    ensure_not_decoy("Unlock wallet signing")?;
+    let credential = Zeroizing::new(session_credential);
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let protection = repo
+        .get_signing_protection(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet signing protection is not enabled"))?;
+    let key = AppPassphrase::derive_key(&credential, &protection.kdf_salt)
+        .map_err(|error| anyhow!("Failed to derive wallet signing key: {error}"))?;
+    let marker = key
+        .decrypt(&protection.credential_check)
+        .map_err(|_| anyhow!("ERR_SIGNING_CREDENTIAL_INVALID"))?;
+    if marker != signing_credential_marker(&wallet_id) {
+        return Err(anyhow!("ERR_SIGNING_CREDENTIAL_INVALID"));
+    }
+    spending_protection::unlock_signing_session(wallet_id, key);
+    Ok(WalletSigningStatus {
+        protection_enabled: true,
+        unlocked: true,
+    })
+}
+
+/// Clear one wallet's in-memory signing credential and cached database handles.
+pub fn lock_wallet_signing(wallet_id: WalletId) -> Result<WalletSigningStatus> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let protection_enabled = repo.get_signing_protection(&wallet_id)?.is_some();
+    drop(repo);
+    drop(_db);
+    spending_protection::lock_signing_session(&wallet_id);
+    encrypted_db::invalidate_wallet_db_cache_for(&wallet_id);
+    Ok(WalletSigningStatus {
+        protection_enabled,
+        unlocked: false,
+    })
+}
+
+/// Clear every in-memory signing credential and cached wallet database handle.
+pub fn lock_all_wallet_signing() -> Result<()> {
+    spending_protection::lock_all_signing_sessions();
+    encrypted_db::invalidate_all_wallet_db_caches();
+    Ok(())
+}
+
+/// Return whether signing protection is enabled and currently unlocked.
+pub fn get_wallet_signing_status(wallet_id: WalletId) -> Result<WalletSigningStatus> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let protection_enabled = repo.get_signing_protection(&wallet_id)?.is_some();
+    Ok(WalletSigningStatus {
+        protection_enabled,
+        unlocked: protection_enabled
+            && spending_protection::is_signing_session_unlocked(&wallet_id),
+    })
+}
+
+pub(super) fn require_wallet_signing_session(wallet_id: &str) -> Result<()> {
+    let (_db, repo) = open_wallet_db_for(wallet_id)?;
+    if repo.get_signing_protection(wallet_id)?.is_some()
+        && !spending_protection::is_signing_session_unlocked(wallet_id)
+    {
+        return Err(anyhow!(
+            "ERR_SIGNING_SESSION_LOCKED: unlock this wallet before signing"
+        ));
+    }
+    Ok(())
+}
+
 fn ensure_primary_account_key(
     repo: &Repository,
     wallet_id: &str,
@@ -966,6 +1084,7 @@ pub fn delete_wallet(wallet_id: WalletId) -> Result<()> {
     run_on_runtime_blocking(move || async move {
         sync_control::cancel_sync_internal(wallet_id_for_cancel, true).await
     })?;
+    spending_protection::lock_signing_session(&wallet_id);
     wallet_registry::delete_wallet(wallet_id)
 }
 
@@ -1766,6 +1885,12 @@ pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
     run_on_runtime(move || tx_flow::broadcast_tx(signed)).await
 }
 
+/// Broadcast using the endpoint and repair state belonging to `wallet_id`.
+pub async fn broadcast_tx_for_wallet(wallet_id: WalletId, signed: SignedTx) -> Result<TxId> {
+    ensure_not_decoy("Broadcast transaction")?;
+    run_on_runtime(move || tx_flow::broadcast_tx_for_wallet(wallet_id, signed)).await
+}
+
 /// Estimate fee for transaction without building it
 pub fn estimate_fee(num_outputs: usize, has_memo: bool, fee_policy: Option<String>) -> Result<u64> {
     let calculator = FeeCalculator::new();
@@ -2150,6 +2275,47 @@ pub fn get_lightd_endpoint(wallet_id: WalletId) -> Result<String> {
 /// Get full endpoint configuration
 pub fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEndpoint> {
     endpoint::get_lightd_endpoint_config(wallet_id)
+}
+
+/// Probe every configured endpoint and report the active canonical candidate.
+pub async fn get_lightd_endpoint_pool_diagnostics(
+    wallet_id: WalletId,
+) -> Result<EndpointPoolDiagnostics> {
+    get_wallet_meta(&wallet_id)?;
+    let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
+    let configured_endpoint = endpoint.url();
+    let client_config = tunnel::light_client_config_for_endpoint(
+        &endpoint,
+        RetryConfig::default(),
+        Duration::from_secs(30),
+        Duration::from_secs(60),
+    );
+    let client = LightClient::with_config(client_config);
+    let health = client.probe_endpoints().await;
+    let selected_endpoint = client.active_endpoint().await;
+    let active_endpoint = health
+        .iter()
+        .find(|entry| entry.healthy && entry.endpoint == selected_endpoint)
+        .map(|entry| entry.endpoint.clone());
+    let endpoints = health
+        .into_iter()
+        .map(|entry| EndpointHealthDiagnostic {
+            active: active_endpoint.as_deref() == Some(entry.endpoint.as_str()),
+            endpoint: entry.endpoint,
+            healthy: entry.healthy,
+            tip_height: entry.tip_height,
+            latency_ms: entry.latency_ms,
+            reason: entry.reason,
+        })
+        .collect();
+
+    Ok(EndpointPoolDiagnostics {
+        wallet_id,
+        configured_endpoint,
+        active_endpoint,
+        automatic_failover: endpoint.automatic_failover,
+        endpoints,
+    })
 }
 
 fn stored_address_is_owned(

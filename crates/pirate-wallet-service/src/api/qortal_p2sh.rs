@@ -324,6 +324,7 @@ pub async fn qortal_send_p2sh(
     wallet_id: WalletId,
     request: QortalP2shSendRequest,
 ) -> Result<String> {
+    require_wallet_signing_session(&wallet_id)?;
     let network_type = active_network_type(&wallet_id)?;
     let script_pubkey = validate_send_request(network_type, &request)?;
 
@@ -490,7 +491,7 @@ pub async fn qortal_send_p2sh(
     })?;
 
     let signed = signed_tx_from_core(signed);
-    tx_flow::broadcast_tx(signed).await
+    tx_flow::broadcast_tx_for_wallet(wallet_id, signed).await
 }
 
 pub async fn qortal_redeem_p2sh(

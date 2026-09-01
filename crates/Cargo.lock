@@ -4237,6 +4237,7 @@ dependencies = [
  "zcash_primitives",
  "zcash_protocol",
  "zcash_transparent",
+ "zeroize",
 ]
 
 [[package]]

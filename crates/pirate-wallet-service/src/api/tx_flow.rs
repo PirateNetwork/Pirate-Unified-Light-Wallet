@@ -504,7 +504,7 @@ fn build_and_sign_timeout(num_inputs: u32) -> std::time::Duration {
     std::time::Duration::from_secs(timeout_secs)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct BroadcastContext {
     wallet_id: WalletId,
     account_id: i64,
@@ -636,6 +636,30 @@ fn store_broadcast_context(txid: &str, context: BroadcastContext) {
 
 fn take_broadcast_context(txid: &str) -> Option<BroadcastContext> {
     BROADCAST_CONTEXTS.write().remove(txid)
+}
+
+fn broadcast_context_wallet(txid: &str) -> Option<WalletId> {
+    BROADCAST_CONTEXTS
+        .read()
+        .get(txid)
+        .map(|context| context.wallet_id.clone())
+}
+
+fn resolve_broadcast_wallet(
+    requested_wallet: Option<WalletId>,
+    origin_wallet: Option<WalletId>,
+    active_wallet: Option<WalletId>,
+) -> Result<WalletId> {
+    match (requested_wallet, origin_wallet) {
+        (Some(requested), Some(origin)) if requested != origin => Err(anyhow!(
+            "Signed transaction belongs to wallet {}, not {}",
+            origin,
+            requested
+        )),
+        (Some(requested), _) => Ok(requested),
+        (None, Some(origin)) => Ok(origin),
+        (None, None) => active_wallet.ok_or_else(|| anyhow!("No active wallet")),
+    }
 }
 
 fn build_tx_internal(
@@ -1107,6 +1131,7 @@ fn sign_tx_internal(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<SignedTx> {
+    require_wallet_signing_session(&wallet_id)?;
     tracing::info!(
         "Signing transaction {} for wallet {}",
         pending.id,
@@ -1900,6 +1925,14 @@ fn record_accepted_broadcast(signed: &SignedTx) {
 }
 
 pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
+    broadcast_tx_scoped(None, signed).await
+}
+
+pub(super) async fn broadcast_tx_for_wallet(wallet_id: WalletId, signed: SignedTx) -> Result<TxId> {
+    broadcast_tx_scoped(Some(wallet_id), signed).await
+}
+
+async fn broadcast_tx_scoped(wallet_id: Option<WalletId>, signed: SignedTx) -> Result<TxId> {
     tracing::info!("Broadcasting transaction {}", signed.txid);
     pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
@@ -1913,7 +1946,15 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
         );
     });
 
-    let wallet_id = get_active_wallet()?.ok_or_else(|| anyhow!("No active wallet"))?;
+    let context_wallet = broadcast_context_wallet(&signed.txid);
+    let needs_legacy_fallback = wallet_id.is_none() && context_wallet.is_none();
+    let active_wallet = if needs_legacy_fallback {
+        get_active_wallet()?
+    } else {
+        None
+    };
+    let wallet_id = resolve_broadcast_wallet(wallet_id, context_wallet, active_wallet)?;
+    get_wallet_meta(&wallet_id)?;
 
     let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
     let endpoint_url = endpoint_config.url();
@@ -2115,4 +2156,38 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
     record_accepted_broadcast(&signed);
 
     Ok(signed.txid)
+}
+
+#[cfg(test)]
+mod broadcast_scope_tests {
+    use super::resolve_broadcast_wallet;
+
+    #[test]
+    fn explicit_wallet_rejects_a_different_signing_origin() {
+        let error = resolve_broadcast_wallet(
+            Some("wallet-b".to_string()),
+            Some("wallet-a".to_string()),
+            None,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("belongs to wallet wallet-a"));
+    }
+
+    #[test]
+    fn signing_origin_wins_over_the_legacy_active_wallet() {
+        let selected = resolve_broadcast_wallet(
+            None,
+            Some("wallet-a".to_string()),
+            Some("wallet-b".to_string()),
+        )
+        .unwrap();
+        assert_eq!(selected, "wallet-a");
+    }
+
+    #[test]
+    fn legacy_broadcast_falls_back_only_without_scope_or_origin() {
+        let selected =
+            resolve_broadcast_wallet(None, None, Some("wallet-active".to_string())).unwrap();
+        assert_eq!(selected, "wallet-active");
+    }
 }
