@@ -1,71 +1,73 @@
 # Backups and wallet security
 
-[Previous: Network and sync](network-and-sync.md) | [Guide contents](README.md) | [Next: Settings and verification](settings-and-verification.md)
+[Previous: Network and synchronisation](network-and-sync.md) | [Guide contents](README.md) | [Next: Settings and release verification](settings-and-verification.md)
 
 ## What protects the funds
 
-ARRR is controlled by cryptographic keys, not by the app installation. The recovery phrase can recreate seed-derived keys. A separately imported spending key must be backed up separately.
+Cryptographic keys control ARRR. The seed phrase can recreate seed-derived keys. A spending key that was imported separately must have a separate backup.
 
-The app passphrase protects local access to the wallet database. It is not a replacement for the recovery phrase and it cannot recover a lost phrase.
+The local passphrase protects access to the wallet database on the device. It does not replace the seed phrase and cannot recover a lost seed phrase.
 
-## Back up the recovery phrase
+## Back up the seed phrase
 
-1. Make sure no one else can see or record the recovery phrase.
+1. Confirm that no other person can see or record the seed phrase.
 2. Open **Settings > Backups > Backup seed phrase**.
-3. Authenticate with the requested biometric or app passphrase.
-4. Write the words in order on an offline medium.
+3. Authenticate with the requested biometric method or local passphrase.
+4. Write the words in order on an offline medium, such as paper with permanent ink or a metal seed phrase backup.
 5. Check every word and its position.
-6. Store the backup somewhere separate from the unlocked device.
-7. Leave the seed screen and confirm that no photo, clipboard entry, or print job remains.
+6. Store the backup separately from the unlocked device.
+7. Leave the seed phrase screen and confirm that no photograph, clipboard entry, or print job remains.
 
-Never enter a recovery phrase into a support form, website, Telegram bot, Discord bot, browser extension, or remote-support session.
+Never enter a seed phrase into a support form, website, Telegram bot, Discord bot, browser extension, or remote support session.
 
 ## Back up imported keys
 
-The phrase does not include keys that were imported separately.
+The seed phrase does not include keys that were imported separately.
 
 1. Open **Settings > Keys & addresses**.
 2. Open each imported spending key.
-3. Use **Export keys** and authenticate.
-4. Record the key offline and label it without exposing the key itself.
+3. Select **Export keys** and authenticate.
+4. Record the key offline and label the backup without exposing the key itself.
 5. Record a birthday height or approximate first-use date.
-6. Test the backup on an offline or disposable profile if your security process allows it.
+6. Test the backup in a separate offline profile if your security process allows it.
 
-A viewing key can also be backed up for monitoring, but remember that it reveals wallet activity within its scope.
+A viewing key can also be backed up for monitoring. It cannot spend funds, but it reveals wallet activity within its scope.
 
-## App passphrase
+## Local passphrase
 
-Use **Settings > Security > Change passphrase** to change the local unlock passphrase. Choose a long, unique phrase. A password manager is suitable for the app passphrase, but the wallet recovery phrase should normally remain outside an online password vault unless you have deliberately chosen and secured that threat model.
+Use **Settings > Security > Change passphrase** to change the local unlock passphrase. Select a long, unique passphrase that meets the requirements shown by Stashi Wallet.
 
-Changing the app passphrase does not change blockchain keys or addresses.
+A password manager can store the local passphrase. Store the seed phrase offline unless your security plan explicitly accounts for the risks of an online vault.
+
+Changing the local passphrase does not change blockchain keys or addresses.
 
 ## Biometrics
 
-Biometric unlock uses the device security system. It is convenient, but its security depends on the device, operating system, enrolled fingerprints or faces, and platform secure storage.
+Biometric unlock uses the device security system. Its security depends on the device, operating system, enrolled fingerprints or faces, and platform secure storage.
 
-- Keep the app passphrase available as a fallback.
+- Keep the local passphrase available as a fallback.
 - Remove biometric access before giving the unlocked device to another person.
-- If secure storage fails, use the app passphrase and review the device's Keychain, Keystore, or credential settings.
+- If secure storage fails, use the local passphrase and review the device's Keychain, Keystore, or credential settings.
 
 ## Duress passphrase
 
-The optional duress passphrase opens a separate empty decoy wallet when entered at unlock. It does not erase the real wallet or move funds.
+The optional duress passphrase opens a separate empty decoy wallet when it is entered during unlock. It does not erase the primary wallet or move funds.
 
-Before enabling it:
+Before enabling a duress passphrase:
 
-1. Understand how the real and decoy passphrases differ.
-2. Test both while the real recovery phrase is safely backed up.
+1. Understand the difference between the real and decoy passphrases.
+2. Test both the real and decoy passphrases while the real seed phrase is safely backed up.
 3. Do not reuse either passphrase elsewhere.
-4. Remember that a decoy is not a guarantee against every physical or forensic threat.
+4. Remember that a decoy does not guarantee protection against every physical or forensic threat.
 
 ## Before deleting or resetting anything
 
-Confirm that you have:
+Confirm the following points before deleting or resetting Stashi Wallet:
 
-- The correct recovery phrase.
-- Every separately imported spending key.
-- The phrase language when it is not English.
-- A birthday date or height early enough for recovery.
-- A record of any higher seed account indices that were used.
+- You have the correct seed phrase.
+- You have every separately imported spending key.
+- You know the seed phrase language if it is not English.
+- You have a birthday date or height early enough for recovery.
+- You have a record of any higher seed account indices that were used.
 
-A wallet database backup can help preserve labels and local history, but it must not be the only recovery method.
+A wallet database backup can preserve labels and local history, but it must not be the only recovery method.

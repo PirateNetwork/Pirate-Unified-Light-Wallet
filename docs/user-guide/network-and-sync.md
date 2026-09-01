@@ -1,12 +1,12 @@
-# Network privacy and synchronization
+# Network privacy and synchronisation
 
-[Previous: Migration](migration.md) | [Guide contents](README.md) | [Next: Security and backups](security-and-backups.md)
+[Previous: Moving from another wallet](migration.md) | [Guide contents](README.md) | [Next: Security and backups](security-and-backups.md)
 
-Open **Settings > Privacy and Network > Transport** to choose how Stashi Wallet reaches its light server.
+Open **Settings > Privacy and Network > Transport** to select how Stashi Wallet reaches its light server.
 
-| Phone | Desktop |
+| Mobile | Desktop |
 |---|---|
-| ![Network Privacy on a phone](images/network-privacy-phone.png) | ![Network Privacy on desktop](images/network-privacy-desktop.png) |
+| ![Network Privacy settings on a mobile device](images/network-privacy-phone.png) | ![Network Privacy settings on a desktop computer](images/network-privacy-desktop.png) |
 
 ## Transport choices
 
@@ -16,68 +16,68 @@ Direct mode connects without an anonymity network. It is usually the simplest an
 
 ### Tor
 
-Tor routes the light-server connection through the Tor network. It improves network-level privacy but can be slower and may take time to establish a circuit. The wallet prefers the listed Tor endpoints and can also reach compatible clearnet endpoints through Tor when needed.
+Tor routes the light-server connection through the Tor network. It improves network-level privacy but can be slower and may require time to establish a circuit. Stashi Wallet prefers the listed Tor endpoints and can also reach compatible clearnet endpoints through Tor when required.
 
 Changing a Tor exit path does not change wallet keys or addresses.
 
 ### SOCKS5
 
-SOCKS5 sends the connection through a proxy you provide. Enter a host and port that you control or trust. A proxy can observe connection metadata and is not automatically private merely because it uses SOCKS5.
+SOCKS5 sends the connection through a proxy that you provide. Enter a host and port that you control or trust. A proxy can observe connection metadata and is not automatically private because it uses SOCKS5.
 
 ### I2P
 
-I2P uses an available I2P route and compatible endpoint. It requires working I2P connectivity on the device or through the wallet's supported setup. Initial connection can take longer than direct mode.
+I2P uses an available I2P route and a compatible endpoint. It requires working I2P connectivity on the device or through a supported configuration. An initial connection can take longer than Direct mode. I2P may not be available on every platform or release.
 
 ## Node selection
 
 Open **Settings > Privacy and Network > Node**.
 
-- **Auto** uses the wallet's endpoint pool and failover checks.
-- **Manual** stays with the server you select until you change it or return to Auto.
+- **Auto** uses the endpoint pool and automatic failover checks.
+- **Manual** remains connected to the selected server until you change it or return to Auto.
 
-Auto mode checks more than whether a TCP connection opens. A usable endpoint must also report and serve suitable blockchain data. If one server is reachable but stalled or behind, the wallet can rotate to another endpoint.
+Auto mode checks more than whether a network connection opens. A usable endpoint must also report and serve suitable blockchain data. If a server is reachable but stalled or behind, Stashi Wallet can move to another endpoint.
 
-Use manual mode for testing or when you operate a trusted server. Return to Auto if the selected server stops advancing.
+Use Manual mode for testing or when you operate a trusted server. Return to Auto if the selected server stops advancing.
 
-| Phone | Desktop |
+| Mobile | Desktop |
 |---|---|
-| ![Light-server selection on a phone](images/node-selection-phone.png) | ![Light-server selection on desktop](images/node-selection-desktop.png) |
+| ![Light-server selection on a mobile device](images/node-selection-phone.png) | ![Light-server selection on a desktop computer](images/node-selection-desktop.png) |
 
-## What the sync stages mean
+## Synchronisation stages
 
-- **Preparing sync**: opening the wallet database, checking state, selecting an endpoint, and preparing cached or remote block data.
-- **Downloading**: obtaining compact blockchain data that is not already cached.
-- **Scanning**: testing compact outputs against the wallet's Sapling and Ironwood keys and updating wallet state.
-- **Finalizing**: saving the last results and refreshing balances and Activity.
-- **Synced**: the wallet has processed the reported chain tip.
+- **Preparing sync** means that Stashi Wallet is opening the wallet database, checking its state, selecting an endpoint, and preparing cached or remote block data.
+- **Downloading** means that Stashi Wallet is obtaining compact blockchain data that is not already cached.
+- **Scanning** means that Stashi Wallet is testing compact outputs against the wallet's Sapling and Ironwood keys and updating wallet information.
+- **Finalising** means that Stashi Wallet is saving the latest results and refreshing balances and Activity.
+- **Synced** means that Stashi Wallet has processed the chain height reported by the light server.
 
-The height shown by the wallet should continue to move when the chain advances. A connected label without block progress is not enough to confirm a healthy server.
+The blockchain height should continue to move when the chain advances. A connected status without block progress does not confirm that a server is healthy.
 
 ## Cached blocks and rescans
 
-Stashi Wallet keeps validated compact blocks locally so a rescan can avoid downloading the same range again. Cached data is checked before reuse. Adding a seed account or imported key triggers the required historical replay so the new key is tested against the relevant blocks.
+Stashi Wallet keeps validated compact blocks locally so that a rescan does not need to download the same range again. Stashi Wallet checks cached data before reuse. Adding a seed account or imported key starts the historical replay required to test the new key against the relevant blocks.
 
 ## If Preparing sync does not finish
 
-1. Leave the wallet open for several minutes after an update or large migration.
-2. Confirm the device has working internet access.
-3. In Auto node mode, wait for endpoint health checks and failover.
-4. Try a different transport. For diagnosis, Direct can show whether Tor, I2P, or a proxy is the problem.
-5. Choose another light server manually, then return to Auto after testing.
-6. Restart the app once.
-7. Check free disk space and system time.
-8. Enable debug logging and reproduce the stall.
+1. Leave Stashi Wallet open for several minutes after an update, local data upgrade, key import, or seed-account addition.
+2. Confirm that the device has working internet access.
+3. In Auto node mode, allow time for endpoint health checks and failover.
+4. Try another transport. Direct mode can help determine whether Tor, I2P, or a proxy is preventing the connection.
+5. Select another light server manually, then return to Auto after testing.
+6. Restart the application.
+7. Check the available storage and system time.
+8. Enable debug logging and reproduce the delay.
 
-Do not repeatedly start rescans while another scan is active.
+Do not start another rescan while a scan is active.
 
 ## Rescan the wallet
 
-Use a rescan when the wallet has the right keys but its local transaction state is incomplete.
+Use a rescan when Stashi Wallet has the correct keys but its local transaction information is incomplete.
 
 1. Open **Settings > Advanced > Rescan blockchain**.
-2. Choose a height before the earliest missing transaction.
+2. Select a height before the earliest missing transaction.
 3. Confirm the rescan.
-4. Keep the wallet open and let it finish.
+4. Keep the application open and allow the rescan to finish.
 5. Check Activity and the confirmed balance.
 
-An earlier start height takes longer but cannot miss a later transaction because of the chosen birthday. A rescan cannot find funds belonging to a different phrase, a missing seed account, or a private key that was never imported.
+An earlier start height requires more time but does not exclude a later transaction. A rescan cannot find funds that belong to a different seed phrase, a missing seed account, or a private key that was not imported.

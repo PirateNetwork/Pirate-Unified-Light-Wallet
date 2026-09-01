@@ -4,66 +4,66 @@
 
 ## Home
 
-The Home page shows the selected wallet, connection state, balance, fiat estimate, sync progress, and shortcuts for common actions.
+The Home page shows the selected wallet, connection status, balance, fiat estimate, synchronisation progress, and shortcuts for common tasks.
 
-| Phone | Desktop |
+| Mobile | Desktop |
 |---|---|
-| ![Home page on a phone](images/home-phone.png) | ![Home page on desktop](images/home-desktop.png) |
+| ![Home page on a mobile device](images/home-phone.png) | ![Home page on a desktop computer](images/home-desktop.png) |
 
 ### Wallet selector
 
-Use the wallet name at the top of the page to switch between wallets. Always check this before copying an address, importing a key, or sending funds.
+Use the wallet name at the top of the page to switch between wallets. Check the selected wallet before copying an address, importing a key, or sending funds.
 
 ### Connection status
 
-The status chip reports whether the wallet is connected and which privacy transport is active. A connection alone does not mean scanning has finished. Check the sync card as well.
+The connection status indicator reports whether Stashi Wallet is connected. When it shows **Connected - Secure**, select it to view the active privacy transport, such as Direct, Tor, SOCKS5, or I2P when available. A connection does not confirm that blockchain processing has finished. Check the synchronisation information as well.
 
-### Balance card
+### Balance information
 
-- The main figure is the wallet's ARRR balance.
-- Use the eye control to hide or show values.
-- The smaller figure is an estimated fiat value in the currency selected under Settings.
+- The main balance shows the wallet's ARRR amount.
+- Use the hide or show icon, represented by an eye, to hide or show the values.
+- The estimated fiat value appears in smaller text and uses the currency selected under Settings.
+- Use the switch icon, represented by two arrows, to exchange the positions of the ARRR and fiat values.
 - Fiat prices come from an external price service and can be temporarily unavailable. This does not affect the ARRR balance.
 
-### Sync card
+### Synchronisation information
 
-The sync card shows the current stage, block height, progress, and estimated time when available. Common stages are preparing, downloading, scanning, and synced. Keep the app open if the operating system restricts background activity.
+The synchronisation area shows the current stage, blockchain height, progress, and estimated completion time when available. Common stages include **Preparing sync**, downloading, scanning, and **Synced**. Keep the application open if the operating system restricts background activity.
 
 ## Wallets
 
-The Wallets page groups send, receive, swap, and payment verification tools.
+The Wallets page provides access to send, receive, swap, and payment verification tools.
 
-| Phone | Desktop |
+| Mobile | Desktop |
 |---|---|
-| ![Wallets page on a phone](images/pay-phone.png) | ![Wallets page on desktop](images/pay-desktop.png) |
+| ![Wallets page on a mobile device](images/pay-phone.png) | ![Wallets page on a desktop computer](images/pay-desktop.png) |
 
-On a small screen, scroll to see all actions. Depending on the build and wallet mode, this page can include send, receive, sweep, swap, and payment disclosure tools.
+Scroll on a small screen to view every available action. Depending on the selected wallet and available features, the page can include send, receive, sweep, swap, and payment disclosure tools.
 
 ## Activity
 
-Activity lists detected wallet transactions. Open an entry to see its direction, status, amount, fee, memo, addresses where available, block information, and transaction ID.
+Activity lists the wallet transactions that Stashi Wallet has detected. Open a transaction to view its direction, status, amount, fee, memo, available addresses, block information, and transaction ID.
 
-| Phone | Desktop |
+| Mobile | Desktop |
 |---|---|
-| ![Activity on a phone](images/activity-phone.png) | ![Activity on desktop](images/activity-desktop.png) |
+| ![Activity page on a mobile device](images/activity-phone.png) | ![Activity page on a desktop computer](images/activity-desktop.png) |
 
-| Transaction details on a phone | Transaction details on desktop |
+| Transaction details on mobile | Transaction details on desktop |
 |---|---|
-| ![Transaction details on a phone](images/transaction-details-phone.png) | ![Transaction details on desktop](images/transaction-details-desktop.png) |
+| ![Transaction details on a mobile device](images/transaction-details-phone.png) | ![Transaction details on a desktop computer](images/transaction-details-desktop.png) |
 
-New transactions can appear before final confirmation. Do not treat an unconfirmed incoming payment as final. If an expected transaction is absent, wait for a full sync and follow [Missing balance or transaction](troubleshooting.md#missing-balance-or-transaction).
+New transactions can appear before final confirmation. Do not treat an unconfirmed incoming payment as final. If an expected transaction is absent, wait for full synchronisation and follow [Missing balance or transaction](troubleshooting.md#missing-balance-or-transaction).
 
 ## Settings
 
-Settings contains security, network, backup, key, appearance, sync, diagnostics, and build-verification controls.
+Settings contains security, network, backup, key, appearance, synchronisation, diagnostics, and release verification controls.
 
-| Phone | Desktop |
+| Mobile | Desktop |
 |---|---|
-| ![Settings page on a phone](images/settings-phone.png) | ![Settings page on desktop](images/settings-desktop.png) |
+| ![Settings page on a mobile device](images/settings-phone.png) | ![Settings page on a desktop computer](images/settings-desktop.png) |
 
 ## Navigation on different screen sizes
 
-- Phone: use the navigation bar at the bottom. Scroll long pages vertically.
-- Desktop and tablet: navigation may use more horizontal space, and related cards may appear in columns.
-- Keyboard: use Tab and Shift+Tab to move between controls, Enter or Space to activate them, and Escape to close a dialog where supported.
-- Screen reader: buttons, status controls, and important values have accessibility labels. Keep the operating system screen reader enabled while learning a page.
+- On a mobile device, use the navigation bar at the bottom and scroll long pages vertically.
+- On a desktop computer or tablet, navigation may use more horizontal space, and related information may appear in columns.
+- With a keyboard, use Tab and Shift+Tab to move between controls. Use Enter or Space to activate a control, and use Escape to close a dialogue where supported.

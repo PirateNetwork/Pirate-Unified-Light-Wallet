@@ -1,6 +1,6 @@
 # Stashi Wallet user guide
 
-This guide covers setup, everyday use, recovery, privacy settings, key management, build verification, and troubleshooting.
+This guide explains how to set up and use Stashi Wallet for ARRR, recover a wallet, manage privacy settings and keys, verify a release, and resolve common problems.
 
 If you are moving from Treasure Chest or Pirate Wallet Lite, start with [Moving from another Pirate Chain wallet](migration.md).
 
@@ -11,20 +11,20 @@ If you are moving from Treasure Chest or Pirate Wallet Lite, start with [Moving 
 3. [Receive and send ARRR](send-receive.md)
 4. [Seed accounts, keys, and addresses](keys-and-accounts.md)
 5. [Move from Treasure Chest or Pirate Wallet Lite](migration.md)
-6. [Network privacy and synchronization](network-and-sync.md)
+6. [Network privacy and synchronisation](network-and-sync.md)
 7. [Backups and wallet security](security-and-backups.md)
-8. [Settings and build verification](settings-and-verification.md)
+8. [Settings and release verification](settings-and-verification.md)
 9. [Troubleshooting](troubleshooting.md)
 10. [Advanced use](advanced.md)
 
-## Phone and desktop layouts
+## Mobile and desktop layouts
 
-The same controls are available on phone and desktop. On a phone, cards and actions are stacked and some pages need to be scrolled. On a wide desktop window, related panels may appear side by side.
+The same controls are available on mobile and desktop devices. Information is arranged vertically on a mobile device, so some pages require scrolling. Related information may appear side by side in a wide desktop window.
 
-| Phone | Desktop |
+| Mobile | Desktop |
 |---|---|
-| ![Stashi Wallet welcome screen on a phone](images/welcome-phone.png) | ![Stashi Wallet welcome screen on desktop](images/welcome-desktop.png) |
+| ![Stashi Wallet welcome screen on a mobile device](images/welcome-phone.png) | ![Stashi Wallet welcome screen on a desktop computer](images/welcome-desktop.png) |
 
 ## Getting help
 
-Before asking for help, read [Troubleshooting](troubleshooting.md). It explains what information is safe to share and how to create a useful debug log. Never send recovery words or private keys to support staff.
+Read [Troubleshooting](troubleshooting.md) before asking for help. It explains which details are safe to share and how to create a useful debug log. Never send a seed phrase or private key to support staff.
