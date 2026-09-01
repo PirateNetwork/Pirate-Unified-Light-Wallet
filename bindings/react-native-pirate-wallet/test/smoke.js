@@ -344,6 +344,10 @@ async function main() {
   assert.strictEqual(pending.outputs[0].amount, '9007199254740993')
 
   const signed = await sdk.signTransaction('wallet-1', pending)
+  assert.throws(
+    () => sdk.broadcastTransaction(signed),
+    /broadcastTransaction.*walletId|walletId must be a non-empty string/
+  )
   const txid = await sdk.broadcastTransaction('wallet-1', signed)
   assert.strictEqual(txid, 'tx-1')
 

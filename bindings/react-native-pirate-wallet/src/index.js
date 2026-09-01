@@ -965,16 +965,14 @@ class PirateWalletSdk {
     })
   }
 
-  broadcastTransaction(walletIdOrSigned, signed = null) {
-    const walletScoped = typeof walletIdOrSigned === 'string'
-    if (walletScoped && (!signed || typeof signed !== 'object')) {
+  broadcastTransaction(walletId, signed) {
+    const scopedWalletId = requireNonEmptyString(walletId, 'walletId')
+    if (!signed || typeof signed !== 'object') {
       throw new Error('broadcastTransaction requires a signed transaction.')
     }
     return this._callRaw('broadcast_tx', {
-      wallet_id: walletScoped
-        ? requireNonEmptyString(walletIdOrSigned, 'walletId')
-        : null,
-      signed: walletScoped ? signed : walletIdOrSigned
+      wallet_id: scopedWalletId,
+      signed
     })
   }
 

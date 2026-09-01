@@ -342,8 +342,6 @@ export class PirateWalletSdk {
   buildTransaction(walletIdOrRequest: any, outputs?: TransactionOutput | TransactionOutput[] | null, fee?: AmountInput | null): Promise<PendingTransaction>
   signTransaction(walletId: string, pending: PendingTransaction): Promise<any>
   broadcastTransaction(walletId: string, signed: any): Promise<string>
-  /** @deprecated Pass walletId so endpoint and repair handling stay wallet-scoped. */
-  broadcastTransaction(signed: any): Promise<string>
   send(walletId: string, outputsOrOutput: TransactionOutput | TransactionOutput[], fee?: AmountInput | null): Promise<string>
   exportSaplingViewingKey(walletId: string): Promise<string>
   exportIronwoodViewingKey(walletId: string): Promise<string>
