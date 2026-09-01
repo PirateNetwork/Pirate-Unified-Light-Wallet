@@ -4865,9 +4865,7 @@ impl<'a> Repository<'a> {
             b_pending
                 .cmp(&a_pending)
                 .then_with(|| {
-                    if a_pending && b_pending {
-                        b.timestamp.cmp(&a.timestamp)
-                    } else if a.expired && b.expired {
+                    if (a_pending && b_pending) || (a.expired && b.expired) {
                         b.timestamp.cmp(&a.timestamp)
                     } else {
                         b.height.cmp(&a.height)
