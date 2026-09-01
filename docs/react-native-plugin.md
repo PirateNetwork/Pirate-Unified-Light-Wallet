@@ -50,20 +50,20 @@ namespace. The registry stores an active wallet ID for flows that need a
 current-wallet pointer, while most React Native SDK methods remain explicitly
 wallet-scoped through `walletId`.
 
-React Native apps must call `configureAccountStorage()` before any wallet
-operation:
+React Native apps should call `configureSecureAccountStorage()` before any
+wallet operation:
 
 ```js
-await sdk.configureAccountStorage({
-  accountId: edgeAccountIdHash,
-  passphrase: edgeAccountDerivedSecret
+await sdk.configureSecureAccountStorage({
+  accountId: edgeAccountIdHash
 })
 ```
 
-The account ID is used only to derive an app-private storage directory name.
-The passphrase must be unique per local account and derived from high-entropy
-account secret material. Do not use a hardcoded passphrase, public account ID,
-email address, or device ID as the passphrase.
+The account ID is used only to derive an app-private storage directory name and
+platform credential identifier. The native bridge generates a random registry
+credential, protects it with iOS Keychain or Android Keystore, and does not
+return it to JavaScript. `configureAccountStorage()` remains available for
+hosts that already provide equivalently protected credential storage.
 
 The selected account namespace contains the wallet registry, per-wallet
 databases, salts, and sealed database key files. Switching namespaces clears the
@@ -81,14 +81,15 @@ and lightwalletd resources.
 
 Endpoint selection is also wallet-scoped. React Native consumers have typed
 methods to read the effective endpoint, inspect its complete configuration,
-test a candidate, set a pinned or unpinned single endpoint, and set an explicit
+probe the active endpoint and pool health, test a candidate, set a pinned or unpinned single endpoint, and set an explicit
 failover pool. The pool setter accepts one primary and at most 16 alternates;
 the Rust service remains authoritative for same-chain, route, TLS, pin, and
 duplicate validation. Saving a new endpoint cancels stale sync work, so the
 consumer must restart that wallet's synchronizer after the setter succeeds.
 
 The public package README is the normative JavaScript reference for
-`getLightdEndpoint`, `getLightdEndpointConfig`, `testLightdEndpoint`,
+`getLightdEndpoint`, `getLightdEndpointConfig`,
+`getLightdEndpointPoolDiagnostics`, `testLightdEndpoint`,
 `setLightdEndpoint`, and `setLightdEndpointPool`, including their TypeScript
 request and response shapes.
 
@@ -104,9 +105,23 @@ omits internal change-address rows. Supplying a key ID includes both scopes for
 that key group. Internal change remains part of `getBalance(walletId)`, which is
 the wallet-total API.
 
-Most transaction helpers are wallet-scoped. `broadcastTransaction(signed)` only
-receives the signed transaction payload; if endpoint configuration is needed
-during broadcast, the service uses the active wallet.
+Transaction helpers are wallet-scoped, including
+`broadcastTransaction(walletId, signed)`. This keeps endpoint failover, unknown
+anchor repair, and post-broadcast persistence attached to the wallet that
+created the transaction. The one-argument broadcast overload remains only for
+source compatibility.
+
+Spendability has four typed reason codes: `OK`, `ERR_SYNC_FINALIZING`,
+`ERR_WITNESS_REPAIR_QUEUED`, and `ERR_RESCAN_REQUIRED`. Repair remains durable
+while queued or processing and clears only after rebuilt witnesses and the
+selected anchor validate.
+
+Hosts that need account-level signing isolation can opt in with
+`enableWalletSigningProtection()`. The backend then wraps spend-capable material
+per wallet while viewing data and compact-block cache access continue normally.
+After each account unlock, call `unlockWalletSigning()`. When the account locks,
+call `lockWalletSigning()` or `lockAllWalletSigning()` to clear session keys and
+cached wallet database handles.
 
 Payment disclosure helpers are also wallet-scoped. `exportPaymentDisclosures`
 returns the Bech32 disclosure keys the wallet can derive for a sent transaction.
@@ -223,7 +238,7 @@ Android:
 
 - npm installs the exact-version ARM and x86_64 companions automatically
 - the module autolinks like a normal React Native native module
-- `configureAccountStorage()` derives account directories under
+- `configureSecureAccountStorage()` derives account directories under
   `Context.filesDir/pirate_wallet/accounts/<sanitized-account-id>` unless the
   caller provides `storagePath`
 
@@ -232,7 +247,7 @@ iOS:
 - npm installs the exact-version device and simulator companion packages
 - CocoaPods assembles and links `PirateWalletNative.xcframework` during
   `pod install`
-- `configureAccountStorage()` derives account directories under
+- `configureSecureAccountStorage()` derives account directories under
   `Application Support/PirateWallet/accounts/<sanitized-account-id>` unless the
   caller provides `storagePath`
 

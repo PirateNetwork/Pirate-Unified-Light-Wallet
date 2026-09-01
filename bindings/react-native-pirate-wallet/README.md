@@ -20,14 +20,15 @@ The JS surface mirrors the SDK boundary used by the native Android and iOS SDKs.
 
 ## Account-scoped wallet storage
 
-Configure wallet storage before any wallet operation:
+Configure wallet storage before any wallet operation. The recommended mobile
+path creates a random registry credential inside iOS Keychain or Android
+Keystore and never returns it to JavaScript:
 
 ```js
 const sdk = createPirateWalletSdk()
 
-await sdk.configureAccountStorage({
-  accountId: edgeAccountIdHash,
-  passphrase: edgeAccountDerivedSecret
+await sdk.configureSecureAccountStorage({
+  accountId: edgeAccountIdHash
 })
 ```
 
@@ -40,10 +41,9 @@ directory contains:
 - database salts
 - sealed database key files
 
-The passphrase unlocks both the registry and the per-wallet databases in that
-namespace. It must be unique per local account and derived from high-entropy
-account secret material. Do not use a hardcoded passphrase, a public account ID,
-email address, or device ID as the passphrase.
+The protected device credential unlocks the registry and per-wallet databases
+in that namespace so viewing data and the compact-block cache can support
+concurrent synchronization before an Edge account is unlocked.
 
 By default, Android derives the directory under:
 
@@ -61,10 +61,9 @@ Integrations that need to provide their own app-private path may pass
 `storagePath`:
 
 ```js
-await sdk.configureAccountStorage({
+await sdk.configureSecureAccountStorage({
   accountId: edgeAccountIdHash,
-  storagePath: accountPrivatePath,
-  passphrase: edgeAccountDerivedSecret
+  storagePath: accountPrivatePath
 })
 ```
 
@@ -120,7 +119,13 @@ Low-level entry points:
 - `sdk.invoke(requestJson, pretty = false)`
   - sends a raw JSON request to the native bridge
   - returns a JSON envelope string
+- `sdk.configureSecureAccountStorage({ accountId, storagePath? })`
+  - recommended mobile entry point
+  - stores a random registry credential in iOS Keychain or Android Keystore
+  - the credential never crosses the React Native bridge
+  - selects an account-specific registry/database directory
 - `sdk.configureAccountStorage({ accountId, passphrase, storagePath? })`
+  - advanced compatibility entry point for hosts that already protect the credential
   - RPC: `configure_wallet_storage`
   - selects an account-specific registry/database directory
   - creates the registry with `passphrase` if it does not exist
@@ -406,6 +411,22 @@ address rows.
     - `repairQueued`
     - `reasonCode`
 
+`reasonCode` is a closed set:
+
+- `OK`: signing may proceed
+- `ERR_SYNC_FINALIZING`: scanning reached the tip but anchor validation is still finishing
+- `ERR_WITNESS_REPAIR_QUEUED`: witness repair is queued or actively processing
+- `ERR_RESCAN_REQUIRED`: imported key material or local state requires a historical replay
+
+Keep the send action disabled unless `spendable` is `true`. A queued repair
+remains visible until witness reconstruction and anchor validation both finish.
+
+- `getLightdEndpointPoolDiagnostics(walletId)`
+  - RPC: `get_lightd_endpoint_pool_diagnostics`
+  - performs a live readiness and same-chain probe using the wallet's current transport
+  - returns the configured primary, selected active endpoint, failover mode, and per-endpoint health, tip, latency, and rejection reason
+  - `activeEndpoint` is `null` when no configured candidate passes the complete probe
+
 ### Transactions
 
 - `listTransactions(walletId, limit?)`
@@ -495,17 +516,52 @@ previously fetched ranges.
 - `signTransaction(walletId, pending)`
   - RPC: `sign_tx`
   - returns signed transaction object
-- `broadcastTransaction(signed)`
+- `broadcastTransaction(walletId, signed)`
   - RPC: `broadcast_tx`
+  - uses the specified wallet's endpoint pool and repair state
   - returns transaction id string
 - `send(walletId, outputsOrOutput, fee?)`
   - helper over `buildTransaction()`, `signTransaction()`, and `broadcastTransaction()`
   - returns transaction id string
 
-`buildTransaction()`, `signTransaction()`, and `send()` are wallet-scoped.
-`broadcastTransaction(signed)` only receives the signed transaction payload; if
-endpoint configuration is needed during broadcast, the service uses the active
-wallet.
+`buildTransaction()`, `signTransaction()`, `broadcastTransaction()`, and
+`send()` are wallet-scoped. The legacy one-argument
+`broadcastTransaction(signed)` overload remains available for compatibility and
+uses the transaction's in-memory origin context when possible.
+
+### Wallet signing sessions
+
+Wallet-scoped signing protection is opt-in and additive. Enabling it wraps the
+seed and spending keys with a second key derived from the Edge account session
+credential. Viewing keys and cached compact blocks remain available while the
+wallet is locked.
+
+```js
+// Run once after creating or restoring this wallet.
+await sdk.enableWalletSigningProtection(walletId, edgeAccountSessionCredential)
+
+// Run after the Edge account is unlocked in a later app session.
+await sdk.unlockWalletSigning(walletId, edgeAccountSessionCredential)
+
+// Gate the send action on both status calls.
+const signing = await sdk.getWalletSigningStatus(walletId)
+const spendability = await sdk.getSpendabilityStatus(walletId)
+
+// Run when the account locks, the app signs out, or protected state is cleared.
+await sdk.lockWalletSigning(walletId)
+```
+
+- `enableWalletSigningProtection(walletId, sessionCredential)` performs the
+  one-time atomic key rewrap and leaves that wallet unlocked for the session
+- `unlockWalletSigning(walletId, sessionCredential)` installs only that
+  wallet's signing key in memory
+- `getWalletSigningStatus(walletId)` returns `protectionEnabled` and `unlocked`
+- `lockWalletSigning(walletId)` clears the credential and cached wallet database handles
+- `lockAllWalletSigning()` clears all signing sessions and wallet database handles
+
+Once protection is enabled, `signTransaction()` fails with
+`ERR_SIGNING_SESSION_LOCKED` until the wallet is unlocked. Do not persist the
+session credential in AsyncStorage, Redux persistence, logs, or crash reports.
 
 Change-address selection is automatic. Sapling-only change uses legacy
 same-address change before Ironwood activation and Sapling internal change after

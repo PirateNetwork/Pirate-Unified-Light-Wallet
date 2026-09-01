@@ -117,13 +117,16 @@ Send flow:
 - `buildTransaction(walletId, outputs, fee = null)`
 - `buildTransaction(walletId, output, fee = null)`
 - `signTransaction(walletId, pending)`
-- `broadcastTransaction(signed)`
+- `broadcastTransaction(walletId, signed)`
+- `broadcastTransaction(signed)` (deprecated compatibility overload)
 - `send(walletId, outputs, fee = null)`
 - `send(walletId, output, fee = null)`
 
-`buildTransaction`, `signTransaction`, and `send` are wallet-scoped by explicit
-`walletId`. The low-level `broadcastTransaction(signed)` call does not take a
-wallet ID; endpoint selection currently follows the active wallet.
+Use the wallet-scoped broadcast overload so endpoint selection, failover,
+repair state, and accepted-transaction persistence stay attached to the wallet
+that produced the signed transaction. The one-argument overload remains for
+source compatibility and uses the transaction's in-memory origin context when
+available.
 
 Change-address selection is automatic. Sapling-only change uses legacy
 same-address change before Ironwood activation and Sapling internal change after
