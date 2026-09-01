@@ -1,6 +1,6 @@
 {
   "name": "react-native-pirate-wallet-android-x86_64",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Android x86_64 native library for react-native-pirate-wallet",
   "keywords": [
     "react-native",

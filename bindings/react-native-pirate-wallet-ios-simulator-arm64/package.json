@@ -1,6 +1,6 @@
 {
   "name": "react-native-pirate-wallet-ios-simulator-arm64",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "arm64 iOS simulator native library for react-native-pirate-wallet",
   "keywords": [
     "react-native",

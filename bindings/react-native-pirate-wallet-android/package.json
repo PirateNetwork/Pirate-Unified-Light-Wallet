@@ -1,6 +1,6 @@
 {
   "name": "react-native-pirate-wallet-android",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Android ARM native libraries for react-native-pirate-wallet",
   "keywords": [
     "react-native",
