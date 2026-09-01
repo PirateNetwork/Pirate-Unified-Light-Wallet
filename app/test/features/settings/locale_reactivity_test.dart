@@ -149,7 +149,7 @@ void main() {
     );
 
     expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Wallet'), findsOneWidget);
+    expect(find.text('Wallets'), findsOneWidget);
     expect(find.text('Activity'), findsOneWidget);
     expect(find.byTooltip('Settings'), findsOneWidget);
     expect(find.byKey(DesktopStatusBar.barKey), findsOneWidget);
