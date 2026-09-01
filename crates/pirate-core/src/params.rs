@@ -1,7 +1,7 @@
 //! zk-SNARK parameter loading for Sapling and Ironwood.
 //!
-//! - Sapling proving/verification parameters are loaded from embedded bytes
-//!   via an embedded parameter crate, so no external download is required.
+//! - Sapling proving/verification parameters are loaded directly from embedded
+//!   bytes, so no external download or writable filesystem location is required.
 //! - Ironwood proving/verification keys are constructed in-memory via
 //!   `orchard::circuit`.
 //!
@@ -11,9 +11,7 @@ use bellman::groth16::{Parameters, PreparedVerifyingKey};
 use bls12_381::Bls12;
 use once_cell::sync::OnceCell;
 use std::io::Cursor;
-use std::path::PathBuf;
 use std::sync::Arc;
-use tempfile::{Builder, NamedTempFile};
 use zcash_proofs::prover::LocalTxProver;
 
 use orchard::circuit::{
@@ -84,82 +82,19 @@ pub fn ironwood_params() -> &'static IronwoodParams {
     CELL.get_or_init(load_ironwood_params)
 }
 
-/// Build a `LocalTxProver` using cached Sapling parameters.
+/// Build a `LocalTxProver` directly from the embedded Sapling parameters.
 ///
-/// Note: The API now requires file paths, so we write parameters to temporary files.
-/// This is less efficient but required by the new API.
+/// Keeping this path entirely in memory avoids platform-specific temporary
+/// directory behavior and leaves no proving-parameter files behind on disk.
 pub fn sapling_prover() -> LocalTxProver {
-    let (spend_path, output_path) = sapling_param_paths();
-    ensure_sapling_param_files(&spend_path, &output_path);
-    LocalTxProver::new(&spend_path, &output_path)
-}
-
-fn sapling_param_paths() -> (PathBuf, PathBuf) {
-    static PATHS: OnceCell<(PathBuf, PathBuf)> = OnceCell::new();
-    PATHS
-        .get_or_init(|| {
-            let spend_path = Builder::new()
-                .prefix("pirate-sapling-spend-")
-                .suffix(".params")
-                .tempfile()
-                .expect("failed to create secure Sapling spend params temp file")
-                .into_temp_path()
-                .keep()
-                .expect("failed to persist secure Sapling spend params temp file");
-            let output_path = Builder::new()
-                .prefix("pirate-sapling-output-")
-                .suffix(".params")
-                .tempfile()
-                .expect("failed to create secure Sapling output params temp file")
-                .into_temp_path()
-                .keep()
-                .expect("failed to persist secure Sapling output params temp file");
-
-            ensure_sapling_param_files(&spend_path, &output_path);
-
-            (spend_path, output_path)
-        })
-        .clone()
-}
-
-fn ensure_sapling_param_files(spend_path: &PathBuf, output_path: &PathBuf) {
     let (spend_bytes, output_bytes) = wagyu_zcash_parameters::load_sapling_parameters();
-    ensure_params_file(spend_path, &spend_bytes);
-    ensure_params_file(output_path, &output_bytes);
+    LocalTxProver::from_bytes(&spend_bytes, &output_bytes)
 }
 
-fn ensure_params_file(path: &PathBuf, bytes: &[u8]) {
-    let expected_len = bytes.len() as u64;
-    let needs_write = match std::fs::metadata(path) {
-        Ok(meta) => meta.len() != expected_len,
-        Err(_) => true,
-    };
-    if needs_write {
-        write_params_file(path, bytes);
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn constructs_sapling_prover_from_embedded_parameters() {
+        let _prover = super::sapling_prover();
     }
-}
-
-fn write_params_file(path: &PathBuf, bytes: &[u8]) {
-    let parent = path
-        .parent()
-        .expect("params path should always have a parent directory");
-    let mut tmp_file =
-        NamedTempFile::new_in(parent).expect("Failed to create secure temporary params file");
-    use std::io::Write as _;
-    tmp_file
-        .write_all(bytes)
-        .expect("Failed to write temporary params file");
-    tmp_file
-        .flush()
-        .expect("Failed to flush temporary params file");
-
-    let temp_path = tmp_file.into_temp_path();
-    temp_path
-        .persist(path)
-        .or_else(|e| {
-            let temp_path = e.path;
-            let _ = std::fs::remove_file(path);
-            temp_path.persist(path)
-        })
-        .expect("Failed to move params file into place");
 }
