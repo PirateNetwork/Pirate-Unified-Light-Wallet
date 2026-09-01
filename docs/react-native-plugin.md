@@ -108,8 +108,7 @@ the wallet-total API.
 Transaction helpers are wallet-scoped, including
 `broadcastTransaction(walletId, signed)`. This keeps endpoint failover, unknown
 anchor repair, and post-broadcast persistence attached to the wallet that
-created the transaction. The one-argument broadcast overload remains only for
-source compatibility.
+created the transaction. A wallet ID is required for every broadcast.
 
 Spendability has four typed reason codes: `OK`, `ERR_SYNC_FINALIZING`,
 `ERR_WITNESS_REPAIR_QUEUED`, and `ERR_RESCAN_REQUIRED`. Repair remains durable

@@ -525,9 +525,9 @@ previously fetched ranges.
   - returns transaction id string
 
 `buildTransaction()`, `signTransaction()`, `broadcastTransaction()`, and
-`send()` are wallet-scoped. The legacy one-argument
-`broadcastTransaction(signed)` overload remains available for compatibility and
-uses the transaction's in-memory origin context when possible.
+`send()` are wallet-scoped. `broadcastTransaction()` requires the wallet ID so
+endpoint selection and repair state always belong to the wallet that created
+the transaction.
 
 ### Wallet signing sessions
 
