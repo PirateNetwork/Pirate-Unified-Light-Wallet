@@ -97,10 +97,11 @@ Importing the seed phrase does not restore private keys that were imported separ
 A view-only wallet can monitor supported shielded activity but cannot spend the funds.
 
 1. Select **View only**.
-2. Enter a wallet name.
-3. Enter a Sapling viewing key, an Ironwood viewing key, or both in the matching fields.
-4. Enter a birthday height from before the first transaction for the viewing key.
-5. Finish the setup and allow the scan to complete.
+2. If this is the first wallet on the device, create a local passphrase and choose whether to enable biometric unlocking. If Stashi Wallet is locked, unlock it before continuing.
+3. Enter a wallet name.
+4. Enter a Sapling viewing key, an Ironwood viewing key, or both in the matching fields.
+5. Enter a birthday height from before the first transaction for the viewing key.
+6. Finish the setup and allow the scan to complete.
 
 | Mobile | Desktop |
 |---|---|
