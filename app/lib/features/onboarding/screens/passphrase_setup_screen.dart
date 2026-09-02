@@ -179,8 +179,9 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
   Widget build(BuildContext context) {
     final onboardingState = ref.watch(onboardingControllerProvider);
     final isImport = onboardingState.mode == OnboardingMode.import;
-    final totalSteps = isImport ? 5 : 6;
-    final currentStep = isImport ? 3 : 2;
+    final isWatchOnly = onboardingState.mode == OnboardingMode.watchOnly;
+    final totalSteps = isWatchOnly ? 4 : (isImport ? 5 : 6);
+    final currentStep = isWatchOnly ? 2 : (isImport ? 3 : 2);
 
     final basePadding = AppSpacing.screenPadding(
       MediaQuery.of(context).size.width,

@@ -142,12 +142,12 @@ class _OnboardingBiometricsScreenState
     final state = ref.read(onboardingControllerProvider);
     ref.read(onboardingControllerProvider.notifier).nextStep();
 
-    // Route based on mode: create goes to backup warning, import shows birthday picker
+    // Route based on the wallet authority selected at the start of setup.
     if (state.mode == OnboardingMode.create) {
-      // For create mode, go to backup warning screen
       context.push('/onboarding/backup-warning');
+    } else if (state.mode == OnboardingMode.watchOnly) {
+      context.push('/onboarding/import-ivk');
     } else {
-      // For import mode, show birthday picker
       context.push('/onboarding/birthday');
     }
   }
@@ -156,8 +156,9 @@ class _OnboardingBiometricsScreenState
   Widget build(BuildContext context) {
     final onboardingState = ref.watch(onboardingControllerProvider);
     final isImport = onboardingState.mode == OnboardingMode.import;
-    final totalSteps = isImport ? 5 : 6;
-    final currentStep = isImport ? 4 : 3;
+    final isWatchOnly = onboardingState.mode == OnboardingMode.watchOnly;
+    final totalSteps = isWatchOnly ? 4 : (isImport ? 5 : 6);
+    final currentStep = isWatchOnly ? 3 : (isImport ? 4 : 3);
     final contentPadding = AppSpacing.screenPadding(
       MediaQuery.of(context).size.width,
       vertical: AppSpacing.xl,

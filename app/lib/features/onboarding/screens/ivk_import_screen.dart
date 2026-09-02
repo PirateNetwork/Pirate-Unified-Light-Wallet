@@ -15,10 +15,17 @@ import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/providers/wallet_providers.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
+import '../onboarding_flow.dart';
+import '../onboarding_security.dart';
 
 /// Viewing key import screen for creating watch-only wallets
 class ViewingKeysImportScreen extends ConsumerStatefulWidget {
-  const ViewingKeysImportScreen({super.key});
+  const ViewingKeysImportScreen({
+    super.key,
+    this.securityServices = const OnboardingSecurityServices(),
+  });
+
+  final OnboardingSecurityServices securityServices;
 
   @override
   ConsumerState<ViewingKeysImportScreen> createState() =>
@@ -99,13 +106,36 @@ class _ViewingKeysImportScreenState
     });
 
     try {
-      final hasPassphrase = await FfiBridge.hasAppPassphrase();
-      if (hasPassphrase && !ref.read(appUnlockedProvider)) {
-        setState(() {
-          _error = 'App is locked. Unlock to import a view only wallet.'.tr;
-          _isImporting = false;
-        });
+      final onboardingState = ref.read(onboardingControllerProvider);
+      final hasPassphrase = await widget.securityServices.hasAppPassphrase();
+      final appUnlocked = ref.read(appUnlockedProvider);
+      final setupPassphrase = onboardingState.passphrase;
+      final securityRequirement = resolveWalletSetupSecurity(
+        hasAppPassphrase: hasPassphrase,
+        appUnlocked: appUnlocked,
+        passphraseEstablishedInFlow: setupPassphrase?.isNotEmpty ?? false,
+      );
+      if (securityRequirement != WalletSetupSecurityRequirement.ready) {
+        if (!mounted) return;
+        if (securityRequirement ==
+            WalletSetupSecurityRequirement.createPassphrase) {
+          ref.read(onboardingControllerProvider.notifier)
+            ..reset(startAt: OnboardingStep.createOrImport)
+            ..setMode(OnboardingMode.watchOnly)
+            ..nextStep();
+          setState(() => _isImporting = false);
+          unawaited(context.push('/onboarding/passphrase'));
+        } else {
+          setState(() {
+            _error = 'App is locked. Unlock to import a view only wallet.'.tr;
+            _isImporting = false;
+          });
+        }
         return;
+      }
+      if (!appUnlocked && setupPassphrase?.isNotEmpty == true) {
+        await widget.securityServices.unlockApp(setupPassphrase!);
+        ref.read(appUnlockedProvider.notifier).unlocked = true;
       }
 
       final birthday = int.tryParse(_birthdayController.text.trim());
@@ -127,6 +157,9 @@ class _ViewingKeysImportScreenState
       );
 
       if (mounted) {
+        ref
+            .read(onboardingControllerProvider.notifier)
+            .finishViewingKeyImport();
         // Navigate to home with success message
         context.go('/home');
 
@@ -145,11 +178,23 @@ class _ViewingKeysImportScreenState
         );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = _friendlyImportError(e);
         _isImporting = false;
       });
     }
+  }
+
+  String _friendlyImportError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('app is locked')) {
+      return 'App is locked. Unlock to import a view only wallet.'.tr;
+    }
+    if (message.contains('invalid sapling viewing key')) {
+      return 'Invalid Sapling viewing key format.'.tr;
+    }
+    return 'Could not continue wallet setup. Try again.'.tr;
   }
 
   @override

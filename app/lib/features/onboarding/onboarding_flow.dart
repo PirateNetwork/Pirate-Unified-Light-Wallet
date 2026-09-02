@@ -23,6 +23,7 @@ enum OnboardingStep {
   seedDisplay,
   seedConfirm,
   birthdayPicker,
+  viewingKeyImport,
   complete,
 }
 
@@ -96,6 +97,8 @@ class OnboardingState {
         return seedBackedUp;
       case OnboardingStep.birthdayPicker:
         return birthdayHeight != null;
+      case OnboardingStep.viewingKeyImport:
+        return false;
       case OnboardingStep.complete:
         return false; // Final step
     }
@@ -111,11 +114,11 @@ class OnboardingState {
       case OnboardingStep.setupPassphrase:
         return OnboardingStep.biometrics;
       case OnboardingStep.biometrics:
-        if (mode == OnboardingMode.create) {
-          return OnboardingStep.backupWarning;
-        } else {
-          return OnboardingStep.birthdayPicker;
+        if (mode == OnboardingMode.create) return OnboardingStep.backupWarning;
+        if (mode == OnboardingMode.watchOnly) {
+          return OnboardingStep.viewingKeyImport;
         }
+        return OnboardingStep.birthdayPicker;
       case OnboardingStep.backupWarning:
         return OnboardingStep.seedDisplay;
       case OnboardingStep.seedDisplay:
@@ -129,6 +132,8 @@ class OnboardingState {
           return OnboardingStep.birthdayPicker;
         }
       case OnboardingStep.birthdayPicker:
+        return OnboardingStep.complete;
+      case OnboardingStep.viewingKeyImport:
         return OnboardingStep.complete;
       case OnboardingStep.complete:
         return null;
@@ -187,6 +192,19 @@ class OnboardingController extends Notifier<OnboardingState> {
     final currentIndex = steps.indexOf(state.currentStep);
     if (currentIndex > 0) {
       state = state.copyWith(currentStep: steps[currentIndex - 1]);
+    }
+  }
+
+  void beginViewingKeyImport() {
+    if (state.mode != OnboardingMode.watchOnly) {
+      throw StateError('Viewing key import requires watch-only setup mode');
+    }
+    state = state.copyWith(currentStep: OnboardingStep.viewingKeyImport);
+  }
+
+  void finishViewingKeyImport() {
+    if (state.mode == OnboardingMode.watchOnly) {
+      state = state.copyWith(currentStep: OnboardingStep.complete);
     }
   }
 

@@ -10,15 +10,20 @@ import '../../../design/deep_space_theme.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
-import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/providers/wallet_providers.dart';
 import '../onboarding_flow.dart';
+import '../onboarding_security.dart';
 import '../widgets/onboarding_progress_indicator.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Create or Import screen
 class CreateOrImportScreen extends ConsumerStatefulWidget {
-  const CreateOrImportScreen({super.key});
+  const CreateOrImportScreen({
+    super.key,
+    this.securityServices = const OnboardingSecurityServices(),
+  });
+
+  final OnboardingSecurityServices securityServices;
 
   @override
   ConsumerState<CreateOrImportScreen> createState() =>
@@ -84,7 +89,8 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
                       ..reset(startAt: OnboardingStep.createOrImport)
                       ..setMode(OnboardingMode.create)
                       ..nextStep();
-                    final hasPassphrase = await FfiBridge.hasAppPassphrase();
+                    final hasPassphrase = await widget.securityServices
+                        .hasAppPassphrase();
                     final isUnlocked = ref.read(appUnlockedProvider);
                     if (!context.mounted) return;
                     if (hasPassphrase && !isUnlocked) {
@@ -168,7 +174,8 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
                       ..reset(startAt: OnboardingStep.createOrImport)
                       ..setMode(OnboardingMode.import)
                       ..nextStep();
-                    final hasPassphrase = await FfiBridge.hasAppPassphrase();
+                    final hasPassphrase = await widget.securityServices
+                        .hasAppPassphrase();
                     final isUnlocked = ref.read(appUnlockedProvider);
                     if (!context.mounted) return;
                     if (hasPassphrase && !isUnlocked) {
@@ -243,20 +250,34 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
               PCard(
                 child: InkWell(
                   onTap: () async {
-                    ref.read(onboardingControllerProvider.notifier)
-                      ..reset(startAt: OnboardingStep.createOrImport)
-                      ..setMode(OnboardingMode.watchOnly);
-                    final hasPassphrase = await FfiBridge.hasAppPassphrase();
+                    final controller =
+                        ref.read(onboardingControllerProvider.notifier)
+                          ..reset(startAt: OnboardingStep.createOrImport)
+                          ..setMode(OnboardingMode.watchOnly);
+                    final hasPassphrase = await widget.securityServices
+                        .hasAppPassphrase();
                     final isUnlocked = ref.read(appUnlockedProvider);
-                    if (hasPassphrase && !isUnlocked) {
-                      if (!context.mounted) return;
-                      unawaited(
-                        context.push('/unlock?redirect=/onboarding/import-ivk'),
-                      );
-                      return;
-                    }
                     if (!context.mounted) return;
-                    unawaited(context.push('/onboarding/import-ivk'));
+                    switch (resolveWalletSetupSecurity(
+                      hasAppPassphrase: hasPassphrase,
+                      appUnlocked: isUnlocked,
+                    )) {
+                      case WalletSetupSecurityRequirement.ready:
+                        controller.beginViewingKeyImport();
+                        unawaited(context.push('/onboarding/import-ivk'));
+                        break;
+                      case WalletSetupSecurityRequirement.createPassphrase:
+                        controller.nextStep();
+                        unawaited(context.push('/onboarding/passphrase'));
+                        break;
+                      case WalletSetupSecurityRequirement.unlock:
+                        unawaited(
+                          context.push(
+                            '/unlock?redirect=/onboarding/import-ivk',
+                          ),
+                        );
+                        break;
+                    }
                   },
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(
