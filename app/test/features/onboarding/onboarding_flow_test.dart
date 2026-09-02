@@ -6,6 +6,36 @@ import 'package:pirate_wallet/core/providers/wallet_providers.dart';
 import 'package:pirate_wallet/features/onboarding/onboarding_flow.dart';
 
 void main() {
+  test('watch-only setup advances through security before key import', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final controller = container.read(onboardingControllerProvider.notifier)
+      ..reset()
+      ..setMode(OnboardingMode.watchOnly)
+      ..nextStep();
+
+    expect(
+      container.read(onboardingControllerProvider).currentStep,
+      OnboardingStep.setupPassphrase,
+    );
+    controller.nextStep();
+    expect(
+      container.read(onboardingControllerProvider).currentStep,
+      OnboardingStep.biometrics,
+    );
+    controller.nextStep();
+    expect(
+      container.read(onboardingControllerProvider).currentStep,
+      OnboardingStep.viewingKeyImport,
+    );
+    controller.finishViewingKeyImport();
+    expect(
+      container.read(onboardingControllerProvider).currentStep,
+      OnboardingStep.complete,
+    );
+  });
+
   test(
     'retry resumes finalization without creating a duplicate wallet',
     () async {
