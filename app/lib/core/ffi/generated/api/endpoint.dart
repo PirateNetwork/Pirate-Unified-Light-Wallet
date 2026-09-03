@@ -7,9 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `address_prefix_network_type_for_endpoint`, `build_light_client_config`, `cache_lightd_endpoint`, `detect_network_from_endpoint`, `endpoint_from_url`, `get_lightd_endpoint_config`, `get_lightd_endpoint`, `load_registry_endpoints`, `remove_cached_lightd_endpoint`, `tls_server_name`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `LIGHTD_ENDPOINTS`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `deref`, `fmt`, `initialize`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
 
 class LightdEndpoint {
   final String host;
