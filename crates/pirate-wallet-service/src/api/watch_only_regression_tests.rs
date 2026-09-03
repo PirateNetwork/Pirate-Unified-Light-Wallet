@@ -17,22 +17,12 @@
 use super::*;
 use tempfile::tempdir;
 
-/// Best-effort reset of the same process-wide statics `configure_wallet_storage`
-/// mutates, so this test doesn't leave the app "unlocked" for whichever test
-/// in this binary happens to run next (mirrors the `panic_duress` tests'
-/// `reset_test_state`).
-fn reset_global_wallet_state() {
-    passphrase_store::clear_passphrase();
-    REGISTRY_LOADED.store(false, Ordering::SeqCst);
-    *WALLETS.write() = Vec::new();
-    *ACTIVE_WALLET.write() = None;
-    encrypted_db::invalidate_all_wallet_db_caches();
-}
-
 #[test]
 fn watch_only_wallet_supports_balance_listing_and_address_generation() {
     let _guard = GLOBAL_WALLET_STATE_TEST_MUTEX.lock().unwrap();
-    reset_global_wallet_state();
+    // Reset the process-wide wallet statics `configure_wallet_storage` mutates,
+    // so this test neither inherits nor leaks an "unlocked" app.
+    reset_global_wallet_state_for_tests();
     let temp_dir = tempdir().unwrap();
 
     configure_wallet_storage(
@@ -98,5 +88,7 @@ fn watch_only_wallet_supports_balance_listing_and_address_generation() {
         "consecutive calls must mint distinct diversified addresses, like separate BTCPay invoices need"
     );
 
-    reset_global_wallet_state();
+    // Reset the process-wide wallet statics `configure_wallet_storage` mutates,
+    // so this test neither inherits nor leaks an "unlocked" app.
+    reset_global_wallet_state_for_tests();
 }

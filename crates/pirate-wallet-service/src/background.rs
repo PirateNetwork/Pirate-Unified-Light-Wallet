@@ -164,10 +164,81 @@ mod tests {
         assert!(matches!(default, BackgroundSyncMode::Compact));
     }
 
-    #[tokio::test]
-    async fn test_execute_background_sync() {
-        let result =
-            execute_background_sync("test-wallet".to_string(), "compact".to_string(), 60).await;
+    /// Pins the mechanism behind the flake documented on
+    /// `test_execute_background_sync` below: once the registry is loaded,
+    /// `get_wallet_meta` never reaches the passphrase check, so an unknown
+    /// wallet id fails with "Wallet not found" rather than "App is locked".
+    /// Reaching this state concurrently with that test is exactly what CI hit.
+    #[test]
+    fn execute_background_sync_reports_a_missing_wallet_once_the_registry_is_loaded() {
+        let _guard = api::GLOBAL_WALLET_STATE_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        api::reset_global_wallet_state_for_tests();
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        api::configure_wallet_storage(
+            temp_dir.path().to_string_lossy().to_string(),
+            "test-passphrase-123".to_string(),
+        )
+        .expect("wallet storage should be configurable");
+        api::list_wallets().expect("an empty registry should load");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime should build");
+        let error = runtime
+            .block_on(execute_background_sync(
+                "test-wallet".to_string(),
+                "compact".to_string(),
+                60,
+            ))
+            .expect_err("an unknown wallet id must not sync");
+
+        let message = error.to_string();
+        assert!(
+            message.contains("Wallet not found"),
+            "unexpected error: {message}"
+        );
+
+        api::reset_global_wallet_state_for_tests();
+    }
+
+    /// `execute_background_sync` resolves the wallet through the crate-wide
+    /// statics in `api` (`REGISTRY_LOADED`, `WALLETS`, the passphrase store),
+    /// so its outcome depends on process state this test does not own.
+    ///
+    /// Unserialized, this raced with any test that calls
+    /// `configure_wallet_storage` (`api::watch_only_regression_tests`,
+    /// `api::panic_duress::tests`): those unlock the app and set
+    /// `REGISTRY_LOADED = true` with *their* wallets in `WALLETS`. Concurrently,
+    /// `get_wallet_meta("test-wallet")` then skipped the registry load (already
+    /// loaded, so no passphrase check) and missed in `WALLETS`, producing
+    /// "Wallet not found" instead of the cold-start "App is locked" this test
+    /// asserts. Same commit, different interleaving - green on one CI run, red
+    /// on the next.
+    ///
+    /// Take the crate-wide lock and reset to cold start so the assertion below
+    /// describes the state we actually set up. The lock is held across
+    /// `block_on` rather than an `.await` so no guard is held across a yield
+    /// point.
+    #[test]
+    fn test_execute_background_sync() {
+        let _guard = api::GLOBAL_WALLET_STATE_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        api::reset_global_wallet_state_for_tests();
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime should build");
+        let result = runtime.block_on(execute_background_sync(
+            "test-wallet".to_string(),
+            "compact".to_string(),
+            60,
+        ));
 
         match result {
             Ok(result) => {

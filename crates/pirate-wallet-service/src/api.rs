@@ -139,14 +139,36 @@ thread_local! {
 
 static REGISTRY_LOADED: AtomicBool = AtomicBool::new(false);
 /// Serializes every test (across every module in this crate) that mutates
-/// the process-wide statics above (`WALLETS`, `ACTIVE_WALLET`,
-/// `REGISTRY_LOADED`, the `encrypted_db` cache) via `configure_wallet_storage`
-/// or similar. Module-local test mutexes don't cut it here - two different
-/// `Mutex` instances don't block each other, so tests in different files
-/// still race and corrupt each other's SQLCipher-encrypted DBs unless they
-/// all serialize against this single, crate-wide lock.
+/// *or observes* the process-wide statics above (`WALLETS`, `ACTIVE_WALLET`,
+/// `REGISTRY_LOADED`, the `encrypted_db` cache, the passphrase store, decoy
+/// mode) via `configure_wallet_storage` or similar. Module-local test mutexes
+/// don't cut it here - two different `Mutex` instances don't block each other,
+/// so tests in different files still race and corrupt each other's
+/// SQLCipher-encrypted DBs unless they all serialize against this single,
+/// crate-wide lock.
+///
+/// Tests that only *read* this state still have to take the lock: a test that
+/// asserts the cold-start "App is locked" behaviour will otherwise observe
+/// another test's unlocked, already-loaded registry and get a completely
+/// different error.
 #[cfg(test)]
 pub(crate) static GLOBAL_WALLET_STATE_TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+/// Restore the process-wide wallet statics to their cold-start ("app locked,
+/// nothing loaded") values.
+///
+/// Call this right after taking [`GLOBAL_WALLET_STATE_TEST_MUTEX`] so a test
+/// starts from a known state regardless of what the previous test left behind
+/// (or failed to clean up after a panic).
+#[cfg(test)]
+pub(crate) fn reset_global_wallet_state_for_tests() {
+    passphrase_store::clear_passphrase();
+    panic_duress::deactivate_decoy();
+    REGISTRY_LOADED.store(false, Ordering::SeqCst);
+    *WALLETS.write() = Vec::new();
+    *ACTIVE_WALLET.write() = None;
+    encrypted_db::invalidate_all_wallet_db_caches();
+}
 static WALLET_DB_CACHE_EPOCH: AtomicU64 = AtomicU64::new(1);
 static PANIC_HOOK_ONCE: Once = Once::new();
 static RUNTIME_DIAGNOSTICS_ONCE: Once = Once::new();
@@ -1699,7 +1721,12 @@ mod kdf_seed_handoff_tests {
 
     #[test]
     fn kdf_seed_handoff_rejects_locked_app_before_wallet_lookup() {
-        passphrase_store::clear_passphrase();
+        // Locking the app is a process-wide mutation, and the assertion below
+        // only holds while nothing else unlocks it again.
+        let _guard = GLOBAL_WALLET_STATE_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        reset_global_wallet_state_for_tests();
         let error = export_seed_for_kdf("missing-wallet".to_string())
             .expect_err("locked app must not export a KDF seed")
             .to_string();
@@ -1711,7 +1738,12 @@ mod kdf_seed_handoff_tests {
 
     #[test]
     fn kdf_seed_handoff_rejects_decoy_mode() {
-        panic_duress::deactivate_decoy();
+        // Decoy mode is process-wide: while it is on, every other test in this
+        // binary sees the decoy registry instead of its own wallets.
+        let _guard = GLOBAL_WALLET_STATE_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        reset_global_wallet_state_for_tests();
         panic_duress::set_panic_pin("1234".to_string()).unwrap();
         assert!(panic_duress::verify_panic_pin("1234".to_string()).unwrap());
 
