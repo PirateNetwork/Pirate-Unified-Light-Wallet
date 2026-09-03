@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Privacy policy for Stashi Wallet, the self-custodial Pirate Chain wallet published by the Pirate Chain Foundation.">
+    <meta name="theme-color" content="#090d14">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Stashi Wallet Privacy Policy">
+    <meta property="og:description" content="How Stashi Wallet stores wallet data and uses network services.">
+    <meta property="og:url" content="https://piratenetwork.github.io/Pirate-Unified-Light-Wallet/privacy-policy.html">
+    <meta property="og:image" content="https://piratenetwork.github.io/Pirate-Unified-Light-Wallet/assets/stashi-wallet-logo.png">
+    <link rel="canonical" href="https://piratenetwork.github.io/Pirate-Unified-Light-Wallet/privacy-policy.html">
+    <link rel="icon" href="assets/stashi-wallet-logo.svg" type="image/svg+xml">
+    <title>Privacy Policy | Stashi Wallet</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --background: #090d14;
+        --surface: #111827;
+        --surface-soft: #151f30;
+        --line: #273449;
+        --text: #f7f9fc;
+        --muted: #aeb8c8;
+        --blue: #6fa0ff;
+        --purple: #a94fff;
+        --pink: #ff5f91;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 18% 7%, rgb(169 79 255 / 11%), transparent 30rem),
+          radial-gradient(circle at 84% 78%, rgb(52 120 246 / 10%), transparent 36rem),
+          var(--background);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 16px;
+        line-height: 1.7;
+      }
+
+      a {
+        color: var(--blue);
+      }
+
+      a:hover {
+        color: #a9c4ff;
+      }
+
+      a:focus-visible {
+        border-radius: 3px;
+        outline: 3px solid #89afff;
+        outline-offset: 4px;
+      }
+
+      .skip-link {
+        position: fixed;
+        z-index: 2;
+        top: 12px;
+        left: 12px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: var(--text);
+        color: var(--background);
+        font-weight: 700;
+        transform: translateY(-160%);
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .shell {
+        width: min(100% - 32px, 960px);
+        margin: 0 auto;
+      }
+
+      header {
+        display: flex;
+        min-height: 88px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--text);
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        text-decoration: none;
+      }
+
+      .brand img {
+        width: 38px;
+        height: 38px;
+      }
+
+      .guide-link {
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 650;
+        text-decoration: none;
+      }
+
+      main {
+        padding: 42px 0 88px;
+      }
+
+      .policy {
+        position: relative;
+        overflow: hidden;
+        padding: clamp(28px, 6vw, 64px);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: linear-gradient(145deg, rgb(21 31 48 / 97%), rgb(13 20 31 / 99%));
+        box-shadow: 0 32px 90px rgb(0 0 0 / 30%);
+      }
+
+      .policy::before {
+        position: absolute;
+        inset: 0 0 auto;
+        height: 3px;
+        background: linear-gradient(90deg, var(--purple), var(--pink), #3478f6);
+        content: "";
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        color: #c7d6f1;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2 {
+        line-height: 1.15;
+        letter-spacing: -0.025em;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(38px, 7vw, 60px);
+      }
+
+      h2 {
+        margin: 48px 0 12px;
+        padding-top: 4px;
+        font-size: clamp(23px, 4vw, 29px);
+      }
+
+      p,
+      li {
+        color: #d7dfeb;
+      }
+
+      p {
+        margin: 12px 0;
+      }
+
+      ul {
+        margin: 14px 0;
+        padding-left: 24px;
+      }
+
+      li + li {
+        margin-top: 9px;
+      }
+
+      strong {
+        color: var(--text);
+      }
+
+      .effective-date {
+        margin: 14px 0 28px;
+        color: var(--muted);
+      }
+
+      .summary {
+        max-width: 760px;
+        margin: 0;
+        color: #dfe6f1;
+        font-size: 18px;
+      }
+
+      .contents {
+        margin: 34px 0 12px;
+        padding: 22px 24px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface-soft);
+      }
+
+      .contents h2 {
+        margin: 0 0 10px;
+        padding: 0;
+        font-size: 18px;
+      }
+
+      .contents ol {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px 28px;
+        margin: 0;
+        padding-left: 22px;
+      }
+
+      .contents a {
+        color: #dce6f8;
+        text-underline-offset: 3px;
+      }
+
+      .note {
+        margin-top: 22px;
+        padding: 18px 20px;
+        border-left: 3px solid #3478f6;
+        border-radius: 6px 12px 12px 6px;
+        background: rgb(52 120 246 / 9%);
+      }
+
+      footer {
+        min-height: 76px;
+        color: #7f8ca2;
+        font-size: 13px;
+        text-align: center;
+      }
+
+      @media (max-width: 640px) {
+        header {
+          min-height: 72px;
+        }
+
+        .guide-link {
+          font-size: 13px;
+        }
+
+        main {
+          padding: 26px 0 64px;
+        }
+
+        .policy {
+          border-radius: 22px;
+        }
+
+        .contents ol {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#policy">Skip to privacy policy</a>
+
+    <header class="shell">
+      <a class="brand" href="./" aria-label="Stashi Wallet home">
+        <img src="assets/stashi-wallet-logo.svg" alt="">
+        <span>Stashi Wallet</span>
+      </a>
+      <a class="guide-link" href="./">User guide</a>
+    </header>
+
+    <main id="policy" class="shell">
+      <article class="policy">
+        <p class="eyebrow">Pirate Chain Foundation</p>
+        <h1>Stashi Wallet Privacy Policy</h1>
+        <p class="effective-date"><strong>Effective date:</strong> 3 September 2026</p>
+        <p class="summary">
+          Stashi Wallet is a self-custodial Pirate Chain wallet. Wallet keys and
+          wallet records are kept on your device. No account registration is
+          required, and the application does not contain advertising or analytics.
+        </p>
+
+        <nav class="contents" aria-label="Privacy policy contents">
+          <h2>Contents</h2>
+          <ol>
+            <li><a href="#scope">Who this policy covers</a></li>
+            <li><a href="#device-data">Information kept on your device</a></li>
+            <li><a href="#network-data">Information sent over the network</a></li>
+            <li><a href="#permissions">Device permissions</a></li>
+            <li><a href="#sharing">Sharing and sale of information</a></li>
+            <li><a href="#security">Security</a></li>
+            <li><a href="#retention">Retention and deletion</a></li>
+            <li><a href="#choices">Your choices</a></li>
+            <li><a href="#changes">Changes to this policy</a></li>
+            <li><a href="#contact">Contact</a></li>
+          </ol>
+        </nav>
+
+        <section id="scope">
+          <h2>1. Who this policy covers</h2>
+          <p>
+            This policy applies to Stashi Wallet, published by the Pirate Chain
+            Foundation. On Google Play, the application is identified by the
+            package name <strong>com.pirate.wallet</strong>.
+          </p>
+          <p>
+            This policy describes information handled by the Stashi Wallet
+            application. Websites, lightwalletd servers, market-data providers,
+            GitHub, and swap services have their own privacy practices.
+          </p>
+        </section>
+
+        <section id="device-data">
+          <h2>2. Information kept on your device</h2>
+          <p>Stashi Wallet stores the information needed to operate your wallet locally. This may include:</p>
+          <ul>
+            <li>Recovery phrases, spending keys, and viewing keys that you create or import</li>
+            <li>Wallet names, addresses, balances, transaction records, memos, contacts, and preferences</li>
+            <li>Downloaded compact blockchain data and synchronisation state</li>
+            <li>Swap records and locally generated swap credentials when the swap feature is used</li>
+            <li>Diagnostic logs when you choose to enable debug logging</li>
+          </ul>
+          <p>
+            Wallet secrets and wallet databases are protected by the local
+            passphrase and supported platform security features. The Pirate Chain
+            Foundation does not receive your recovery phrase, private keys,
+            viewing keys, or plaintext local passphrase through an account,
+            analytics, or telemetry service.
+          </p>
+          <p>
+            Debug logs are stored locally. They may contain technical information
+            such as errors, timing, selected network mode, and endpoint status.
+            A log leaves your device only if you choose to share it.
+          </p>
+        </section>
+
+        <section id="network-data">
+          <h2>3. Information sent over the network</h2>
+          <p>
+            Stashi Wallet requires a network connection to synchronise and to
+            submit transactions. A direct internet connection can reveal standard
+            connection information, including your IP address and request timing,
+            to the service you contact. The selected transport, such as Tor,
+            SOCKS5, or I2P, may change what the destination service can observe.
+          </p>
+
+          <h3>Lightwalletd services</h3>
+          <p>
+            The application requests blockchain heights, compact blocks, and
+            transaction status from the lightwalletd server that you select or
+            that Auto mode selects. The server can observe connection metadata and
+            the block ranges requested. Normal compact-block scanning does not
+            send your recovery phrase, spending key, viewing key, or shielded
+            address to the server.
+          </p>
+          <p>
+            When you send ARRR, the signed transaction is submitted to a selected
+            lightwalletd server for broadcast. The transaction data required by
+            the Pirate Chain network is then processed by network participants and
+            recorded on the blockchain.
+          </p>
+
+          <h3>Optional external services</h3>
+          <p>
+            Non-lightwalletd internet features are controlled under
+            <strong>Settings &gt; Privacy and Network &gt; Outbound API Calls</strong>.
+            These controls are enabled by default and can be switched off. Depending
+            on the features you use, Stashi Wallet may contact:
+          </p>
+          <ul>
+            <li><strong>CoinGecko, CoinPaprika, and CoinMarketCap</strong> for ARRR market prices and fiat estimates</li>
+            <li><strong>GitHub</strong> for release metadata, signed verification files, and desktop update checks</li>
+            <li><strong>Komodo DeFi Framework services and peer networks</strong> for swap order books, quotes, balances, orders, and settlement</li>
+          </ul>
+          <p>
+            These services receive the request content and standard connection
+            metadata needed to respond. Stashi Wallet does not send wallet recovery
+            phrases or Pirate Chain spending keys to market-data or GitHub services.
+          </p>
+        </section>
+
+        <section id="permissions">
+          <h2>4. Device permissions</h2>
+          <ul>
+            <li><strong>Camera:</strong> Used only when you choose to scan a payment address or QR code. Scanning is performed on the device.</li>
+            <li><strong>Biometrics:</strong> Used when you enable biometric approval. Authentication is performed by the operating system. Stashi Wallet receives the success or failure result, not your fingerprint or face template.</li>
+            <li><strong>Notifications:</strong> Used for locally generated wallet and background synchronisation status where the operating system requires permission.</li>
+            <li><strong>Network access:</strong> Used to synchronise, broadcast transactions, and access the optional services described above.</li>
+            <li><strong>Background operation:</strong> Used to keep an active synchronisation task running where the operating system permits it.</li>
+          </ul>
+        </section>
+
+        <section id="sharing">
+          <h2>5. Sharing and sale of information</h2>
+          <p>
+            The Pirate Chain Foundation does not sell personal information from
+            Stashi Wallet. The application does not include advertising networks,
+            behavioural tracking, or analytics SDKs.
+          </p>
+          <p>
+            Information is sent to a network service only when required for wallet
+            operation or for a feature you use, as described in this policy. Each
+            external service may process and retain connection data under its own
+            terms and privacy policy.
+          </p>
+        </section>
+
+        <section id="security">
+          <h2>6. Security</h2>
+          <p>
+            Stashi Wallet uses local encryption and platform security facilities
+            to protect wallet material. Supported network connections use encrypted
+            transport where the selected endpoint and mode provide it. No method of
+            storage or transmission can be guaranteed to be completely secure.
+          </p>
+          <p class="note">
+            Anyone with a recovery phrase or spending key can control the related
+            funds. Keep these secrets offline and do not send them to support staff
+            or enter them on a website.
+          </p>
+        </section>
+
+        <section id="retention">
+          <h2>7. Retention and deletion</h2>
+          <p>
+            The Pirate Chain Foundation does not operate a Stashi Wallet user-account
+            database. Wallet information remains on your device until you delete the
+            wallet, clear the application's storage, or uninstall the application.
+            Back up the recovery phrase before deleting local wallet data if you may
+            need to recover the wallet later.
+          </p>
+          <p>
+            Disabling debug logging clears the active local debug log. Information
+            already submitted to an external service is subject to that service's
+            retention policy. Confirmed transaction records form part of the Pirate
+            Chain blockchain and cannot be deleted by Stashi Wallet or the Pirate
+            Chain Foundation.
+          </p>
+        </section>
+
+        <section id="choices">
+          <h2>8. Your choices</h2>
+          <ul>
+            <li>Select Direct, Tor, SOCKS5, or I2P networking where supported.</li>
+            <li>Select a lightwalletd endpoint or use Auto endpoint selection.</li>
+            <li>Disable price, GitHub, update, or swap requests under Outbound API Calls.</li>
+            <li>Leave camera, biometric, and notification permissions disabled unless you want the related feature.</li>
+            <li>Enable debug logging only when you need diagnostic information.</li>
+            <li>Delete local wallet data using the wallet controls or the operating system.</li>
+          </ul>
+        </section>
+
+        <section id="changes">
+          <h2>9. Changes to this policy</h2>
+          <p>
+            We may update this policy when Stashi Wallet features or privacy
+            practices change. The effective date at the top of this page identifies
+            the current version.
+          </p>
+        </section>
+
+        <section id="contact">
+          <h2>10. Contact</h2>
+          <p>
+            For privacy questions about Stashi Wallet, contact the Pirate Chain
+            Foundation at
+            <a href="mailto:dev@piratechainfoundation.com">dev@piratechainfoundation.com</a>.
+          </p>
+          <p>
+            Source code and issue reporting are available in the
+            <a href="https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet">Stashi Wallet GitHub repository</a>.
+          </p>
+        </section>
+      </article>
+    </main>
+
+    <footer class="shell">Published by the Pirate Chain Foundation</footer>
+  </body>
+</html>
