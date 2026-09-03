@@ -3304,6 +3304,22 @@ impl SyncEngine {
         Ok(outcome.repair_range)
     }
 
+    fn mark_sync_finalizing_without_scan_extrema(
+        spendability: &SpendabilityStateStorage<'_>,
+    ) -> Result<()> {
+        // A current-tip wallet can legitimately have no scan-queue extrema when
+        // its birthday equals the remote tip and there are no blocks to scan.
+        // Keep the independently verified tip recorded by sync startup; zeroing
+        // it here makes later verified key imports incorrectly report an unknown
+        // tip. The schema's ordinary initial rescan gate can be finalized here,
+        // but imported-key replay and witness-repair gates must remain latched.
+        let state = spendability.load_state()?;
+        if state.required_rescan_from_height == 0 && !state.repair_queued {
+            spendability.mark_sync_finalizing(state.target_height, state.anchor_height)?;
+        }
+        Ok(())
+    }
+
     fn check_witnesses_with_db(
         sink: &StorageSink,
         current_height: u64,
@@ -3325,7 +3341,7 @@ impl SyncEngine {
             )?
             .map(|(target, anchor_height)| (target.max(1), anchor_height.max(1)))
         else {
-            spendability.mark_sync_finalizing(0, 0)?;
+            Self::mark_sync_finalizing_without_scan_extrema(&spendability)?;
             tracing::debug!(
                 "Skipping witness integrity check at tip {}: scan queue extrema not available yet",
                 current_height
@@ -10134,7 +10150,7 @@ impl SyncEngine {
                 }
             }
         } else {
-            spendability.mark_sync_finalizing(0, 0)?;
+            Self::mark_sync_finalizing_without_scan_extrema(&spendability)?;
         }
         Ok((progress_ms, aux_start.elapsed().as_millis()))
     }
@@ -12069,6 +12085,93 @@ fn trial_decrypt_block(
 mod tests {
     use super::*;
     use rand::{rngs::StdRng, SeedableRng};
+
+    #[test]
+    fn missing_scan_extrema_clear_only_the_ordinary_rescan_gate() {
+        let (_file, db, _sink) = shardtree_test_database("known-tip", 91);
+        let spendability = SpendabilityStateStorage::new(&db);
+        spendability.record_known_sync_height(152_858).unwrap();
+        let before = spendability.load_state().unwrap();
+        assert!(before.rescan_required);
+        assert_eq!(before.reason_code, "ERR_RESCAN_REQUIRED");
+
+        SyncEngine::mark_sync_finalizing_without_scan_extrema(&spendability).unwrap();
+
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.target_height, 152_858);
+        assert_eq!(state.anchor_height, 152_858);
+        assert_eq!(state.validated_anchor_height, 0);
+        assert!(!state.spendable);
+        assert!(!state.rescan_required);
+        assert_eq!(state.reason_code, "ERR_SYNC_FINALIZING");
+    }
+
+    #[test]
+    fn missing_scan_extrema_preserve_a_verified_key_replay_gate() {
+        let (_file, db, _sink) = shardtree_test_database("known-tip-replay", 92);
+        let spendability = SpendabilityStateStorage::new(&db);
+        spendability.record_known_sync_height(152_858).unwrap();
+        let mut replay_required = spendability.load_state().unwrap();
+        replay_required.required_rescan_from_height = 152_855;
+        replay_required.key_import_generation = 3;
+        spendability.save_state(&replay_required).unwrap();
+        let before = spendability.load_state().unwrap();
+
+        SyncEngine::mark_sync_finalizing_without_scan_extrema(&spendability).unwrap();
+
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.spendable, before.spendable);
+        assert_eq!(state.rescan_required, before.rescan_required);
+        assert_eq!(
+            state.required_rescan_from_height,
+            before.required_rescan_from_height
+        );
+        assert_eq!(state.key_import_generation, before.key_import_generation);
+        assert_eq!(state.target_height, before.target_height);
+        assert_eq!(state.anchor_height, before.anchor_height);
+        assert_eq!(
+            state.validated_anchor_height,
+            before.validated_anchor_height
+        );
+        assert_eq!(state.repair_queued, before.repair_queued);
+        assert_eq!(state.repair_from_height, before.repair_from_height);
+        assert_eq!(state.reason_code, before.reason_code);
+        assert_eq!(state.updated_at, before.updated_at);
+    }
+
+    #[test]
+    fn missing_scan_extrema_preserve_a_witness_repair_gate() {
+        let (_file, db, _sink) = shardtree_test_database("known-tip-repair", 93);
+        let spendability = SpendabilityStateStorage::new(&db);
+        spendability.record_known_sync_height(152_858).unwrap();
+        spendability
+            .mark_repair_pending_without_enqueue(152_855, "ERR_WITNESS_REPAIR_QUEUED")
+            .unwrap();
+        let before = spendability.load_state().unwrap();
+        assert_eq!(before.required_rescan_from_height, 0);
+        assert!(before.repair_queued);
+
+        SyncEngine::mark_sync_finalizing_without_scan_extrema(&spendability).unwrap();
+
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.spendable, before.spendable);
+        assert_eq!(state.rescan_required, before.rescan_required);
+        assert_eq!(
+            state.required_rescan_from_height,
+            before.required_rescan_from_height
+        );
+        assert_eq!(state.key_import_generation, before.key_import_generation);
+        assert_eq!(state.target_height, before.target_height);
+        assert_eq!(state.anchor_height, before.anchor_height);
+        assert_eq!(
+            state.validated_anchor_height,
+            before.validated_anchor_height
+        );
+        assert_eq!(state.repair_queued, before.repair_queued);
+        assert_eq!(state.repair_from_height, before.repair_from_height);
+        assert_eq!(state.reason_code, before.reason_code);
+        assert_eq!(state.updated_at, before.updated_at);
+    }
 
     #[test]
     fn server_info_validation_reserves_extra_time_and_a_fresh_channel_for_i2p() {

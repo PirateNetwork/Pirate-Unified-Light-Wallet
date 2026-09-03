@@ -361,17 +361,18 @@ fn mark_spendability_rescan_required(wallet_id: &str, reason_code: &str) {
     }
 }
 
-fn mark_spendability_sync_finalizing(wallet_id: &str, target_height: u64, anchor_height: u64) {
-    if let Ok((db, _repo)) = open_wallet_db_for(wallet_id) {
-        let storage = SpendabilityStateStorage::new(&db);
-        if let Err(e) = storage.mark_sync_finalizing(target_height, anchor_height) {
-            tracing::warn!(
-                "Failed to mark spendability sync-finalizing for {}: {}",
-                wallet_id,
-                e
-            );
-        }
-    }
+fn record_known_sync_height(wallet_id: &str, height: u64) -> Result<()> {
+    let (db, _repo) = open_wallet_db_for(wallet_id)?;
+    SpendabilityStateStorage::new(&db)
+        .record_known_sync_height(height)
+        .map_err(Into::into)
+}
+
+fn mark_spendability_sync_interrupted(wallet_id: &str) -> Result<()> {
+    let (db, _repo) = open_wallet_db_for(wallet_id)?;
+    SpendabilityStateStorage::new(&db)
+        .mark_sync_interrupted()
+        .map_err(Into::into)
 }
 
 #[derive(Debug, Clone)]
@@ -787,12 +788,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         }
     };
 
-    let should_mark_finalizing = load_spendability_status_internal(&wallet_id)
-        .map(|state| !state.spendable && !state.rescan_required && !state.repair_queued)
-        .unwrap_or(true);
-    if should_mark_finalizing {
-        mark_spendability_sync_finalizing(&wallet_id, start_height as u64, start_height as u64);
-    }
+    record_known_sync_height(&wallet_id, u64::from(start_height))?;
 
     let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
     let endpoint_url = endpoint_config.url();
@@ -1109,7 +1105,13 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             Err(e) => {
                 tracing::error!("Sync failed for wallet {}: {:?}", wallet_id_for_task, e);
                 tracing::error!("Sync error details: {}", e);
-                mark_spendability_sync_finalizing(&wallet_id_for_task, 0, 0);
+                if let Err(state_error) = mark_spendability_sync_interrupted(&wallet_id_for_task) {
+                    tracing::warn!(
+                        "Failed to preserve spendability state after sync error for {}: {}",
+                        wallet_id_for_task,
+                        state_error
+                    );
+                }
             }
         }
         session.is_running = false;
@@ -1610,6 +1612,14 @@ fn rescan_phase_status(
     }
 }
 
+fn rescan_spendability_heights(local_height: u64, prior_target_height: u64) -> (u64, u64) {
+    (prior_target_height.max(local_height), local_height)
+}
+
+fn select_rescan_prior_target(cached_target_height: u64, durable_target_height: u64) -> u64 {
+    cached_target_height.max(durable_target_height)
+}
+
 /// Keep rollback durability separate from the height presented to SyncEngine.
 /// The engine first bootstraps the requested frontier from lightwalletd and
 /// falls back to the retained checkpoint only when a partial replay is valid.
@@ -1801,6 +1811,17 @@ mod rescan_start_plan_tests {
     }
 
     #[test]
+    fn rescan_rewind_preserves_a_known_chain_tip() {
+        assert_eq!(
+            rescan_spendability_heights(152_849, 152_860),
+            (152_860, 152_849)
+        );
+        assert_eq!(rescan_spendability_heights(152_849, 0), (152_849, 152_849));
+        assert_eq!(select_rescan_prior_target(0, 152_860), 152_860);
+        assert_eq!(select_rescan_prior_target(152_861, 152_860), 152_861);
+    }
+
+    #[test]
     fn verified_key_floor_clamps_a_later_rescan_request() {
         let state = pirate_storage_sqlite::SpendabilityStateRow {
             required_rescan_from_height: 400,
@@ -1894,9 +1915,6 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     if from_height == 0 {
         return Err(anyhow!("Invalid rescan height: must be > 0"));
     }
-    let prior_target_height = get_cached_sync_status(&wallet_id)
-        .map(|status| status.target_height)
-        .unwrap_or(0);
     let mut rescan_guard = acquire_rescan_guard(&wallet_id)?;
     let operation_lock = sync_operation_lock(&wallet_id);
     let _operation_guard = operation_lock.lock().await;
@@ -1904,7 +1922,6 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
     validate_rescan_storage(&wallet_id, &passphrase).map_err(|error| {
         rescan_storage_access_error(&wallet_id, "verify encrypted wallet data", error)
     })?;
-    mark_spendability_rescan_required(&wallet_id, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED);
     let required_key_replay = {
         let (db, _repo) = open_wallet_db_for(&wallet_id)?;
         let state = SpendabilityStateStorage::new(&db).load_state()?;
@@ -1975,60 +1992,20 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         }
     }
 
-    let rescan_active_guard = mark_rescan_active(&wallet_id);
-
-    if let Some(session_arc) = {
-        let sessions = SYNC_SESSIONS.read();
-        sessions.get(&wallet_id).cloned()
-    } {
-        if let Ok(mut session) = session_arc.try_lock() {
-            session.is_running = false;
-            session.last_status = SyncStatus {
-                local_height: 0,
-                target_height: 0,
-                percent: 0.0,
-                eta: None,
-                stage: crate::models::SyncStage::Headers,
-                last_checkpoint: None,
-                blocks_per_second: 0.0,
-                notes_decrypted: 0,
-                last_batch_ms: 0,
-            };
-        }
-    }
-    let removed_session = {
-        let mut sessions = SYNC_SESSIONS.write();
-        sessions.remove(&wallet_id)
+    // Snapshot the target only after any running sync has been cancelled and
+    // joined. The durable state is authoritative across controller restarts;
+    // the runtime cache can only raise that target, never replace it.
+    let cached_target_height = get_cached_sync_status(&wallet_id)
+        .map(|status| status.target_height)
+        .unwrap_or(0);
+    let durable_target_height = {
+        let (db, _repo) = open_wallet_db_for(&wallet_id)?;
+        SpendabilityStateStorage::new(&db)
+            .load_state()?
+            .target_height
     };
-    if let Some(session_arc) = removed_session {
-        if let Ok(mut session) = session_arc.try_lock() {
-            session.is_running = false;
-            session.startup_in_progress = false;
-            session.profile_session = None;
-            session.task = None;
-        }
-    }
-    clear_sync_runtime_cache(&wallet_id);
-    let preparing_status = rescan_phase_status(
-        u64::from(effective_from_height.saturating_sub(1)),
-        prior_target_height,
-        crate::models::SyncStage::Preparing,
-    );
-    cache_sync_status(&wallet_id, &preparing_status);
-    rescan_guard.mark_phase_published();
-    {
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3105","message":"rescan step","data":{{"wallet_id":"{}","step":"session_removed"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts, wallet_id
-            );
-        });
-    }
+    let prior_target_height =
+        select_rescan_prior_target(cached_target_height, durable_target_height);
 
     {
         {
@@ -2148,6 +2125,13 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
             }
         }
         truncate_height = effective_from_height.saturating_sub(1) as u64;
+        let (spendability_target, spendability_anchor) =
+            rescan_spendability_heights(truncate_height, prior_target_height);
+        SpendabilityStateStorage::new(&db).begin_rescan(
+            spendability_target,
+            spendability_anchor,
+            SPENDABILITY_REASON_ERR_RESCAN_REQUIRED,
+        )?;
         {
             pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
@@ -2273,6 +2257,61 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 );
             });
         }
+    }
+
+    let rescan_active_guard = mark_rescan_active(&wallet_id);
+
+    if let Some(session_arc) = {
+        let sessions = SYNC_SESSIONS.read();
+        sessions.get(&wallet_id).cloned()
+    } {
+        if let Ok(mut session) = session_arc.try_lock() {
+            session.is_running = false;
+            session.last_status = SyncStatus {
+                local_height: 0,
+                target_height: 0,
+                percent: 0.0,
+                eta: None,
+                stage: crate::models::SyncStage::Headers,
+                last_checkpoint: None,
+                blocks_per_second: 0.0,
+                notes_decrypted: 0,
+                last_batch_ms: 0,
+            };
+        }
+    }
+    let removed_session = {
+        let mut sessions = SYNC_SESSIONS.write();
+        sessions.remove(&wallet_id)
+    };
+    if let Some(session_arc) = removed_session {
+        if let Ok(mut session) = session_arc.try_lock() {
+            session.is_running = false;
+            session.startup_in_progress = false;
+            session.profile_session = None;
+            session.task = None;
+        }
+    }
+    clear_sync_runtime_cache(&wallet_id);
+    let preparing_status = rescan_phase_status(
+        u64::from(effective_from_height.saturating_sub(1)),
+        prior_target_height,
+        crate::models::SyncStage::Preparing,
+    );
+    cache_sync_status(&wallet_id, &preparing_status);
+    rescan_guard.mark_phase_published();
+    {
+        pirate_core::debug_log::with_locked_file(|file| {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3105","message":"rescan step","data":{{"wallet_id":"{}","step":"session_removed"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                ts, wallet_id
+            );
+        });
     }
     {
         pirate_core::debug_log::with_locked_file(|file| {
@@ -2413,15 +2452,6 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
         session
     };
     cache_sync_status(&wallet_id, &initial_status);
-    mark_spendability_sync_finalizing(
-        &wallet_id,
-        rescan_start_plan
-            .requested_sync_from_height
-            .saturating_sub(1),
-        rescan_start_plan
-            .requested_sync_from_height
-            .saturating_sub(1),
-    );
     SYNC_RUNTIME_HANDLES.write().insert(
         wallet_id.clone(),
         SyncRuntimeHandles {

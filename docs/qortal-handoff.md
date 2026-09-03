@@ -190,12 +190,16 @@ active wallet network and proves ownership directly with the full viewing key.
 It recovers and persists the real 88-bit ZIP-32 diversifier index without an
 address-range search; the supplied 32-bit `address_index` is not a security
 boundary or derivation cursor. The wallet must already have a nonzero known
-chain tip, and the birthday must not exceed that tip. The known tip is
-persisted by a completed synchronization and survives sync cancellation,
-including the internal
-cancellation that ends a completed one-shot sync, so callers can synchronize,
-cancel cleanly, and then import. Only a failed synchronization resets the
-persisted heights. A mismatch is rejected without writing the key. A
+chain tip, and the birthday must not exceed that tip. The known tip is recorded
+as soon as a synchronization verifies it against the remote server, and it
+survives sync cancellation, including the internal cancellation that ends a
+completed one-shot sync, so callers can synchronize, cancel cleanly, and then
+import. A synchronization that has no blocks to scan, because the wallet
+birthday already equals the remote tip, still records that tip. A failed or
+interrupted synchronization is recorded as interrupted and leaves the persisted
+heights and any pending rescan, imported-key replay, or witness-repair gate in
+place, and a rescan rewind does not lower the recorded target height while that
+rescan is required. A mismatch is rejected without writing the key. A
 successful request atomically stores the encrypted key, verified address, and
 durable rescan-required state. Repeating the same request returns the existing
 key group instead of inserting a duplicate, and an earlier repeated birthday
