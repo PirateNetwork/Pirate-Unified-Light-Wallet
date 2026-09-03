@@ -54,6 +54,8 @@ jobs:
           python scripts/docs/verify_stashi_user_guide.py \
             _site/Stashi-Wallet-User-Guide.pdf
           cp docs/user-guide/pages/index.html _site/index.html
+          cp docs/user-guide/pages/privacy-policy.html \
+            _site/privacy-policy.html
           cp docs/user-guide/pages/robots.txt _site/robots.txt
           cp docs/user-guide/pages/.nojekyll _site/.nojekyll
           cp app/assets/icons/stashi-wallet-logo.svg \
