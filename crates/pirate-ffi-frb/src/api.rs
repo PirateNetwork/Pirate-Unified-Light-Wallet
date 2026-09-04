@@ -1,6 +1,6 @@
 //! Public API exposed to Flutter via flutter_rust_bridge
 //!
-//! This module defines the complete FFI surface for the Pirate Unified Wallet.
+//! This module defines the complete FFI surface for Stashi Wallet.
 //! All functions are designed to be called from Flutter through FRB-generated bindings.
 //!
 //! ## Architecture
@@ -14,8 +14,9 @@
 //!
 //! ## State Management
 //!
-//! Global state is managed via `lazy_static` RwLocks. This is suitable for
-//! single-process mobile/desktop apps. State is persisted to encrypted SQLite.
+//! `pirate-wallet-service` owns wallet state, persistence, and business logic.
+//! This module provides type-converting wrappers and bridge-specific runtime
+//! diagnostics; it does not maintain a second wallet registry or database cache.
 
 use crate::models::*;
 use anyhow::Result;
