@@ -17,37 +17,10 @@ frb = []
 [dependencies]
 pirate-wallet-service = { path = "../pirate-wallet-service" }
 pirate-core = { path = "../pirate-core" }
-pirate-params = { path = "../pirate-params" }
-pirate-storage-sqlite = { path = "../pirate-storage-sqlite" }
-pirate-sync-lightd = { path = "../pirate-sync-lightd" }
-# pirate-net is optional - not needed for direct wifi connections
-# pirate-net = { path = "../pirate-net", optional = true }
 
 flutter_rust_bridge = "=2.11.1"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
-parking_lot = { workspace = true }
 tracing = { workspace = true }
-lazy_static = "1.5"
-hex = { workspace = true }
-num_cpus = "1.16"
-rand = { workspace = true }
-futures = "0.3"
-sha2 = "0.10"
-orchard = { workspace = true }
-zcash_primitives = { workspace = true }
-zcash_client_backend = { workspace = true }
-zcash_note_encryption = { workspace = true }
-zcash_protocol = { workspace = true }
-sapling = { workspace = true }
-bech32 = { workspace = true }
-rusqlite = { workspace = true }
-directories = "5.0"
-
-[dev-dependencies]
-shardtree = { workspace = true }
-incrementalmerkletree = { workspace = true }
