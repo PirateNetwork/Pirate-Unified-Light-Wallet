@@ -366,23 +366,13 @@ mod tests {
     use tempfile::tempdir;
 
     fn reset_test_state() {
-        passphrase_store::clear_passphrase();
-        REGISTRY_LOADED.store(false, Ordering::SeqCst);
-        *WALLETS.write() = Vec::new();
-        *ACTIVE_WALLET.write() = None;
-        encrypted_db::invalidate_all_wallet_db_caches();
-        deactivate_decoy();
+        reset_global_wallet_state_for_tests();
         let _ = clear_duress_passphrase();
         let _ = clear_panic_pin();
     }
 
     fn simulate_locked_restart() {
-        passphrase_store::clear_passphrase();
-        REGISTRY_LOADED.store(false, Ordering::SeqCst);
-        *WALLETS.write() = Vec::new();
-        *ACTIVE_WALLET.write() = None;
-        encrypted_db::invalidate_all_wallet_db_caches();
-        deactivate_decoy();
+        reset_global_wallet_state_for_tests();
     }
 
     #[test]
