@@ -284,13 +284,25 @@ fn load_spendability_status_internal(wallet_id: &str) -> Result<SpendabilityStat
     // validation finish. The persisted flag is therefore a durable latch, not
     // merely a cached view of the queue.
     let repair_pending = state.repair_queued || queue_has_work;
+    // A synchronization that ended without validating an anchor latches
+    // `sync_interrupted`. Recomputing spendability from the rescan/repair gates
+    // and the anchor heights alone cannot see that: a wallet validated by an
+    // earlier run keeps `validated_anchor_height >= anchor_height`, so it
+    // reported `OK` again on the next poll and offered the stale anchor for
+    // spending. The latch is released by `mark_validated`, the only transition
+    // that raises `validated_anchor_height`, and by `begin_rescan`.
+    let sync_interrupted = state.sync_interrupted;
 
     let epoch_ok = state.anchor_height != 0 && state.validated_anchor_height >= state.anchor_height;
-    let spendable = !state.rescan_required && !repair_pending && epoch_ok;
+    let spendable = !state.rescan_required && !repair_pending && !sync_interrupted && epoch_ok;
+    // Ordering is significant: the rescan and repair gates keep precedence over
+    // the interruption latch so their more specific reason codes still win.
     let reason_code = if state.rescan_required {
         SPENDABILITY_REASON_ERR_RESCAN_REQUIRED.to_string()
     } else if repair_pending {
         SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED.to_string()
+    } else if sync_interrupted {
+        SPENDABILITY_REASON_ERR_SYNC_FINALIZING.to_string()
     } else if spendable {
         "OK".to_string()
     } else {
@@ -359,13 +371,6 @@ fn mark_spendability_rescan_required(wallet_id: &str, reason_code: &str) {
             );
         }
     }
-}
-
-fn record_known_sync_height(wallet_id: &str, height: u64) -> Result<()> {
-    let (db, _repo) = open_wallet_db_for(wallet_id)?;
-    SpendabilityStateStorage::new(&db)
-        .record_known_sync_height(height)
-        .map_err(Into::into)
 }
 
 fn mark_spendability_sync_interrupted(wallet_id: &str) -> Result<()> {
@@ -788,8 +793,12 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         }
     };
 
-    record_known_sync_height(&wallet_id, u64::from(start_height))?;
-
+    // The known chain tip is deliberately NOT recorded here. `start_height` is
+    // the local resume height, or the user-supplied birthday on a fresh wallet,
+    // and neither has been checked against a server. `SyncEngine` records
+    // `info.block_height` once `validated_server_info()` has verified it, so a
+    // sync that never reaches a server leaves the tip unknown and
+    // `validate_import_birthday` keeps refusing imports.
     let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
     let endpoint_url = endpoint_config.url();
     let client_config = tunnel::light_client_config_for_endpoint(
