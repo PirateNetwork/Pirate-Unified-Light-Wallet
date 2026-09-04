@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-
 //! Public API exposed to Flutter via flutter_rust_bridge
 //!
 //! This module defines the complete FFI surface for the Pirate Unified Wallet.
@@ -20,81 +18,31 @@
 //! single-process mobile/desktop apps. State is persisted to encrypted SQLite.
 
 use crate::models::*;
-use anyhow::{anyhow, Result};
-use hex;
-use orchard::note_encryption::IronwoodDomain;
+use anyhow::Result;
 use parking_lot::RwLock;
-use pirate_core::keys::{
-    ironwood_extsk_hrp_for_network, ExtendedFullViewingKey, ExtendedSpendingKey,
-    IronwoodExtendedFullViewingKey, IronwoodExtendedSpendingKey, IronwoodPaymentAddress,
-    PaymentAddress,
-};
-use pirate_core::transaction::{read_pirate_transaction, PirateNetwork};
-use pirate_core::wallet::Wallet;
-use pirate_params::{Network, NetworkType};
-use pirate_storage_sqlite::{
-    address_book::ColorTag as DbColorTag,
-    passphrase_store, platform_keystore,
-    security::{generate_salt, AppPassphrase, EncryptionAlgorithm, MasterKey, SealedKey},
-    Account, AccountKey, AddressType, Database, EncryptionKey, KeyScope, KeyType, KeystoreResult,
-    Repository, ScanQueueStorage, SpendabilityStateStorage, WalletSecret,
-};
-use pirate_sync_lightd::client::{LightClient, RetryConfig};
-use pirate_sync_lightd::SyncEngine;
-use rusqlite::params;
-use sapling::keys::OutgoingViewingKey as SaplingOutgoingViewingKey;
-use sapling::note_encryption::try_sapling_output_recovery;
+use pirate_storage_sqlite::Database;
 use serde::{de::DeserializeOwned, Serialize};
-use sha2::{Digest, Sha256};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::env;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
-use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Once};
 use std::time::Duration;
-use zcash_note_encryption::try_output_recovery_with_ovk;
-use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
-use zcash_primitives::transaction::components::sapling::zip212_enforcement;
-use zcash_protocol::consensus::BlockHeight;
 
 use pirate_wallet_service as service;
 
-pub(crate) mod address_book;
-pub(crate) mod addresses;
 pub(crate) mod background_sync;
 pub(crate) mod diagnostics;
-pub(crate) mod encrypted_db;
 pub(crate) mod endpoint;
-pub(crate) mod key_management;
-pub(crate) mod panic_duress;
-pub(crate) mod provisioning;
 pub(crate) mod seed_export;
-pub(crate) mod sync_control;
 pub(crate) mod tunnel;
-pub(crate) mod tx_flow;
-pub(crate) mod wallet_registry;
 
 pub use self::diagnostics::CheckpointInfo;
 pub use self::endpoint::{
     LightdEndpoint, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_USE_TLS,
 };
-use self::panic_duress::{ensure_not_decoy, is_decoy_mode_active};
 pub use self::seed_export::SeedExportWarnings;
-use self::wallet_registry::{
-    auto_consolidation_enabled, ensure_wallet_registry_loaded, get_wallet_meta,
-    load_wallet_registry_activity, load_wallet_registry_state, persist_wallet_meta,
-    set_active_wallet_registry, touch_wallet_last_synced, touch_wallet_last_used,
-};
-use encrypted_db::{
-    app_passphrase, get_registry_setting, open_wallet_db_for, open_wallet_db_with_passphrase,
-    open_wallet_registry, set_registry_setting, wallet_db_key_path, wallet_db_keys,
-    wallet_db_path_for, wallet_db_salt_path, wallet_registry_key_path, wallet_registry_path,
-    wallet_registry_salt_path,
-};
 // Global state with thread-safe access
 lazy_static::lazy_static! {
     /// Active wallet metadata (persisted to encrypted storage)
@@ -114,18 +62,10 @@ thread_local! {
     static WALLET_DB_CACHE: RefCell<HashMap<String, Box<Database>>> = RefCell::new(HashMap::new());
 }
 
-static REGISTRY_LOADED: AtomicBool = AtomicBool::new(false);
-static PANIC_HOOK_ONCE: Once = Once::new();
 static RUNTIME_DIAGNOSTICS_ONCE: Once = Once::new();
 static RUNTIME_DIAGNOSTICS_STOP: AtomicBool = AtomicBool::new(false);
 static RUNTIME_LAST_HEARTBEAT_MS: AtomicU64 = AtomicU64::new(0);
 static RUNTIME_LAST_FD_PRESSURE_LOG_MS: AtomicU64 = AtomicU64::new(0);
-const REGISTRY_APP_PASSPHRASE_KEY: &str = "app_passphrase_hash";
-const REGISTRY_TUNNEL_MODE_KEY: &str = "tunnel_mode";
-const REGISTRY_TUNNEL_SOCKS5_URL_KEY: &str = "tunnel_socks5_url";
-const SPENDABILITY_REASON_ERR_RESCAN_REQUIRED: &str = "ERR_RESCAN_REQUIRED";
-const SPENDABILITY_REASON_ERR_SYNC_FINALIZING: &str = "ERR_SYNC_FINALIZING";
-const SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED: &str = "ERR_WITNESS_REPAIR_QUEUED";
 const RUNTIME_MARKER_FILE: &str = "runtime_session.marker";
 
 pub(super) fn convert_from_service<T, U>(value: U) -> Result<T>
@@ -206,73 +146,11 @@ fn is_service_amount_key(key: &str) -> bool {
     )
 }
 
-fn recover_outgoing_memo_from_raw_tx(
-    raw_tx_bytes: &[u8],
-    tx_height: Option<u32>,
-    sapling_ovks: &[SaplingOutgoingViewingKey],
-    orchard_ovks: &[orchard::keys::OutgoingViewingKey],
-) -> Option<Vec<u8>> {
-    if sapling_ovks.is_empty() && orchard_ovks.is_empty() {
-        return None;
-    }
-
-    let tx = read_pirate_transaction(raw_tx_bytes).ok()?;
-    let block_height = BlockHeight::from_u32(tx_height.unwrap_or(0));
-    let sapling_zip212 = zip212_enforcement(&PirateNetwork::default(), block_height);
-
-    if let Some(bundle) = tx.sapling_bundle() {
-        for ovk in sapling_ovks {
-            for output in bundle.shielded_outputs() {
-                if let Some((_note, _address, memo)) =
-                    try_sapling_output_recovery(ovk, output, sapling_zip212)
-                {
-                    if !memo.iter().all(|b| *b == 0) {
-                        return Some(memo.to_vec());
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some(bundle) = tx.ironwood_bundle() {
-        for ovk in orchard_ovks {
-            for action in bundle.actions() {
-                let domain = IronwoodDomain::for_action(action);
-                if let Some((_note, _address, memo)) = try_output_recovery_with_ovk(
-                    &domain,
-                    ovk,
-                    action,
-                    action.cv_net(),
-                    &action.encrypted_note().out_ciphertext,
-                ) {
-                    if !memo.iter().all(|b| *b == 0) {
-                        return Some(memo.to_vec());
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
 fn unix_timestamp_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
-}
-
-fn truncate_for_log(input: &str, max_chars: usize) -> String {
-    let mut out = String::new();
-    for (count, ch) in input.chars().enumerate() {
-        if count >= max_chars {
-            out.push_str("...<truncated>");
-            return out;
-        }
-        out.push(ch);
-    }
-    out
 }
 
 fn runtime_marker_path() -> PathBuf {
@@ -472,78 +350,9 @@ fn install_runtime_diagnostics() {
     });
 }
 
-fn mark_runtime_clean_shutdown(reason: &str) {
-    RUNTIME_DIAGNOSTICS_STOP.store(true, Ordering::SeqCst);
-    let ts = unix_timestamp_millis();
-    RUNTIME_LAST_HEARTBEAT_MS.store(ts, Ordering::SeqCst);
-    update_runtime_marker(|m| {
-        m.insert("pid".to_string(), std::process::id().to_string());
-        m.insert("last_heartbeat_ms".to_string(), ts.to_string());
-        m.insert("clean_shutdown".to_string(), "1".to_string());
-        m.insert("reason".to_string(), reason.to_string());
-        if let Some(fd_count) = current_linux_fd_count() {
-            m.insert("fd_count".to_string(), fd_count.to_string());
-        }
-    });
-    write_runtime_debug_event(
-        "log_runtime_shutdown_marked",
-        "runtime marked clean shutdown",
-        &format!(
-            r#"{{"pid":{},"reason":"{}","timestamp":{}}}"#,
-            std::process::id(),
-            escape_json(reason),
-            ts
-        ),
-    );
-}
-
-fn install_debug_panic_hook() {
-    PANIC_HOOK_ONCE.call_once(|| {
-        let default_hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |panic_info| {
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let payload = truncate_for_log(&panic_info.to_string(), 4_096);
-                let payload = payload.replace('\"', "\\\"");
-                let thread_name = std::thread::current()
-                    .name()
-                    .unwrap_or("unnamed")
-                    .replace('\"', "\\\"");
-                let panic_location = panic_info
-                    .location()
-                    .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()))
-                    .unwrap_or_else(|| "unknown".to_string())
-                    .replace('\"', "\\\"");
-                let backtrace =
-                    truncate_for_log(&format!("{:?}", std::backtrace::Backtrace::force_capture()), 8_192)
-                        .replace('\"', "\\\"");
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rust_panic","timestamp":{},"location":"api.rs","message":"unhandled rust panic","data":{{"panic":"{}","thread":"{}","panic_location":"{}","backtrace":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts, payload, thread_name, panic_location, backtrace
-                );
-            });
-            update_runtime_marker(|m| {
-                m.insert("pid".to_string(), std::process::id().to_string());
-                m.insert("last_heartbeat_ms".to_string(), unix_timestamp_millis().to_string());
-                m.insert("clean_shutdown".to_string(), "0".to_string());
-                m.insert("reason".to_string(), "panic".to_string());
-            });
-            default_hook(panic_info);
-        }));
-    });
-}
-
 // ============================================================================
 // Wallet Lifecycle
 // ============================================================================
-
-fn log_orchard_address_samples(_wallet_id: &WalletId) {
-    // Address derivation samples are intentionally omitted from user diagnostics.
-}
 
 /// Create new wallet
 ///
@@ -598,69 +407,6 @@ pub fn list_wallets() -> Result<Vec<WalletMeta>> {
 /// Switch active wallet
 pub fn switch_wallet(wallet_id: WalletId) -> Result<()> {
     service::switch_wallet(wallet_id)
-}
-
-async fn run_sync_engine_task<F, T>(sync: Arc<tokio::sync::Mutex<SyncEngine>>, task: F) -> Result<T>
-where
-    F: for<'a> FnOnce(&'a mut SyncEngine) -> Pin<Box<dyn Future<Output = Result<T>> + 'a>>
-        + Send
-        + 'static,
-    T: Send + 'static,
-{
-    let run_task = move || -> Result<T> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| anyhow!("Failed to build sync runtime: {}", e))?;
-        runtime.block_on(async move {
-            let mut engine = sync.lock().await;
-            task(&mut engine).await
-        })
-    };
-
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        let join = handle.spawn_blocking(run_task);
-        join.await
-            .map_err(|e| anyhow!("Sync task join error: {}", e))?
-    } else {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        std::thread::spawn(move || {
-            let _ = tx.send(run_task());
-        });
-        rx.await
-            .map_err(|e| anyhow!("Sync task thread join error: {}", e))?
-    }
-}
-
-async fn run_on_runtime<F, Fut, T>(task: F) -> Result<T>
-where
-    F: FnOnce() -> Fut + Send + 'static,
-    Fut: Future<Output = Result<T>> + 'static,
-    T: Send + 'static,
-{
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    std::thread::spawn(move || {
-        let result = (|| -> Result<T> {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| anyhow!("Failed to build runtime: {}", e))?;
-            runtime.block_on(task())
-        })();
-        let _ = tx.send(result);
-    });
-
-    rx.await
-        .map_err(|e| anyhow!("Runtime task join error: {}", e))?
-}
-
-fn run_on_runtime_blocking<F, Fut, T>(task: F) -> Result<T>
-where
-    F: FnOnce() -> Fut + Send + 'static,
-    Fut: Future<Output = Result<T>> + 'static,
-    T: Send + 'static,
-{
-    futures::executor::block_on(run_on_runtime(task))
 }
 
 fn escape_json(value: &str) -> String {
@@ -745,70 +491,6 @@ pub fn get_spendability_status(wallet_id: WalletId) -> Result<SpendabilityStatus
     convert_from_service(service::get_spendability_status(wallet_id)?)
 }
 
-fn ensure_primary_account_key(
-    repo: &Repository,
-    wallet_id: &str,
-    secret: &WalletSecret,
-) -> Result<i64> {
-    let keys = repo.get_account_keys(secret.account_id)?;
-    let meta = get_wallet_meta(wallet_id)?;
-    if let Some(existing) = keys
-        .iter()
-        .find(|k| k.key_type == KeyType::Seed && k.key_scope == KeyScope::Account)
-    {
-        if let Some(id) = existing.id {
-            if existing.birthday_height != meta.birthday_height as i64 {
-                let mut updated = existing.clone();
-                updated.birthday_height = meta.birthday_height as i64;
-                let encrypted = repo.encrypt_account_key_fields(&updated)?;
-                let _ = repo.upsert_account_key(&encrypted);
-            }
-            let _ = repo.backfill_address_key_id(secret.account_id, id);
-            let _ = repo.backfill_note_key_id(id);
-            return Ok(id);
-        }
-    }
-
-    let sapling_extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)?;
-    let dfvk_bytes = match secret.dfvk.as_ref() {
-        Some(bytes) => Some(bytes.clone()),
-        None => Some(sapling_extsk.to_extended_fvk().to_bytes()),
-    };
-
-    let orchard_fvk_bytes = match secret.orchard_extsk.as_ref() {
-        Some(bytes) => {
-            let extsk = IronwoodExtendedSpendingKey::from_bytes(bytes)
-                .map_err(|e| anyhow!("Invalid Ironwood spending key bytes: {}", e))?;
-            Some(extsk.to_extended_fvk().to_bytes())
-        }
-        None => None,
-    };
-
-    let key = AccountKey {
-        id: None,
-        account_id: secret.account_id,
-        key_type: KeyType::Seed,
-        key_scope: KeyScope::Account,
-        label: Some("Seed".to_string()),
-        birthday_height: meta.birthday_height as i64,
-        created_at: chrono::Utc::now().timestamp(),
-        spendable: true,
-        sapling_extsk: Some(secret.extsk.clone()),
-        sapling_dfvk: dfvk_bytes,
-        orchard_extsk: secret.orchard_extsk.clone(),
-        orchard_fvk: orchard_fvk_bytes,
-        encrypted_mnemonic: secret.encrypted_mnemonic.clone(),
-    };
-
-    let encrypted_key = repo.encrypt_account_key_fields(&key)?;
-    let key_id = repo
-        .upsert_account_key(&encrypted_key)
-        .map_err(|e| anyhow!(e.to_string()))?;
-    let _ = repo.backfill_address_key_id(secret.account_id, key_id);
-    let _ = repo.backfill_note_key_id(key_id);
-    Ok(key_id)
-}
-
 /// Get active wallet ID
 pub fn get_active_wallet() -> Result<Option<WalletId>> {
     service::get_active_wallet()
@@ -832,46 +514,6 @@ pub fn delete_wallet(wallet_id: WalletId) -> Result<()> {
 // ============================================================================
 // Addresses
 // ============================================================================
-
-fn wallet_network_type(wallet_id: &WalletId) -> Result<NetworkType> {
-    let wallet = get_wallet_meta(wallet_id)?;
-    let network_type = match wallet.network_type.as_deref().unwrap_or("mainnet") {
-        "testnet" => NetworkType::Testnet,
-        "regtest" => NetworkType::Regtest,
-        _ => NetworkType::Mainnet,
-    };
-    Ok(network_type)
-}
-
-fn address_prefix_network_type(wallet_id: &WalletId) -> Result<NetworkType> {
-    let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
-    let default_network = wallet_network_type(wallet_id)?;
-    Ok(endpoint::address_prefix_network_type_for_endpoint(
-        &endpoint,
-        default_network,
-    ))
-}
-
-fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
-    let wallet = get_wallet_meta(wallet_id)?;
-    let network = Network::from_type(wallet_network_type(wallet_id)?);
-
-    // Get current block height from sync state
-    let (_db, _repo) = open_wallet_db_for(wallet_id)?;
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(_db);
-    let sync_state = sync_storage.load_sync_state()?;
-    let current_height = sync_state.local_height as u32;
-    let effective_height = if current_height == 0 {
-        wallet.birthday_height
-    } else {
-        current_height
-    };
-
-    Ok(network.is_ironwood_active_with_resolved_height(
-        effective_height,
-        sync_state.ironwood_activation_height,
-    ))
-}
 
 /// Get current receive address for wallet
 ///
@@ -939,52 +581,9 @@ pub fn list_address_balances(
     convert_from_service(service::list_address_balances(wallet_id, key_id)?)
 }
 
-fn address_matches_expected_network_prefix(
-    address: &str,
-    address_type: AddressType,
-    network_type: NetworkType,
-) -> bool {
-    match (address_type, network_type) {
-        (AddressType::Sapling, NetworkType::Mainnet) => address.starts_with("zs1"),
-        (AddressType::Sapling, NetworkType::Testnet) => address.starts_with("ztestsapling1"),
-        (AddressType::Sapling, NetworkType::Regtest) => address.starts_with("zregtestsapling1"),
-        (AddressType::Ironwood, NetworkType::Mainnet) => address.starts_with("pirate1"),
-        (AddressType::Ironwood, NetworkType::Testnet) => address.starts_with("pirate-test1"),
-        (AddressType::Ironwood, NetworkType::Regtest) => address.starts_with("pirate-regtest1"),
-    }
-}
-
 // ============================================================================
 // Address Book
 // ============================================================================
-
-pub(super) fn address_book_color_from_ffi(tag: AddressBookColorTag) -> DbColorTag {
-    match tag {
-        AddressBookColorTag::None => DbColorTag::None,
-        AddressBookColorTag::Red => DbColorTag::Red,
-        AddressBookColorTag::Orange => DbColorTag::Orange,
-        AddressBookColorTag::Yellow => DbColorTag::Yellow,
-        AddressBookColorTag::Green => DbColorTag::Green,
-        AddressBookColorTag::Blue => DbColorTag::Blue,
-        AddressBookColorTag::Purple => DbColorTag::Purple,
-        AddressBookColorTag::Pink => DbColorTag::Pink,
-        AddressBookColorTag::Gray => DbColorTag::Gray,
-    }
-}
-
-pub(super) fn address_book_color_to_ffi(tag: DbColorTag) -> AddressBookColorTag {
-    match tag {
-        DbColorTag::None => AddressBookColorTag::None,
-        DbColorTag::Red => AddressBookColorTag::Red,
-        DbColorTag::Orange => AddressBookColorTag::Orange,
-        DbColorTag::Yellow => AddressBookColorTag::Yellow,
-        DbColorTag::Green => AddressBookColorTag::Green,
-        DbColorTag::Blue => AddressBookColorTag::Blue,
-        DbColorTag::Purple => AddressBookColorTag::Purple,
-        DbColorTag::Pink => AddressBookColorTag::Pink,
-        DbColorTag::Gray => AddressBookColorTag::Gray,
-    }
-}
 
 /// List address book entries for a wallet
 pub fn list_address_book(wallet_id: WalletId) -> Result<Vec<AddressBookEntryFfi>> {
@@ -1201,16 +800,8 @@ pub fn export_seed_for_kdf(wallet_id: WalletId) -> Result<String> {
 // Send (Send-to-Many with per-output memos)
 // ============================================================================
 
-use pirate_core::{
-    apply_dust_policy_add_to_fee, FeeCalculator, FeePolicy, NoteSelector, SelectionStrategy,
-    CHANGE_DUST_THRESHOLD, DEFAULT_FEE, MAX_FEE, MAX_MEMO_LENGTH, MIN_FEE,
-};
-
 /// Maximum number of outputs per transaction
 pub const MAX_OUTPUTS_PER_TX: usize = 50;
-const AUTO_CONSOLIDATION_THRESHOLD: usize = 30;
-const AUTO_CONSOLIDATION_MAX_EXTRA_NOTES: usize = 20;
-const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 1;
 
 /// Build transaction with note selection, fee calculation, and change.
 pub fn build_tx(
@@ -1472,260 +1063,6 @@ pub fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEndpoint>
     convert_from_service(service::get_lightd_endpoint_config(wallet_id)?)
 }
 
-fn infer_key_network_type_from_addresses(
-    mnemonic: &str,
-    account_id: i64,
-    repo: &Repository,
-    endpoint: &LightdEndpoint,
-) -> Result<Option<(NetworkType, usize, usize)>> {
-    let addresses = repo.get_all_addresses(account_id)?;
-    let address_count = addresses.len();
-    if addresses.is_empty() {
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = chrono::Utc::now().timestamp_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rederive_address_count","timestamp":{},"location":"api.rs:infer_key_network_type_from_addresses","message":"no stored addresses","data":{{"account_id":{},"count":0}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, account_id
-            );
-        });
-        return Ok(None);
-    }
-
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic)?;
-    let orchard_master = IronwoodExtendedSpendingKey::master(&seed_bytes)?;
-    let candidates = [
-        NetworkType::Mainnet,
-        NetworkType::Testnet,
-        NetworkType::Regtest,
-    ];
-
-    let mut best_network = None;
-    let mut best_matches = 0usize;
-    let mut match_counts = Vec::new();
-
-    for candidate in candidates {
-        let candidate_network = Network::from_type(candidate);
-        let sapling_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
-            mnemonic,
-            candidate_network.network_type,
-            0,
-        )?;
-        let sapling_fvk = sapling_extsk.to_extended_fvk();
-        let orchard_extsk = orchard_master.derive_account(candidate_network.coin_type, 0)?;
-        let orchard_fvk = orchard_extsk.to_extended_fvk();
-        let prefix_network =
-            endpoint::address_prefix_network_type_for_endpoint(endpoint, candidate);
-
-        let mut matches = 0usize;
-        for addr in &addresses {
-            let derived = match addr.address_type {
-                AddressType::Ironwood => {
-                    let orchard_addr = orchard_fvk.address_at(addr.diversifier_index);
-                    orchard_addr.encode_for_network(prefix_network)?
-                }
-                AddressType::Sapling => {
-                    let payment_addr = sapling_fvk.derive_address(addr.diversifier_index);
-                    payment_addr.encode_for_network(prefix_network)
-                }
-            };
-            if derived == addr.address {
-                matches += 1;
-            }
-        }
-
-        match_counts.push((candidate, matches));
-        if matches > best_matches {
-            best_matches = matches;
-            best_network = Some(candidate);
-        }
-    }
-
-    pirate_core::debug_log::with_locked_file(|file| {
-        let ts = chrono::Utc::now().timestamp_millis();
-        let mut summary = String::new();
-        for (idx, (candidate, matches)) in match_counts.iter().enumerate() {
-            if idx > 0 {
-                summary.push(',');
-            }
-            summary.push_str(&format!(
-                r#"{{"network":"{:?}","matches":{}}}"#,
-                candidate, matches
-            ));
-        }
-        let sample = addresses.first().map(|addr| {
-            let prefix_len = addr.address.chars().take(8).count();
-            let sample = addr.address.chars().take(prefix_len).collect::<String>();
-            (sample, addr.address_type)
-        });
-        if let Some((sample_prefix, sample_type)) = sample {
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rederive_address_match","timestamp":{},"location":"api.rs:infer_key_network_type_from_addresses","message":"address match summary","data":{{"account_id":{},"count":{},"sample_prefix":"{}","sample_type":"{:?}","matches":[{}]}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, account_id, address_count, sample_prefix, sample_type, summary
-            );
-        }
-    });
-
-    if best_matches == 0 {
-        return Ok(None);
-    }
-
-    Ok(best_network.map(|network| (network, best_matches, addresses.len())))
-}
-
-fn rederive_wallet_keys_for_network(
-    wallet_id: &WalletId,
-    old_network_type: NetworkType,
-    new_network_type: NetworkType,
-) -> Result<()> {
-    {
-        let ts = chrono::Utc::now().timestamp_millis();
-        pirate_core::debug_log::with_locked_file(|file| {
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rederive_start","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive start","data":{{"wallet_id":"{}","old_network":"{:?}","new_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, wallet_id, old_network_type, new_network_type
-            );
-        });
-    }
-
-    let (_db, repo) = open_wallet_db_for(wallet_id)?;
-    let mut secret = repo
-        .get_wallet_secret(wallet_id)?
-        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-
-    let mnemonic_bytes = match secret.encrypted_mnemonic.as_ref() {
-        Some(bytes) => bytes,
-        None => {
-            tracing::warn!(
-                "Wallet {} has no mnemonic stored; skipping key re-derive",
-                wallet_id
-            );
-            let ts = chrono::Utc::now().timestamp_millis();
-            pirate_core::debug_log::with_locked_file(|file| {
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rederive_skip","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive skipped (no mnemonic)","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                    ts, wallet_id
-                );
-            });
-            return Ok(());
-        }
-    };
-
-    let mnemonic = String::from_utf8(mnemonic_bytes.clone())
-        .map_err(|_| anyhow!("Stored mnemonic is not valid UTF-8"))?;
-
-    let old_network = Network::from_type(old_network_type);
-    let current_extsk =
-        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, old_network.network_type, 0)?;
-
-    let mut matches_any = current_extsk.to_bytes() == secret.extsk;
-    if !matches_any {
-        let candidates = [
-            NetworkType::Mainnet,
-            NetworkType::Testnet,
-            NetworkType::Regtest,
-        ];
-        for candidate in candidates {
-            if candidate == old_network_type {
-                continue;
-            }
-            let candidate_net = Network::from_type(candidate);
-            let candidate_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
-                &mnemonic,
-                candidate_net.network_type,
-                0,
-            )?;
-            if candidate_extsk.to_bytes() == secret.extsk {
-                matches_any = true;
-                break;
-            }
-        }
-    }
-
-    if !matches_any {
-        tracing::warn!(
-            "Wallet {} appears to use a non-empty BIP-39 passphrase; skipping key re-derive",
-            wallet_id
-        );
-        let ts = chrono::Utc::now().timestamp_millis();
-        pirate_core::debug_log::with_locked_file(|file| {
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rederive_skip","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive skipped (passphrase mismatch)","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, wallet_id
-            );
-        });
-        return Ok(());
-    }
-
-    let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
-    let inferred_network =
-        infer_key_network_type_from_addresses(&mnemonic, secret.account_id, &repo, &endpoint)?;
-    let key_network_type = if let Some((network_type, matched, total)) = inferred_network {
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = chrono::Utc::now().timestamp_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rederive_infer","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive inferred key network","data":{{"wallet_id":"{}","inferred_network":"{:?}","matched":{},"total":{},"endpoint_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, wallet_id, network_type, matched, total, new_network_type
-            );
-        });
-        network_type
-    } else {
-        let prefix_network =
-            endpoint::address_prefix_network_type_for_endpoint(&endpoint, new_network_type);
-        if prefix_network != new_network_type {
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = chrono::Utc::now().timestamp_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rederive_prefix_fallback","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive using prefix network fallback","data":{{"wallet_id":"{}","endpoint_network":"{:?}","prefix_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                    ts, wallet_id, new_network_type, prefix_network
-                );
-            });
-        }
-        prefix_network
-    };
-
-    let new_network = Network::from_type(key_network_type);
-    let new_extsk =
-        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, new_network.network_type, 0)?;
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
-    let orchard_master = IronwoodExtendedSpendingKey::master(&seed_bytes)?;
-    let orchard_extsk = orchard_master.derive_account(new_network.coin_type, 0)?;
-
-    secret.extsk = new_extsk.to_bytes();
-    secret.dfvk = Some(new_extsk.to_extended_fvk().to_bytes());
-    secret.orchard_extsk = Some(orchard_extsk.to_bytes());
-    secret.sapling_ivk = None;
-    secret.orchard_ivk = None;
-
-    let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
-    repo.upsert_wallet_secret(&encrypted_secret)?;
-    repo.clear_chain_state()?;
-
-    tracing::info!(
-        "Re-derived wallet {} keys for network {:?} and cleared chain state",
-        wallet_id,
-        key_network_type
-    );
-    {
-        let ts = chrono::Utc::now().timestamp_millis();
-        pirate_core::debug_log::with_locked_file(|file| {
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rederive_ok","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive ok","data":{{"wallet_id":"{}","network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, wallet_id, key_network_type
-            );
-        });
-    }
-
-    Ok(())
-}
-
 // ============================================================================
 // Network Tunnel
 // ============================================================================
@@ -1899,475 +1236,6 @@ pub async fn verify_payment_disclosure(
     convert_from_service(service::verify_payment_disclosure(wallet_id, disclosure).await?)
 }
 
-async fn fetch_transaction_memo_inner(
-    wallet_id: WalletId,
-    txid: String,
-    output_index: Option<u32>,
-) -> Result<Option<String>> {
-    tracing::info!(
-        "Fetching memo for transaction {} (output_index: {:?})",
-        txid,
-        output_index
-    );
-
-    // Extract all data from DB in a block scope to ensure repo is dropped before async.
-    let (
-        endpoint_config,
-        account_id,
-        tx_hash_candidates,
-        txid_bytes,
-        sapling_candidates,
-        orchard_candidates,
-        sapling_ovk_candidates,
-        orchard_ovk_candidates,
-        tx_height_hint,
-        stored_memo,
-    ) = {
-        // Open encrypted wallet DB
-        let (db, repo) = open_wallet_db_for(&wallet_id)?;
-
-        // Get wallet secret to find account_id
-        let secret = repo
-            .get_wallet_secret(&wallet_id)?
-            .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-
-        // Parse txid from hex and support either byte order.
-        let parsed_txid = hex::decode(&txid).map_err(|e| anyhow!("Invalid txid hex: {}", e))?;
-        if parsed_txid.len() != 32 {
-            return Err(anyhow!(
-                "Invalid txid length: {} (expected 32 bytes)",
-                parsed_txid.len()
-            ));
-        }
-
-        let mut reversed_txid = parsed_txid.clone();
-        reversed_txid.reverse();
-        let notes_direct = repo.get_notes_by_txid(secret.account_id, &parsed_txid)?;
-        let (txid_bytes, notes) = if notes_direct.is_empty() {
-            let notes_reversed = repo.get_notes_by_txid(secret.account_id, &reversed_txid)?;
-            if notes_reversed.is_empty() {
-                (parsed_txid.clone(), notes_direct)
-            } else {
-                (reversed_txid.clone(), notes_reversed)
-            }
-        } else {
-            (parsed_txid.clone(), notes_direct)
-        };
-
-        let mut tx_hash_candidates: Vec<[u8; 32]> = Vec::new();
-        let mut push_tx_hash_candidate = |bytes: &[u8]| {
-            if bytes.len() != 32 {
-                return;
-            }
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(bytes);
-            if !tx_hash_candidates.contains(&arr) {
-                tx_hash_candidates.push(arr);
-            }
-        };
-        push_tx_hash_candidate(&txid_bytes);
-        push_tx_hash_candidate(&parsed_txid);
-        push_tx_hash_candidate(&reversed_txid);
-
-        let default_sapling_ivk = if !secret.extsk.is_empty() {
-            ExtendedSpendingKey::from_bytes(&secret.extsk)
-                .map(|extsk| extsk.to_extended_fvk().to_ivk().to_sapling_ivk_bytes())
-                .ok()
-        } else if let Some(ref dfvk_bytes) = secret.dfvk {
-            ExtendedFullViewingKey::from_bytes(dfvk_bytes)
-                .map(|dfvk| dfvk.to_ivk().to_sapling_ivk_bytes())
-        } else if let Some(ref ivk_bytes) = secret.sapling_ivk {
-            if ivk_bytes.len() == 32 {
-                let mut ivk = [0u8; 32];
-                ivk.copy_from_slice(&ivk_bytes[..32]);
-                Some(ivk)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let default_orchard_ivk = if let Some(ref extsk_bytes) = secret.orchard_extsk {
-            IronwoodExtendedSpendingKey::from_bytes(extsk_bytes)
-                .map(|extsk| extsk.to_extended_fvk().to_ivk_bytes())
-                .ok()
-        } else if let Some(ref orchard_ivk_bytes) = secret.orchard_ivk {
-            if orchard_ivk_bytes.len() == 64 {
-                let mut ivk = [0u8; 64];
-                ivk.copy_from_slice(&orchard_ivk_bytes[..64]);
-                Some(ivk)
-            } else {
-                IronwoodExtendedFullViewingKey::from_bytes(orchard_ivk_bytes)
-                    .ok()
-                    .map(|fvk| fvk.to_ivk_bytes())
-            }
-        } else {
-            None
-        };
-        let mut sapling_ovk_candidates: Vec<SaplingOutgoingViewingKey> = Vec::new();
-        let mut seen_sapling_ovks: HashSet<[u8; 32]> = HashSet::new();
-        let mut push_sapling_ovk = |ovk: SaplingOutgoingViewingKey| {
-            if seen_sapling_ovks.insert(ovk.0) {
-                sapling_ovk_candidates.push(ovk);
-            }
-        };
-
-        let mut orchard_ovk_candidates: Vec<orchard::keys::OutgoingViewingKey> = Vec::new();
-        let mut push_orchard_ovk = |ovk: orchard::keys::OutgoingViewingKey| {
-            orchard_ovk_candidates.push(ovk);
-        };
-
-        if !secret.extsk.is_empty() {
-            if let Ok(extsk) = ExtendedSpendingKey::from_bytes(&secret.extsk) {
-                push_sapling_ovk(extsk.to_extended_fvk().outgoing_viewing_key());
-            }
-        } else if let Some(ref dfvk_bytes) = secret.dfvk {
-            if let Some(dfvk) = ExtendedFullViewingKey::from_bytes(dfvk_bytes) {
-                push_sapling_ovk(dfvk.outgoing_viewing_key());
-            }
-        }
-
-        if let Some(ref orchard_extsk) = secret.orchard_extsk {
-            if let Ok(extsk) = IronwoodExtendedSpendingKey::from_bytes(orchard_extsk) {
-                push_orchard_ovk(extsk.to_extended_fvk().to_ovk());
-            }
-        } else if let Some(ref orchard_ivk) = secret.orchard_ivk {
-            if orchard_ivk.len() == 137 {
-                if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bytes(orchard_ivk) {
-                    push_orchard_ovk(fvk.to_ovk());
-                }
-            }
-        }
-
-        for key in repo.get_account_keys(secret.account_id)? {
-            if let Some(ref extsk_bytes) = key.sapling_extsk {
-                if let Ok(extsk) = ExtendedSpendingKey::from_bytes(extsk_bytes) {
-                    push_sapling_ovk(extsk.to_extended_fvk().outgoing_viewing_key());
-                }
-            } else if let Some(ref dfvk_bytes) = key.sapling_dfvk {
-                if let Some(dfvk) = ExtendedFullViewingKey::from_bytes(dfvk_bytes) {
-                    push_sapling_ovk(dfvk.outgoing_viewing_key());
-                }
-            }
-
-            if let Some(ref extsk_bytes) = key.orchard_extsk {
-                if let Ok(extsk) = IronwoodExtendedSpendingKey::from_bytes(extsk_bytes) {
-                    push_orchard_ovk(extsk.to_extended_fvk().to_ovk());
-                }
-            } else if let Some(ref fvk_bytes) = key.orchard_fvk {
-                if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes) {
-                    push_orchard_ovk(fvk.to_ovk());
-                }
-            }
-        }
-
-        let mut sapling_ivk_by_key: HashMap<i64, [u8; 32]> = HashMap::new();
-        let mut orchard_ivk_by_key: HashMap<i64, [u8; 64]> = HashMap::new();
-        let mut sapling_candidates: Vec<(i64, [u8; 32], Option<[u8; 32]>)> = Vec::new();
-        let mut orchard_candidates: Vec<(i64, [u8; 64], Option<[u8; 32]>)> = Vec::new();
-        let mut seen_sapling_output_indices: HashSet<i64> = HashSet::new();
-        let mut seen_orchard_output_indices: HashSet<i64> = HashSet::new();
-        let mut stored_memo: Option<Vec<u8>> = if output_index.is_none() {
-            repo.get_tx_memo(&txid)?
-        } else {
-            None
-        };
-
-        for note in &notes {
-            if let Some(requested_idx) = output_index {
-                if note.output_index != requested_idx as i64 {
-                    continue;
-                }
-            }
-
-            if stored_memo.is_none() {
-                if let Some(memo) = note.memo.clone() {
-                    stored_memo = Some(memo);
-                }
-            }
-
-            let commitment = if note.commitment.len() == 32 {
-                let mut bytes = [0u8; 32];
-                bytes.copy_from_slice(&note.commitment[..32]);
-                Some(bytes)
-            } else {
-                None
-            };
-
-            match note.note_type {
-                pirate_storage_sqlite::models::NoteType::Sapling => {
-                    if !seen_sapling_output_indices.insert(note.output_index) {
-                        continue;
-                    }
-                    let ivk_opt = if let Some(key_id) = note.key_id {
-                        if let Some(cached) = sapling_ivk_by_key.get(&key_id) {
-                            Some(*cached)
-                        } else {
-                            let key = repo
-                                .get_account_key_by_id(key_id)?
-                                .ok_or_else(|| anyhow!("Key group not found"))?;
-                            let ivk = if let Some(ref bytes) = key.sapling_extsk {
-                                let extsk = ExtendedSpendingKey::from_bytes(bytes)?;
-                                extsk.to_extended_fvk().to_ivk().to_sapling_ivk_bytes()
-                            } else if let Some(ref bytes) = key.sapling_dfvk {
-                                let dfvk = ExtendedFullViewingKey::from_bytes(bytes)
-                                    .ok_or_else(|| anyhow!("Invalid Sapling viewing key bytes"))?;
-                                dfvk.to_ivk().to_sapling_ivk_bytes()
-                            } else {
-                                continue;
-                            };
-                            sapling_ivk_by_key.insert(key_id, ivk);
-                            Some(ivk)
-                        }
-                    } else {
-                        default_sapling_ivk
-                    };
-
-                    if let Some(ivk) = ivk_opt {
-                        sapling_candidates.push((note.output_index, ivk, commitment));
-                    }
-                }
-                pirate_storage_sqlite::models::NoteType::Ironwood => {
-                    if !seen_orchard_output_indices.insert(note.output_index) {
-                        continue;
-                    }
-                    let ivk_opt = if let Some(key_id) = note.key_id {
-                        if let Some(cached) = orchard_ivk_by_key.get(&key_id) {
-                            Some(*cached)
-                        } else {
-                            let key = repo
-                                .get_account_key_by_id(key_id)?
-                                .ok_or_else(|| anyhow!("Key group not found"))?;
-                            let ivk = if let Some(ref bytes) = key.orchard_extsk {
-                                IronwoodExtendedSpendingKey::from_bytes(bytes)
-                                    .map(|extsk| extsk.to_extended_fvk().to_ivk_bytes())
-                                    .map_err(|e| anyhow!("Invalid Ironwood spending key: {}", e))?
-                            } else if let Some(ref bytes) = key.orchard_fvk {
-                                IronwoodExtendedFullViewingKey::from_bytes(bytes)
-                                    .map(|fvk| fvk.to_ivk_bytes())
-                                    .map_err(|e| anyhow!("Invalid Ironwood viewing key: {}", e))?
-                            } else {
-                                continue;
-                            };
-                            orchard_ivk_by_key.insert(key_id, ivk);
-                            Some(ivk)
-                        }
-                    } else {
-                        default_orchard_ivk
-                    };
-
-                    if let Some(ivk) = ivk_opt {
-                        orchard_candidates.push((note.output_index, ivk, commitment));
-                    }
-                }
-            }
-        }
-
-        // If caller requested a specific output index and no matching local note was found,
-        // still try decrypting that index with the wallet-default viewing keys.
-        if let Some(requested_idx) = output_index {
-            let idx = requested_idx as i64;
-            if !seen_sapling_output_indices.contains(&idx) {
-                if let Some(ivk) = default_sapling_ivk {
-                    sapling_candidates.push((idx, ivk, None));
-                }
-            }
-            if !seen_orchard_output_indices.contains(&idx) {
-                if let Some(ivk) = default_orchard_ivk {
-                    orchard_candidates.push((idx, ivk, None));
-                }
-            }
-        }
-
-        let mut tx_height_hint = notes
-            .iter()
-            .map(|note| note.height)
-            .filter(|height| *height > 0)
-            .max()
-            .and_then(|height| u32::try_from(height).ok());
-
-        if tx_height_hint.is_none() {
-            let mut txid_candidates = vec![
-                hex::encode(&txid_bytes),
-                hex::encode(&parsed_txid),
-                hex::encode(&reversed_txid),
-            ];
-            txid_candidates.sort_unstable();
-            txid_candidates.dedup();
-
-            for candidate in txid_candidates {
-                let mut stmt = db.conn().prepare(
-                    "SELECT height FROM transactions WHERE txid = ?1 AND height > 0 ORDER BY height DESC LIMIT 1",
-                )?;
-                let mut rows = stmt.query(params![candidate])?;
-                if let Some(row) = rows.next()? {
-                    let height: i64 = row.get(0)?;
-                    if let Ok(parsed_height) = u32::try_from(height) {
-                        tx_height_hint = Some(parsed_height);
-                        break;
-                    }
-                }
-            }
-        }
-
-        (
-            get_lightd_endpoint_config(wallet_id.clone())?,
-            secret.account_id,
-            tx_hash_candidates,
-            txid_bytes,
-            sapling_candidates,
-            orchard_candidates,
-            sapling_ovk_candidates,
-            orchard_ovk_candidates,
-            tx_height_hint,
-            stored_memo,
-        )
-    };
-
-    let client_config = tunnel::light_client_config_for_endpoint(
-        &endpoint_config,
-        RetryConfig::default(),
-        std::time::Duration::from_secs(30),
-        std::time::Duration::from_secs(60),
-    );
-
-    if let Some(stored) = stored_memo {
-        let memo = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&stored);
-        if memo.is_some() {
-            return Ok(memo);
-        }
-    }
-
-    // Memo not in database or validation failed, fetch and decrypt
-    let client = pirate_sync_lightd::LightClient::with_config(client_config);
-    client
-        .connect()
-        .await
-        .map_err(|e| anyhow!("Failed to connect to lightwalletd: {}", e))?;
-
-    let mut raw_tx_bytes: Option<Vec<u8>> = None;
-    let mut last_fetch_err: Option<String> = None;
-    for tx_hash in &tx_hash_candidates {
-        match client.get_transaction(tx_hash).await {
-            Ok(raw) => {
-                raw_tx_bytes = Some(raw);
-                break;
-            }
-            Err(e) => {
-                last_fetch_err = Some(e.to_string());
-            }
-        }
-    }
-    let raw_tx_bytes = raw_tx_bytes.ok_or_else(|| {
-        anyhow!(
-            "Failed to fetch transaction: {}",
-            last_fetch_err.unwrap_or_else(|| "unknown get_transaction error".to_string())
-        )
-    })?;
-
-    // Decrypt Sapling memo candidates.
-    for (idx, ivk_bytes, cmu_opt) in &sapling_candidates {
-        match pirate_sync_lightd::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes(
-            &raw_tx_bytes,
-            *idx as usize,
-            ivk_bytes,
-            cmu_opt.as_ref(),
-        ) {
-            Ok(Some(decrypted)) => {
-                // Store memo in database (re-open DB)
-                let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
-                repo3.update_note_memo_with_type(
-                    account_id,
-                    &txid_bytes,
-                    *idx,
-                    Some(pirate_storage_sqlite::models::NoteType::Sapling),
-                    Some(&decrypted.memo),
-                )?;
-
-                // Decode and return
-                let memo_str =
-                    pirate_sync_lightd::sapling::full_decrypt::decode_memo(&decrypted.memo);
-                tracing::info!(
-                    "Fetched and stored Sapling memo for tx {} output {}",
-                    txid,
-                    idx
-                );
-                if memo_str.is_some() || output_index.is_some() {
-                    return Ok(memo_str);
-                }
-            }
-            Ok(None) => continue,
-            Err(e) => {
-                tracing::warn!("Failed to decrypt Sapling memo for output {}: {}", idx, e);
-                continue;
-            }
-        }
-    }
-
-    // Decrypt Ironwood memo candidates.
-    for (idx, orchard_ivk, cmx_opt) in &orchard_candidates {
-        match pirate_sync_lightd::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
-            &raw_tx_bytes,
-            *idx as usize,
-            orchard_ivk,
-            cmx_opt.as_ref(),
-        ) {
-            Ok(Some(decrypted)) => {
-                let memo_bytes = decrypted.memo.to_vec();
-                // Store memo in database (re-open DB)
-                let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
-                repo3.update_note_memo_with_type(
-                    account_id,
-                    &txid_bytes,
-                    *idx,
-                    Some(pirate_storage_sqlite::models::NoteType::Ironwood),
-                    Some(&memo_bytes),
-                )?;
-
-                // Decode and return
-                let memo_str =
-                    pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes);
-                tracing::info!("Fetched and stored Ironwood memo for tx {} output {}", txid, idx);
-                if memo_str.is_some() || output_index.is_some() {
-                    return Ok(memo_str);
-                }
-            }
-            Ok(None) => continue,
-            Err(e) => {
-                tracing::warn!("Failed to decrypt Ironwood memo for output {}: {}", idx, e);
-                continue;
-            }
-        }
-    }
-
-    if output_index.is_none() {
-        if let Some(memo_bytes) = recover_outgoing_memo_from_raw_tx(
-            &raw_tx_bytes,
-            tx_height_hint,
-            &sapling_ovk_candidates,
-            &orchard_ovk_candidates,
-        ) {
-            let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
-            let txid_hex = hex::encode(&txid_bytes);
-            if let Err(e) = repo3.upsert_tx_memo(&txid_hex, &memo_bytes) {
-                tracing::warn!(
-                    "Failed to persist recovered outgoing memo for {}: {}",
-                    txid,
-                    e
-                );
-            }
-            let memo_str = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes);
-            if memo_str.is_some() {
-                return Ok(memo_str);
-            }
-        }
-    }
-
-    // No memo found for any output
-    Ok(None)
-}
-
 // ============================================================================
 // Utilities
 // ============================================================================
@@ -2444,9 +1312,7 @@ pub fn parse_amount(arrr: String) -> Result<u64> {
 // Security Features
 // ============================================================================
 
-use pirate_storage_sqlite::{
-    SaplingViewingKeyImportRequest, WatchOnlyBanner, WatchOnlyCapabilities, WatchOnlyManager,
-};
+use pirate_storage_sqlite::WatchOnlyManager;
 
 lazy_static::lazy_static! {
     /// Global watch-only manager
@@ -2703,4 +1569,4 @@ pub async fn test_node(
     tunnel::test_node(url, tls_pin).await
 }
 #[cfg(test)]
-mod api_regression_tests;
+mod convert_from_service_tests;
