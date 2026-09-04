@@ -12178,11 +12178,16 @@ mod tests {
         let (_file, db, sink) = shardtree_test_database("bg-known-tip", 95);
         let spendability = SpendabilityStateStorage::new(&db);
         let engine = engine_with_storage(sink);
-        assert_eq!(spendability.load_state().unwrap().target_height, 0);
+        spendability.mark_validated(152_857, 152_850).unwrap();
+        let before = spendability.load_state().unwrap();
+        assert!(before.spendable);
+        assert_eq!(before.target_height, 152_857);
 
         // The already-at-tip case: `BackgroundSyncOrchestrator::execute_sync`
         // returns as soon as `target_height <= start_height`, so `sync_range`
-        // never runs and this is the only chance to record the tip.
+        // never runs and this is the only chance to record the tip. Start from
+        // a validated, spendable state because that is the normal state of an
+        // existing wallet entering background synchronization.
         let (start_height, target_height) = engine
             .finish_background_sync_preparation(152_858, 152_858)
             .await
@@ -12191,7 +12196,12 @@ mod tests {
 
         let state = spendability.load_state().unwrap();
         assert_eq!(state.target_height, 152_858);
-        assert_eq!(state.anchor_height, 152_858);
+        assert_eq!(state.anchor_height, before.anchor_height);
+        assert_eq!(
+            state.validated_anchor_height,
+            before.validated_anchor_height
+        );
+        assert!(state.spendable);
     }
 
     #[tokio::test]

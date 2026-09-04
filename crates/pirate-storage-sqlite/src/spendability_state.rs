@@ -434,7 +434,7 @@ impl<'a> SpendabilityStateStorage<'a> {
                     ELSE anchor_height
                 END,
                 updated_at = ?2
-            WHERE id = 1 AND spendable = 0
+            WHERE id = 1
             "#,
             params![height, chrono::Utc::now().to_rfc3339()],
         )?;
@@ -848,6 +848,23 @@ mod tests {
         assert_eq!(raised.required_rescan_from_height, 152_855);
         assert_eq!(raised.key_import_generation, 7);
         assert!(raised.repair_queued);
+    }
+
+    #[test]
+    fn known_sync_height_advances_for_a_spendable_wallet_without_moving_its_anchor() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        storage.mark_validated(152_858, 152_850).unwrap();
+
+        storage.record_known_sync_height(152_861).unwrap();
+
+        let current = storage.load_state().unwrap();
+        assert!(current.spendable);
+        assert!(!current.rescan_required);
+        assert_eq!(current.target_height, 152_861);
+        assert_eq!(current.anchor_height, 152_850);
+        assert_eq!(current.validated_anchor_height, 152_850);
+        assert_eq!(current.reason_code, "OK");
     }
 
     #[test]
