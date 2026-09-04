@@ -31,6 +31,14 @@ pub struct SpendabilityStateRow {
     pub repair_queued: bool,
     /// Earliest height requested for queued repair.
     pub repair_from_height: u64,
+    /// Durable latch set when a synchronization run ended without validating
+    /// an anchor.
+    ///
+    /// `spendable` and `reason_code` are recomputed by the public status from
+    /// the rescan/repair gates and the anchor heights, so neither of them can
+    /// carry an interruption on its own. This latch is the durable signal that
+    /// the public status honours until an anchor is validated again.
+    pub sync_interrupted: bool,
     /// Deterministic reason code exposed over FFI.
     pub reason_code: String,
     /// Last update timestamp (ISO 8601).
@@ -62,6 +70,7 @@ impl Default for SpendabilityStateRow {
             validated_anchor_height: 0,
             repair_queued: false,
             repair_from_height: 0,
+            sync_interrupted: false,
             reason_code: "ERR_RESCAN_REQUIRED".to_string(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         }
@@ -114,7 +123,8 @@ impl<'a> SpendabilityStateStorage<'a> {
                     repair_queued,
                     repair_from_height,
                     reason_code,
-                    updated_at
+                    updated_at,
+                    sync_interrupted
                 FROM spendability_state
                 WHERE id = 1
                 "#,
@@ -161,6 +171,7 @@ impl<'a> SpendabilityStateStorage<'a> {
                         repair_from_height: u64::try_from(repair_from_height_i64).map_err(
                             |_| rusqlite::Error::IntegralValueOutOfRange(8, repair_from_height_i64),
                         )?,
+                        sync_interrupted: row.get::<_, i64>(11)? != 0,
                         reason_code: row.get(9)?,
                         updated_at: row.get(10)?,
                     })
@@ -379,7 +390,8 @@ impl<'a> SpendabilityStateStorage<'a> {
                 repair_queued = ?8,
                 repair_from_height = ?9,
                 reason_code = ?10,
-                updated_at = ?11
+                sync_interrupted = ?11,
+                updated_at = ?12
             WHERE id = 1
             "#,
             params![
@@ -393,8 +405,120 @@ impl<'a> SpendabilityStateStorage<'a> {
                 bool_to_int(state.repair_queued),
                 repair_from_height,
                 state.reason_code,
+                bool_to_int(state.sync_interrupted),
                 chrono::Utc::now().to_rfc3339(),
             ],
+        )?;
+        Ok(())
+    }
+
+    /// Record a chain height learned at sync startup without weakening any
+    /// existing rescan, imported-key replay, or witness-repair obligation.
+    /// Existing non-zero heights are monotonic; a fresh zero-height state also
+    /// receives an initial anchor so current-tip wallets retain the known tip
+    /// even when there are no blocks to scan.
+    pub fn record_known_sync_height(&self, height: u64) -> Result<()> {
+        if height == 0 {
+            return Ok(());
+        }
+        let height = to_sql_i64(height)?;
+        self.db.conn().execute(
+            r#"
+            UPDATE spendability_state SET
+                target_height = CASE
+                    WHEN target_height > ?1 THEN target_height
+                    ELSE ?1
+                END,
+                anchor_height = CASE
+                    WHEN anchor_height = 0 THEN ?1
+                    ELSE anchor_height
+                END,
+                updated_at = ?2
+            WHERE id = 1 AND spendable = 0
+            "#,
+            params![height, chrono::Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    /// Atomically establish the durable rescan gate before wallet state is
+    /// rewound. Imported-key replay obligations and their generation are
+    /// preserved; an explicit rescan supersedes any ordinary repair request.
+    /// The known target is monotonic so controller restarts cannot turn a
+    /// current chain tip into the lower replay floor.
+    ///
+    /// The sync-interruption latch is cleared here because the rescan gate it
+    /// would otherwise stack under is strictly stronger and supersedes it:
+    /// `load_spendability_status_internal` reports `ERR_RESCAN_REQUIRED` and
+    /// `spendable = false` for the whole rescan, and `mark_validated` is the
+    /// only transition that can raise `validated_anchor_height` again, so the
+    /// wallet cannot become spendable in between. Leaving the latch set would
+    /// only survive past a completed rescan and gate a wallet whose anchor has
+    /// since been revalidated.
+    pub fn begin_rescan(
+        &self,
+        target_height: u64,
+        anchor_height: u64,
+        reason_code: &str,
+    ) -> Result<()> {
+        let target_height = to_sql_i64(target_height)?;
+        let anchor_height = to_sql_i64(anchor_height)?;
+        self.db.conn().execute(
+            r#"
+            UPDATE spendability_state SET
+                spendable = 0,
+                rescan_required = 1,
+                target_height = CASE
+                    WHEN target_height > ?1 THEN target_height
+                    ELSE ?1
+                END,
+                anchor_height = ?2,
+                repair_queued = 0,
+                repair_from_height = 0,
+                sync_interrupted = 0,
+                reason_code = CASE
+                    WHEN required_rescan_from_height > 0 THEN reason_code
+                    ELSE ?3
+                END,
+                updated_at = ?4
+            WHERE id = 1
+            "#,
+            params![
+                target_height,
+                anchor_height,
+                reason_code,
+                chrono::Utc::now().to_rfc3339()
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Record an interrupted sync without erasing its last known heights or
+    /// any stronger replay/repair gate.
+    ///
+    /// `sync_interrupted` is the durable half of this transition. `spendable`
+    /// and `reason_code` are both recomputed by the public status, so without
+    /// the latch a previously validated wallet reported `OK` again on the very
+    /// next status poll, against the stale anchor the failed run never
+    /// revalidated. The latch is released by `mark_validated` (a freshly
+    /// validated anchor) or by `begin_rescan` (a stronger gate).
+    pub fn mark_sync_interrupted(&self) -> Result<()> {
+        self.db.conn().execute(
+            r#"
+            UPDATE spendability_state SET
+                spendable = 0,
+                sync_interrupted = 1,
+                reason_code = CASE
+                    WHEN rescan_required = 0
+                     AND required_rescan_from_height = 0
+                     AND repair_queued = 0
+                    THEN 'ERR_SYNC_FINALIZING'
+                    ELSE reason_code
+                END,
+                updated_at = ?1
+            WHERE id = 1
+            "#,
+            params![chrono::Utc::now().to_rfc3339()],
         )?;
         Ok(())
     }
@@ -501,6 +625,11 @@ impl<'a> SpendabilityStateStorage<'a> {
     /// This is the only ordinary sync transition that clears `repair_queued`:
     /// reaching the finalization phase alone does not prove that the rebuilt
     /// witnesses and selected anchor are valid for spending.
+    ///
+    /// It is also the only transition that raises `validated_anchor_height`,
+    /// which makes it the mandatory checkpoint on every route back to a
+    /// spendable wallet, so clearing the sync-interruption latch here cannot
+    /// leave any wallet permanently gated.
     pub fn mark_validated(&self, target_height: u64, anchor_height: u64) -> Result<()> {
         let target_height = to_sql_i64(target_height)?;
         let anchor_height = to_sql_i64(anchor_height)?;
@@ -520,6 +649,7 @@ impl<'a> SpendabilityStateStorage<'a> {
                 validated_anchor_height = ?2,
                 repair_queued = 0,
                 repair_from_height = 0,
+                sync_interrupted = 0,
                 reason_code = CASE
                     WHEN required_rescan_from_height > 0 THEN reason_code
                     ELSE 'OK'
@@ -638,4 +768,282 @@ fn bool_to_int(value: bool) -> i64 {
 
 fn to_sql_i64(value: u64) -> Result<i64> {
     i64::try_from(value).map_err(|_| Error::Storage(format!("value {} exceeds i64::MAX", value)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        encryption::EncryptionKey,
+        security::{EncryptionAlgorithm, MasterKey},
+    };
+    use tempfile::NamedTempFile;
+
+    fn test_db() -> Database {
+        let file = NamedTempFile::new().unwrap();
+        let salt = crate::security::generate_salt();
+        let key = EncryptionKey::from_passphrase("test", &salt).unwrap();
+        let master_key = MasterKey::generate(EncryptionAlgorithm::ChaCha20Poly1305);
+        Database::open(file.path(), &key, master_key).unwrap()
+    }
+
+    #[test]
+    fn known_sync_height_initializes_fresh_target_and_anchor() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+
+        storage.record_known_sync_height(152_849).unwrap();
+        let current = storage.load_state().unwrap();
+        assert_eq!(current.target_height, 152_849);
+        assert_eq!(current.anchor_height, 152_849);
+        assert!(current.rescan_required);
+        assert_eq!(current.reason_code, "ERR_RESCAN_REQUIRED");
+    }
+
+    #[test]
+    fn known_sync_height_initializes_missing_anchor_without_lowering_target() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.target_height = 152_860;
+        state.anchor_height = 0;
+        storage.save_state(&state).unwrap();
+
+        storage.record_known_sync_height(152_849).unwrap();
+        let current = storage.load_state().unwrap();
+        assert_eq!(current.target_height, 152_860);
+        assert_eq!(current.anchor_height, 152_849);
+    }
+
+    #[test]
+    fn known_sync_height_is_monotonic_and_preserves_independent_obligations() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.target_height = 152_860;
+        state.anchor_height = 152_850;
+        state.rescan_required = true;
+        state.required_rescan_from_height = 152_855;
+        state.key_import_generation = 7;
+        state.repair_queued = true;
+        state.repair_from_height = 152_856;
+        state.reason_code = "ERR_RESCAN_REQUIRED".to_string();
+        storage.save_state(&state).unwrap();
+
+        storage.record_known_sync_height(152_849).unwrap();
+        let current = storage.load_state().unwrap();
+        assert_eq!(current.target_height, 152_860);
+        assert_eq!(current.anchor_height, 152_850);
+        assert!(current.rescan_required);
+        assert_eq!(current.required_rescan_from_height, 152_855);
+        assert_eq!(current.key_import_generation, 7);
+        assert!(current.repair_queued);
+        assert_eq!(current.repair_from_height, 152_856);
+        assert_eq!(current.reason_code, "ERR_RESCAN_REQUIRED");
+
+        storage.record_known_sync_height(152_861).unwrap();
+        let raised = storage.load_state().unwrap();
+        assert_eq!(raised.target_height, 152_861);
+        assert_eq!(raised.anchor_height, 152_850);
+        assert_eq!(raised.required_rescan_from_height, 152_855);
+        assert_eq!(raised.key_import_generation, 7);
+        assert!(raised.repair_queued);
+    }
+
+    #[test]
+    fn begin_rescan_is_atomic_and_preserves_import_replay_obligation() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.target_height = 152_860;
+        state.anchor_height = 152_860;
+        state.rescan_required = true;
+        state.required_rescan_from_height = 152_855;
+        state.key_import_generation = 3;
+        state.repair_queued = true;
+        state.repair_from_height = 152_856;
+        state.reason_code = "ERR_RESCAN_REQUIRED".to_string();
+        storage.save_state(&state).unwrap();
+
+        storage
+            .begin_rescan(152_849, 152_849, "ERR_ORDINARY_RESCAN")
+            .unwrap();
+        let current = storage.load_state().unwrap();
+        assert_eq!(current.target_height, 152_860);
+        assert_eq!(current.anchor_height, 152_849);
+        assert!(current.rescan_required);
+        assert_eq!(current.required_rescan_from_height, 152_855);
+        assert_eq!(current.key_import_generation, 3);
+        assert!(!current.repair_queued);
+        assert_eq!(current.repair_from_height, 0);
+        assert_eq!(current.reason_code, "ERR_RESCAN_REQUIRED");
+    }
+
+    #[test]
+    fn begin_rescan_forces_an_ordinary_rescan_gate_and_can_raise_target() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.spendable = true;
+        state.rescan_required = false;
+        state.target_height = 152_850;
+        state.anchor_height = 152_850;
+        state.reason_code = "OK".to_string();
+        storage.save_state(&state).unwrap();
+
+        storage
+            .begin_rescan(152_860, 152_849, "ERR_RESCAN_REQUIRED")
+            .unwrap();
+        let current = storage.load_state().unwrap();
+        assert!(!current.spendable);
+        assert!(current.rescan_required);
+        assert_eq!(current.target_height, 152_860);
+        assert_eq!(current.anchor_height, 152_849);
+        assert_eq!(current.reason_code, "ERR_RESCAN_REQUIRED");
+    }
+
+    #[test]
+    fn sync_interruption_preserves_heights_and_marks_an_ordinary_sync_finalizing() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.spendable = true;
+        state.rescan_required = false;
+        state.target_height = 152_860;
+        state.anchor_height = 152_850;
+        state.validated_anchor_height = 152_850;
+        state.reason_code = "OK".to_string();
+        storage.save_state(&state).unwrap();
+
+        storage.mark_sync_interrupted().unwrap();
+        let current = storage.load_state().unwrap();
+        assert!(!current.spendable);
+        assert!(!current.rescan_required);
+        assert!(current.sync_interrupted);
+        assert_eq!(current.target_height, 152_860);
+        assert_eq!(current.anchor_height, 152_850);
+        assert_eq!(current.validated_anchor_height, 152_850);
+        assert_eq!(current.reason_code, "ERR_SYNC_FINALIZING");
+    }
+
+    #[test]
+    fn sync_interruption_preserves_stronger_replay_and_repair_obligations() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.spendable = true;
+        state.rescan_required = true;
+        state.target_height = 152_860;
+        state.anchor_height = 152_850;
+        state.validated_anchor_height = 152_840;
+        state.required_rescan_from_height = 152_855;
+        state.key_import_generation = 3;
+        state.repair_queued = true;
+        state.repair_from_height = 152_845;
+        state.reason_code = "ERR_RESCAN_REQUIRED".to_string();
+        storage.save_state(&state).unwrap();
+
+        storage.mark_sync_interrupted().unwrap();
+        let current = storage.load_state().unwrap();
+        assert!(!current.spendable);
+        assert!(current.rescan_required);
+        assert_eq!(current.target_height, 152_860);
+        assert_eq!(current.anchor_height, 152_850);
+        assert_eq!(current.validated_anchor_height, 152_840);
+        assert_eq!(current.required_rescan_from_height, 152_855);
+        assert_eq!(current.key_import_generation, 3);
+        assert!(current.repair_queued);
+        assert_eq!(current.repair_from_height, 152_845);
+        assert_eq!(current.reason_code, "ERR_RESCAN_REQUIRED");
+        // The latch is set even when a stronger gate owns the reason code, so
+        // the public status cannot lose the interruption when that gate clears.
+        assert!(current.sync_interrupted);
+    }
+
+    #[test]
+    fn sync_interruption_latch_round_trips_through_save_state() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+
+        assert!(!storage.load_state().unwrap().sync_interrupted);
+
+        let mut state = storage.load_state().unwrap();
+        state.sync_interrupted = true;
+        storage.save_state(&state).unwrap();
+        assert!(storage.load_state().unwrap().sync_interrupted);
+
+        let mut state = storage.load_state().unwrap();
+        state.sync_interrupted = false;
+        storage.save_state(&state).unwrap();
+        assert!(!storage.load_state().unwrap().sync_interrupted);
+    }
+
+    #[test]
+    fn validating_an_anchor_releases_the_sync_interruption_latch() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.rescan_required = false;
+        state.target_height = 152_860;
+        state.anchor_height = 152_850;
+        state.validated_anchor_height = 152_850;
+        state.reason_code = "OK".to_string();
+        storage.save_state(&state).unwrap();
+
+        storage.mark_sync_interrupted().unwrap();
+        assert!(storage.load_state().unwrap().sync_interrupted);
+
+        storage.mark_validated(152_870, 152_860).unwrap();
+        let current = storage.load_state().unwrap();
+        assert!(!current.sync_interrupted);
+        assert!(current.spendable);
+        assert_eq!(current.validated_anchor_height, 152_860);
+        assert_eq!(current.reason_code, "OK");
+    }
+
+    #[test]
+    fn beginning_a_rescan_releases_the_sync_interruption_latch() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.rescan_required = false;
+        state.target_height = 152_860;
+        state.anchor_height = 152_850;
+        state.validated_anchor_height = 152_850;
+        state.reason_code = "OK".to_string();
+        storage.save_state(&state).unwrap();
+
+        storage.mark_sync_interrupted().unwrap();
+        assert!(storage.load_state().unwrap().sync_interrupted);
+
+        storage
+            .begin_rescan(152_860, 152_849, "ERR_RESCAN_REQUIRED")
+            .unwrap();
+        let current = storage.load_state().unwrap();
+        assert!(!current.sync_interrupted);
+        assert!(current.rescan_required);
+        assert_eq!(current.reason_code, "ERR_RESCAN_REQUIRED");
+    }
+
+    #[test]
+    fn a_finalizing_transition_does_not_release_the_sync_interruption_latch() {
+        let db = test_db();
+        let storage = SpendabilityStateStorage::new(&db);
+        let mut state = storage.load_state().unwrap();
+        state.rescan_required = false;
+        state.target_height = 152_860;
+        state.anchor_height = 152_850;
+        state.validated_anchor_height = 152_850;
+        state.reason_code = "OK".to_string();
+        storage.save_state(&state).unwrap();
+
+        storage.mark_sync_interrupted().unwrap();
+        // Reaching the finalization phase is not proof that the anchor was
+        // revalidated, so it must leave the interruption latched.
+        storage.mark_sync_finalizing(152_860, 152_850).unwrap();
+
+        let current = storage.load_state().unwrap();
+        assert!(current.sync_interrupted);
+        assert_eq!(current.reason_code, "ERR_SYNC_FINALIZING");
+    }
 }

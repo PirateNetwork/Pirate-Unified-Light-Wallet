@@ -871,7 +871,11 @@ pub fn truncate_above_height(db: &Database, height: u64) -> Result<u64> {
         r#"
         UPDATE spendability_state SET
             spendable = 0,
-            target_height = CASE WHEN target_height > ?1 THEN ?1 ELSE target_height END,
+            target_height = CASE
+                WHEN rescan_required != 0 THEN target_height
+                WHEN target_height > ?1 THEN ?1
+                ELSE target_height
+            END,
             anchor_height = CASE WHEN anchor_height > ?1 THEN ?1 ELSE anchor_height END,
             validated_anchor_height = CASE
                 WHEN validated_anchor_height > ?1 THEN ?1
@@ -1151,6 +1155,23 @@ mod tests {
         let state = storage.load_sync_state().unwrap();
         assert_eq!(replay_height, 0);
         assert_eq!(state.local_height, 0);
+    }
+
+    #[test]
+    fn truncate_preserves_known_target_after_rescan_gate_is_established() {
+        let db = test_db();
+        let spendability = crate::SpendabilityStateStorage::new(&db);
+        spendability
+            .begin_rescan(152_860, 152_849, "ERR_RESCAN_REQUIRED")
+            .unwrap();
+
+        truncate_above_height(&db, 152_849).unwrap();
+
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.target_height, 152_860);
+        assert_eq!(state.anchor_height, 152_849);
+        assert!(state.rescan_required);
+        assert_eq!(state.reason_code, "ERR_RESCAN_REQUIRED");
     }
 
     #[test]

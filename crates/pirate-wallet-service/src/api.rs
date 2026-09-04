@@ -4588,4 +4588,6 @@ mod stored_address_ownership_tests {
 #[cfg(test)]
 mod api_regression_tests;
 #[cfg(test)]
+mod spendability_status_regression_tests;
+#[cfg(test)]
 mod watch_only_regression_tests;

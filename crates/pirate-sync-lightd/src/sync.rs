@@ -2060,18 +2060,55 @@ impl SyncEngine {
         Ok(start_height.max(self.birthday_height as u64))
     }
 
+    /// Persist a chain tip this engine has verified against the remote server.
+    ///
+    /// Only heights returned by [`Self::validated_server_info`] may be passed
+    /// here. The local resume height and the user-supplied wallet birthday are
+    /// unverified values, and recording either of them as the known tip lets
+    /// `validate_import_birthday` accept a spending-key birthday that the chain
+    /// has not actually reached. A wallet with no storage sink (an engine built
+    /// without `with_wallet_at_path`) has nowhere to record it and is a no-op.
+    fn record_verified_chain_tip(&self, verified_tip_height: u64) -> Result<()> {
+        let Some(ref sink) = self.storage else {
+            return Ok(());
+        };
+        sink.record_known_sync_height(verified_tip_height)
+    }
+
     /// Prepare background sync bounds by loading the local resume height and
     /// refreshing the remote target height immediately before the sync starts.
     pub async fn prepare_background_sync(&self) -> Result<(u64, u64)> {
         let start_height = self.background_resume_height()?;
         let info = self.validated_server_info().await?;
+        self.finish_background_sync_preparation(start_height, info.block_height)
+            .await
+    }
+
+    /// Publish the prepared bounds and persist the verified tip.
+    ///
+    /// Split out from [`Self::prepare_background_sync`] so the already-at-tip
+    /// case is reachable in tests without a lightwalletd server. Everything
+    /// above this point is the network RPC; everything below it is the part
+    /// `BackgroundSyncOrchestrator::execute_sync` depends on.
+    async fn finish_background_sync_preparation(
+        &self,
+        start_height: u64,
+        verified_tip_height: u64,
+    ) -> Result<(u64, u64)> {
         {
             let progress = self.progress.write().await;
             progress.set_current(start_height.saturating_sub(1));
-            progress.set_target(info.block_height);
+            progress.set_target(verified_tip_height);
             progress.set_stage(SyncStage::Preparing);
         }
-        Ok((start_height, info.block_height))
+        // Record the tip here rather than leaving it to `sync_range`.
+        // `BackgroundSyncOrchestrator::execute_sync` returns as soon as
+        // `target_height <= start_height`, so a wallet that is already current
+        // never enters `sync_range` and would otherwise never persist the tip
+        // it just verified. That is precisely the already-at-tip wallet this
+        // path exists to keep correct.
+        self.record_verified_chain_tip(verified_tip_height)?;
+        Ok((start_height, verified_tip_height))
     }
 
     /// Start sync from birthday height.
@@ -2525,6 +2562,14 @@ impl SyncEngine {
         // One server-info snapshot supplies both the target and the consensus
         // branch, avoiding two independently timed control-plane RPCs.
         let info = self.validated_server_info().await?;
+        // The server snapshot has now been validated, so this is the first
+        // point in the foreground path at which a chain tip is known rather
+        // than assumed. Record it here and never earlier: `start_sync` used to
+        // persist its local resume height (or, on a fresh wallet, the
+        // user-supplied birthday) before any server contact, which
+        // `validate_import_birthday` then trusted even when the connection
+        // failed outright.
+        self.record_verified_chain_tip(info.block_height)?;
         let end = select_sync_target(start_height, end_height, info.block_height, follow_tip);
         tracing::debug!(
             "Using sync target {} from validated server height {}",
@@ -3304,6 +3349,22 @@ impl SyncEngine {
         Ok(outcome.repair_range)
     }
 
+    fn mark_sync_finalizing_without_scan_extrema(
+        spendability: &SpendabilityStateStorage<'_>,
+    ) -> Result<()> {
+        // A current-tip wallet can legitimately have no scan-queue extrema when
+        // its birthday equals the remote tip and there are no blocks to scan.
+        // Keep the independently verified tip recorded by sync startup; zeroing
+        // it here makes later verified key imports incorrectly report an unknown
+        // tip. The schema's ordinary initial rescan gate can be finalized here,
+        // but imported-key replay and witness-repair gates must remain latched.
+        let state = spendability.load_state()?;
+        if state.required_rescan_from_height == 0 && !state.repair_queued {
+            spendability.mark_sync_finalizing(state.target_height, state.anchor_height)?;
+        }
+        Ok(())
+    }
+
     fn check_witnesses_with_db(
         sink: &StorageSink,
         current_height: u64,
@@ -3325,7 +3386,7 @@ impl SyncEngine {
             )?
             .map(|(target, anchor_height)| (target.max(1), anchor_height.max(1)))
         else {
-            spendability.mark_sync_finalizing(0, 0)?;
+            Self::mark_sync_finalizing_without_scan_extrema(&spendability)?;
             tracing::debug!(
                 "Skipping witness integrity check at tip {}: scan queue extrema not available yet",
                 current_height
@@ -10134,7 +10195,7 @@ impl SyncEngine {
                 }
             }
         } else {
-            spendability.mark_sync_finalizing(0, 0)?;
+            Self::mark_sync_finalizing_without_scan_extrema(&spendability)?;
         }
         Ok((progress_ms, aux_start.elapsed().as_millis()))
     }
@@ -11120,6 +11181,11 @@ impl StorageSink {
         Ok(sync_state.load_sync_state()?)
     }
 
+    fn record_known_sync_height(&self, height: u64) -> Result<()> {
+        let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
+        Ok(SpendabilityStateStorage::new(&db).record_known_sync_height(height)?)
+    }
+
     fn save_sync_progress_with_db(
         &self,
         db: &Database,
@@ -12069,6 +12135,161 @@ fn trial_decrypt_block(
 mod tests {
     use super::*;
     use rand::{rngs::StdRng, SeedableRng};
+
+    fn engine_with_storage(sink: StorageSink) -> SyncEngine {
+        let mut engine = SyncEngine::new("http://127.0.0.1:1".to_string(), 152_855);
+        engine.storage = Some(sink);
+        engine
+    }
+
+    #[test]
+    fn only_a_verified_tip_is_recorded_and_it_stays_monotonic() {
+        let (_file, db, sink) = shardtree_test_database("verified-tip", 94);
+        let spendability = SpendabilityStateStorage::new(&db);
+        let engine = engine_with_storage(sink);
+
+        // Nothing has been verified yet, so the wallet has no known tip and
+        // `validate_import_birthday` keeps refusing spending-key imports.
+        assert_eq!(spendability.load_state().unwrap().target_height, 0);
+
+        engine.record_verified_chain_tip(0).unwrap();
+        assert_eq!(spendability.load_state().unwrap().target_height, 0);
+
+        engine.record_verified_chain_tip(152_858).unwrap();
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.target_height, 152_858);
+        assert_eq!(state.anchor_height, 152_858);
+
+        // A later server snapshot that reports a lower height must not demote
+        // the tip already recorded.
+        engine.record_verified_chain_tip(152_800).unwrap();
+        assert_eq!(spendability.load_state().unwrap().target_height, 152_858);
+    }
+
+    #[test]
+    fn recording_a_verified_tip_without_a_storage_sink_is_a_no_op() {
+        let engine = SyncEngine::new("http://127.0.0.1:1".to_string(), 152_855);
+        assert!(engine.storage.is_none());
+        engine.record_verified_chain_tip(152_858).unwrap();
+    }
+
+    #[tokio::test]
+    async fn background_preparation_persists_the_tip_of_an_already_current_wallet() {
+        let (_file, db, sink) = shardtree_test_database("bg-known-tip", 95);
+        let spendability = SpendabilityStateStorage::new(&db);
+        let engine = engine_with_storage(sink);
+        assert_eq!(spendability.load_state().unwrap().target_height, 0);
+
+        // The already-at-tip case: `BackgroundSyncOrchestrator::execute_sync`
+        // returns as soon as `target_height <= start_height`, so `sync_range`
+        // never runs and this is the only chance to record the tip.
+        let (start_height, target_height) = engine
+            .finish_background_sync_preparation(152_858, 152_858)
+            .await
+            .unwrap();
+        assert!(target_height <= start_height);
+
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.target_height, 152_858);
+        assert_eq!(state.anchor_height, 152_858);
+    }
+
+    #[tokio::test]
+    async fn background_preparation_without_a_storage_sink_still_returns_bounds() {
+        let engine = SyncEngine::new("http://127.0.0.1:1".to_string(), 152_855);
+        let bounds = engine
+            .finish_background_sync_preparation(152_858, 152_900)
+            .await
+            .unwrap();
+        assert_eq!(bounds, (152_858, 152_900));
+    }
+
+    #[test]
+    fn missing_scan_extrema_clear_only_the_ordinary_rescan_gate() {
+        let (_file, db, _sink) = shardtree_test_database("known-tip", 91);
+        let spendability = SpendabilityStateStorage::new(&db);
+        spendability.record_known_sync_height(152_858).unwrap();
+        let before = spendability.load_state().unwrap();
+        assert!(before.rescan_required);
+        assert_eq!(before.reason_code, "ERR_RESCAN_REQUIRED");
+
+        SyncEngine::mark_sync_finalizing_without_scan_extrema(&spendability).unwrap();
+
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.target_height, 152_858);
+        assert_eq!(state.anchor_height, 152_858);
+        assert_eq!(state.validated_anchor_height, 0);
+        assert!(!state.spendable);
+        assert!(!state.rescan_required);
+        assert_eq!(state.reason_code, "ERR_SYNC_FINALIZING");
+    }
+
+    #[test]
+    fn missing_scan_extrema_preserve_a_verified_key_replay_gate() {
+        let (_file, db, _sink) = shardtree_test_database("known-tip-replay", 92);
+        let spendability = SpendabilityStateStorage::new(&db);
+        spendability.record_known_sync_height(152_858).unwrap();
+        let mut replay_required = spendability.load_state().unwrap();
+        replay_required.required_rescan_from_height = 152_855;
+        replay_required.key_import_generation = 3;
+        spendability.save_state(&replay_required).unwrap();
+        let before = spendability.load_state().unwrap();
+
+        SyncEngine::mark_sync_finalizing_without_scan_extrema(&spendability).unwrap();
+
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.spendable, before.spendable);
+        assert_eq!(state.rescan_required, before.rescan_required);
+        assert_eq!(
+            state.required_rescan_from_height,
+            before.required_rescan_from_height
+        );
+        assert_eq!(state.key_import_generation, before.key_import_generation);
+        assert_eq!(state.target_height, before.target_height);
+        assert_eq!(state.anchor_height, before.anchor_height);
+        assert_eq!(
+            state.validated_anchor_height,
+            before.validated_anchor_height
+        );
+        assert_eq!(state.repair_queued, before.repair_queued);
+        assert_eq!(state.repair_from_height, before.repair_from_height);
+        assert_eq!(state.reason_code, before.reason_code);
+        assert_eq!(state.updated_at, before.updated_at);
+    }
+
+    #[test]
+    fn missing_scan_extrema_preserve_a_witness_repair_gate() {
+        let (_file, db, _sink) = shardtree_test_database("known-tip-repair", 93);
+        let spendability = SpendabilityStateStorage::new(&db);
+        spendability.record_known_sync_height(152_858).unwrap();
+        spendability
+            .mark_repair_pending_without_enqueue(152_855, "ERR_WITNESS_REPAIR_QUEUED")
+            .unwrap();
+        let before = spendability.load_state().unwrap();
+        assert_eq!(before.required_rescan_from_height, 0);
+        assert!(before.repair_queued);
+
+        SyncEngine::mark_sync_finalizing_without_scan_extrema(&spendability).unwrap();
+
+        let state = spendability.load_state().unwrap();
+        assert_eq!(state.spendable, before.spendable);
+        assert_eq!(state.rescan_required, before.rescan_required);
+        assert_eq!(
+            state.required_rescan_from_height,
+            before.required_rescan_from_height
+        );
+        assert_eq!(state.key_import_generation, before.key_import_generation);
+        assert_eq!(state.target_height, before.target_height);
+        assert_eq!(state.anchor_height, before.anchor_height);
+        assert_eq!(
+            state.validated_anchor_height,
+            before.validated_anchor_height
+        );
+        assert_eq!(state.repair_queued, before.repair_queued);
+        assert_eq!(state.repair_from_height, before.repair_from_height);
+        assert_eq!(state.reason_code, before.reason_code);
+        assert_eq!(state.updated_at, before.updated_at);
+    }
 
     #[test]
     fn server_info_validation_reserves_extra_time_and_a_fresh_channel_for_i2p() {

@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 40;
+const SCHEMA_VERSION: i32 = 41;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -149,6 +149,10 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 40 {
         migrate_v40(conn)?;
+    }
+
+    if current_version < 41 {
+        migrate_v41(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -942,6 +946,61 @@ fn migrate_v40(conn: &Connection) -> Result<()> {
         COMMIT;
         "#,
     )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v41(conn: &Connection) -> Result<()> {
+    // Durable interruption latch for spendability.
+    //
+    // `mark_sync_interrupted` used to record an interruption only in
+    // `spendable`/`reason_code`, both of which the public status recomputes
+    // from the rescan/repair gates and the anchor heights. A wallet that had
+    // been validated before therefore reported `OK` again as soon as a sync
+    // failed, against an anchor the failed run never revalidated. The latch
+    // below is the durable signal the public status honours.
+    //
+    // The `spendability_state` CREATE TABLE statements in the earlier
+    // migrations are deliberately left untouched: as with
+    // `required_rescan_from_height` and `key_import_generation` in v37, a
+    // fresh database runs every migration in order, so the ALTER below gives
+    // fresh and upgraded databases the same final schema.
+    let mut stmt = conn.prepare("PRAGMA table_info(spendability_state)")?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    // An empty column list means the table itself is absent. Every genuine
+    // upgrade path has it by now (v20 creates it, v25/v27/v28 rebuild it), but
+    // a database that reports a newer schema version than its actual shape
+    // must not fail wallet startup here. This mirrors the defensive handling
+    // v39 already applies to the v33 table.
+    let table_present = !columns.is_empty();
+    let add_sync_interrupted = if !table_present
+        || columns.iter().any(|column| column == "sync_interrupted")
+    {
+        ""
+    } else {
+        "ALTER TABLE spendability_state ADD COLUMN sync_interrupted INTEGER NOT NULL DEFAULT 0 CHECK (sync_interrupted IN (0,1));"
+    };
+
+    conn.execute_batch(&format!(
+        r#"
+        BEGIN IMMEDIATE;
+
+        {add_sync_interrupted}
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v41_sync_interruption_latch', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#
+    ))
     .map_err(|e| Error::Migration(e.to_string()))?;
 
     Ok(())

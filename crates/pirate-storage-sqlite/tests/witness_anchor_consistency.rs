@@ -15,8 +15,8 @@ fn requires_current_schema_target() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/migrations.rs");
     let src = fs::read_to_string(path).expect("read migrations");
     assert!(
-        src.contains("const SCHEMA_VERSION: i32 = 40;"),
-        "schema target must remain v40"
+        src.contains("const SCHEMA_VERSION: i32 = 41;"),
+        "schema target must remain v41"
     );
 }
 
