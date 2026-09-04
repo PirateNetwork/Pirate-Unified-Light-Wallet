@@ -12,8 +12,7 @@ import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `clear_runtime_marker`, `convert_from_service`, `convert_into_service`, `current_linux_fd_count`, `escape_json`, `install_runtime_diagnostics`, `is_service_amount_key`, `normalize_decimal_integer_string`, `normalize_service_amount_strings_for_typed_bridge`, `read_runtime_marker`, `runtime_marker_path`, `unix_timestamp_millis`, `update_runtime_marker`, `write_runtime_debug_event`, `write_runtime_marker`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `PENDING_TUNNEL_MODE`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Create new wallet
 ///
