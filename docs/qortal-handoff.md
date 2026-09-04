@@ -190,16 +190,31 @@ active wallet network and proves ownership directly with the full viewing key.
 It recovers and persists the real 88-bit ZIP-32 diversifier index without an
 address-range search; the supplied 32-bit `address_index` is not a security
 boundary or derivation cursor. The wallet must already have a nonzero known
-chain tip, and the birthday must not exceed that tip. The known tip is recorded
-as soon as a synchronization verifies it against the remote server, and it
-survives sync cancellation, including the internal cancellation that ends a
-completed one-shot sync, so callers can synchronize, cancel cleanly, and then
-import. A synchronization that has no blocks to scan, because the wallet
-birthday already equals the remote tip, still records that tip. A failed or
-interrupted synchronization is recorded as interrupted and leaves the persisted
-heights and any pending rescan, imported-key replay, or witness-repair gate in
-place, and a rescan rewind does not lower the recorded target height while that
-rescan is required. A mismatch is rejected without writing the key. A
+chain tip, and the birthday must not exceed that tip. The only height ever
+recorded as the known tip is the block height of a server snapshot the sync
+engine has validated; the local resume height and the caller-supplied wallet
+birthday are never recorded, so a synchronization that fails before it reaches
+a server leaves the tip unknown and imports keep being refused. The recorded
+tip is monotonic and survives sync cancellation, including the internal
+cancellation that ends a completed one-shot sync, so callers can synchronize,
+cancel cleanly, and then import. Both sync paths record it: the foreground
+engine records it immediately after server validation, and background
+preparation records it before it reports that the wallet is already current, so
+a wallet with no blocks to scan still ends up with the tip persisted.
+
+A failed or interrupted synchronization leaves the persisted heights and any
+pending rescan, imported-key replay, or witness-repair gate in place, and a
+rescan rewind does not lower the recorded target height while that rescan is
+required. It also sets a durable interruption latch on the wallet's
+spendability state. Spendability status is otherwise recomputed from the
+rescan and repair gates and the anchor heights, none of which a failed run
+changes, so without the latch a wallet validated by an earlier run would report
+`OK` again on the next poll and offer an anchor that the failed run never
+revalidated. While the latch is set, spendability status reports not spendable
+with reason code `ERR_SYNC_FINALIZING`; a pending rescan or witness repair
+still takes precedence in the reason code. The latch is released when a
+synchronization validates an anchor again, and when a rescan begins, because
+the rescan gate is strictly stronger. A mismatch is rejected without writing the key. A
 successful request atomically stores the encrypted key, verified address, and
 durable rescan-required state. Repeating the same request returns the existing
 key group instead of inserting a duplicate, and an earlier repeated birthday
