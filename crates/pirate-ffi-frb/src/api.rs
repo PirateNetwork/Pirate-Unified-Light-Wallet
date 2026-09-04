@@ -19,15 +19,12 @@
 
 use crate::models::*;
 use anyhow::Result;
-use parking_lot::RwLock;
-use pirate_storage_sqlite::Database;
 use serde::{de::DeserializeOwned, Serialize};
-use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Once};
+use std::sync::Once;
 use std::time::Duration;
 
 use pirate_wallet_service as service;
@@ -43,24 +40,6 @@ pub use self::endpoint::{
     LightdEndpoint, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_USE_TLS,
 };
 pub use self::seed_export::SeedExportWarnings;
-// Global state with thread-safe access
-lazy_static::lazy_static! {
-    /// Active wallet metadata (persisted to encrypted storage)
-    static ref WALLETS: Arc<RwLock<Vec<WalletMeta>>> = Arc::new(RwLock::new(Vec::new()));
-    /// Currently active wallet ID
-    static ref ACTIVE_WALLET: Arc<RwLock<Option<WalletId>>> = Arc::new(RwLock::new(None));
-    /// Network tunnel configuration (Tor default)
-    static ref TUNNEL_MODE: Arc<RwLock<TunnelMode>> = Arc::new(RwLock::new(TunnelMode::Tor));
-    /// Pending tunnel mode to persist once registry is available.
-    static ref PENDING_TUNNEL_MODE: Arc<RwLock<Option<TunnelMode>>> = Arc::new(RwLock::new(None));
-}
-
-thread_local! {
-    // Keep one opened Database handle per wallet per thread.
-    // Unlike the previous leaked static-pointer cache, entries are dropped when
-    // the thread exits, so file descriptors are reclaimed.
-    static WALLET_DB_CACHE: RefCell<HashMap<String, Box<Database>>> = RefCell::new(HashMap::new());
-}
 
 static RUNTIME_DIAGNOSTICS_ONCE: Once = Once::new();
 static RUNTIME_DIAGNOSTICS_STOP: AtomicBool = AtomicBool::new(false);
@@ -1306,18 +1285,6 @@ pub fn format_amount(arrrtoshis: u64) -> Result<String> {
 /// Parse amount (ARRR to arrrtoshis)
 pub fn parse_amount(arrr: String) -> Result<u64> {
     service::parse_amount(arrr)
-}
-
-// ============================================================================
-// Security Features
-// ============================================================================
-
-use pirate_storage_sqlite::WatchOnlyManager;
-
-lazy_static::lazy_static! {
-    /// Global watch-only manager
-    static ref WATCH_ONLY: Arc<RwLock<WatchOnlyManager>> =
-        Arc::new(RwLock::new(WatchOnlyManager::new()));
 }
 
 // ============================================================================
