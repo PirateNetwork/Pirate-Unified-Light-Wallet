@@ -102,7 +102,7 @@ fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
         )
         .unwrap();
 
-    assert_eq!(version, 40);
+    assert_eq!(version, 41);
     assert_eq!(sapling_checkpoint, 12345);
     assert_eq!(orchard_checkpoint, 67890);
     assert_eq!(retained_tables, 2);
@@ -137,7 +137,7 @@ fn test_v33_adds_durable_outgoing_transaction_intents() {
         )
         .unwrap();
 
-    assert_eq!(version, 40);
+    assert_eq!(version, 41);
     assert_eq!(table_count, 1);
 }
 
@@ -212,7 +212,7 @@ fn test_v34_adds_ironwood_activation_height_to_sync_state() {
         )
         .unwrap();
 
-    assert_eq!(version, 40);
+    assert_eq!(version, 41);
     assert_eq!(activation_height, None);
     assert_eq!(migration_marker, "completed");
 }
@@ -361,7 +361,7 @@ fn test_v38_adds_ordered_full_diversifier_indices() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(version, 40);
+    assert_eq!(version, 41);
     assert_eq!(marker, "completed");
 
     let lower = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
@@ -455,9 +455,78 @@ fn test_v39_adds_outgoing_transaction_expiry_height() {
         )
         .unwrap();
 
-    assert_eq!(version, 40);
+    assert_eq!(version, 41);
     assert_eq!(expiry_column_count, 1);
     assert_eq!(marker, "completed");
+}
+
+#[test]
+fn test_v41_adds_the_durable_sync_interruption_latch() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+    migrations::run_migrations(&conn).unwrap();
+
+    // A fresh database must reach the same shape as an upgraded one: the
+    // column is added by ALTER TABLE, not by the older CREATE TABLE bodies.
+    let latch_column_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('spendability_state')
+             WHERE name = 'sync_interrupted'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(latch_column_count, 1);
+
+    let default_latch: i64 = conn
+        .query_row(
+            "SELECT sync_interrupted FROM spendability_state WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(default_latch, 0);
+
+    conn.execute(
+        "UPDATE spendability_state SET sync_interrupted = 1 WHERE id = 1",
+        [],
+    )
+    .unwrap();
+
+    // A restart or idempotent migration pass must not release the latch.
+    migrations::run_migrations(&conn).unwrap();
+
+    let latch: i64 = conn
+        .query_row(
+            "SELECT sync_interrupted FROM spendability_state WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let version: i32 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let marker: String = conn
+        .query_row(
+            "SELECT value FROM migration_state WHERE key = 'v41_sync_interruption_latch'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(latch, 1);
+    assert_eq!(version, 41);
+    assert_eq!(marker, "completed");
+
+    // The CHECK constraint keeps the column boolean.
+    assert!(conn
+        .execute(
+            "UPDATE spendability_state SET sync_interrupted = 2 WHERE id = 1",
+            [],
+        )
+        .is_err());
 }
 
 #[test]
