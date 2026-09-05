@@ -106,6 +106,8 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
   Timer? _scheduledCheck;
   Timer? _periodicCheck;
   bool _checking = false;
+  bool _checkQueued = false;
+  bool _queuedPoolProbe = false;
   int _consecutiveFailures = 0;
   int _consecutiveStaleChecks = 0;
   int _checkGeneration = 0;
@@ -168,7 +170,14 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
   }
 
   Future<void> checkNow({bool probePool = false}) async {
-    if (_checking || ref.read(activeWalletProvider) == null) return;
+    if (ref.read(activeWalletProvider) == null) return;
+    if (_checking) {
+      // Selection/transport changes must not lose their check while an old
+      // network request is finishing.
+      _checkQueued = true;
+      _queuedPoolProbe |= probePool;
+      return;
+    }
 
     final mode = ref.read(transportConfigProvider).mode.toLowerCase();
     if (mode == 'tor' && !ref.read(torStatusProvider).isReady) {
@@ -223,7 +232,7 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
           ? 0
           : _consecutiveFailures + 1;
       final shouldProbePool =
-          candidates.isNotEmpty && (probePool || nextFailureCount >= 2);
+          candidates.isNotEmpty && (probePool || !currentRecord.healthy);
       final candidateRecords = shouldProbePool
           ? await Future.wait(candidates.map(_probe))
           : const <EndpointHealthRecord>[];
@@ -251,13 +260,13 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
       if (!currentRecord.healthy) {
         _consecutiveFailures = nextFailureCount;
         _consecutiveStaleChecks = 0;
+        if (healthyCandidates.isNotEmpty) {
+          _selectHealthyPoolMember(current, healthyCandidates.first.endpoint);
+          return;
+        }
         if (_consecutiveFailures < 2) {
           state = state.copyWith(phase: EndpointHealthPhase.degraded);
           _scheduleCheck(_confirmationDelay, probePool: true);
-          return;
-        }
-        if (healthyCandidates.isNotEmpty) {
-          _selectHealthyPoolMember(current, healthyCandidates.first.endpoint);
           return;
         }
         state = state.copyWith(phase: EndpointHealthPhase.offline);
@@ -295,6 +304,12 @@ class EndpointHealthNotifier extends Notifier<EndpointHealthState> {
       _scheduleCheck(_confirmationDelay, probePool: false);
     } finally {
       _checking = false;
+      if (ref.mounted && (_checkQueued || generation != _checkGeneration)) {
+        final queuedPool = _queuedPoolProbe;
+        _checkQueued = false;
+        _queuedPoolProbe = false;
+        _scheduleCheck(Duration.zero, probePool: queuedPool);
+      }
     }
   }
 

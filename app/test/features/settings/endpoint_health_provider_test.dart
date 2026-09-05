@@ -121,13 +121,7 @@ void main() {
       container.read(endpointHealthProvider);
       final notifier = container.read(endpointHealthProvider.notifier);
       await notifier.checkNow();
-      expect(probed, <String>['https://lightd1.pirate.black:443']);
-      expect(
-        container.read(endpointHealthProvider).phase,
-        EndpointHealthPhase.degraded,
-      );
-
-      await notifier.checkNow();
+      expect(container.read(endpointHealthProvider).phase, EndpointHealthPhase.healthy);
 
       expect(selectedUrl, isNull);
       expect(probed, contains('https://lightwalletd1.cryptoforge.cc:443'));

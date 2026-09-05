@@ -319,6 +319,19 @@ void main() {
     });
   });
 
+  test('retired Auto endpoint migrates without changing manual selections', () {
+    final automatic = LightdEndpoint.tryParse(
+      'http://64.23.167.130:9067',
+      automaticFailover: true,
+    )!;
+    expect(
+      LightdEndpoint.currentAutomaticPreset(automatic),
+      LightdEndpoint.autoMainnetClearnet,
+    );
+    final manual = LightdEndpoint.tryParse('http://64.23.167.130:9067')!;
+    expect(LightdEndpoint.currentAutomaticPreset(manual), isNull);
+  });
+
   group('endpoint parsing', () {
     test('distinguishes Auto from a manual server at its primary URL', () {
       final manual = LightdEndpoint.tryParse(

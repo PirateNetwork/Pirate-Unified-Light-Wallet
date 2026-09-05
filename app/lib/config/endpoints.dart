@@ -385,6 +385,15 @@ class LightdEndpoint {
   /// to migrate without treating a manual server choice as automatic.
   static LightdEndpoint? currentAutomaticPreset(LightdEndpoint endpoint) {
     if (!endpoint.automaticFailover) return null;
+    final retiredNetwork = _retiredPresetNetwork(endpoint);
+    if (retiredNetwork != null) {
+      final mode = switch (endpoint.route) {
+        LightdRoute.clearnet => 'direct',
+        LightdRoute.tor => 'tor',
+        LightdRoute.i2p => 'i2p',
+      };
+      return automaticEndpointFor(retiredNetwork, mode);
+    }
     for (final preset in allPresets) {
       if (preset.automaticFailover && preset == endpoint) return preset;
     }
