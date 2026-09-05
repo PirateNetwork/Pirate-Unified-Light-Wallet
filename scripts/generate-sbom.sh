@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SBOM (Software Bill of Materials) generation script
-# Uses Syft for Flutter/Dart and cargo auditable for Rust
+# Uses Syft for Flutter/Dart and extracts embedded Rust metadata without rebuilding.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,7 +51,7 @@ SYFT_SHA256_LINUX_AMD64="${SYFT_SHA256_LINUX_AMD64:-c229137c919f22aa926c1c015388
 SYFT_SHA256_DARWIN_ARM64="${SYFT_SHA256_DARWIN_ARM64:-c0f6a4fc0563ef1dfe1acf9a4518db66cb37bbb1391889aba3be773dff3487dd}"
 SYFT_SHA256_DARWIN_AMD64="${SYFT_SHA256_DARWIN_AMD64:-9e84d1f152ef9d3bb541cc7cedf81ed4c7ed78f6cc2e4c8f0db9e052b64cd7be}"
 SYFT_SHA256_WINDOWS_AMD64="${SYFT_SHA256_WINDOWS_AMD64:-eedac363e277dfecac420b6e4ed0a861bc2c9c84a7544157f52807a99bff07cd}"
-CARGO_AUDITABLE_VERSION="${CARGO_AUDITABLE_VERSION:-0.7.2}"
+export PATH="$PROJECT_ROOT/.tools/syft:$PATH"
 SBOM_APP_NAME="${SBOM_APP_NAME:-Stashi Wallet}"
 SBOM_APP_VERSION="${SBOM_APP_VERSION:-}"
 
@@ -71,77 +71,19 @@ log "Generating Rust SBOM..."
 
 cd "$PROJECT_ROOT/crates"
 
-ensure_rust_audit_info() {
-    if command -v rust-audit-info &> /dev/null; then
-        return 0
-    fi
-    log "Installing rust-audit-info..."
-    cargo install rust-audit-info --locked
-    command -v rust-audit-info &> /dev/null || error "rust-audit-info installation failed"
-}
-
-ensure_cargo_auditable() {
-    if command -v cargo-auditable &> /dev/null; then
-        return 0
-    fi
-    log "Installing cargo-auditable..."
-    cargo install cargo-auditable --locked --version "$CARGO_AUDITABLE_VERSION"
-}
-
-extract_rust_audit_info_from_targets() {
-    local target_root="$PROJECT_ROOT/crates/target"
-    [[ -d "$target_root" ]] || return 1
-
-    local candidates=()
-    # Prefer executable outputs first, then library outputs that may carry metadata on some platforms.
-    while IFS= read -r -d '' candidate; do
-        candidates+=("$candidate")
-    done < <(
-        find "$target_root" -type f -path "*/release/*" \
-            \( -name "pirate-ffi-frb" \
-            -o -name "*.exe" \
-            -o -name "libpirate_ffi_frb.so" \
-            -o -name "libpirate_ffi_frb.dylib" \
-            -o -name "pirate_ffi_frb.dll" \) \
-            -print0 2>/dev/null
-    )
-
-    local tmp_out="$OUTPUT_DIR/rust-sbom.json.tmp"
-    for target_file in "${candidates[@]}"; do
-        log "Extracting Rust audit info from: $target_file"
-        if rust-audit-info "$target_file" > "$tmp_out" 2>/dev/null; then
-            mv "$tmp_out" "$OUTPUT_DIR/rust-sbom.json"
-            return 0
-        fi
-    done
-
-    rm -f "$tmp_out"
-    return 1
-}
-
-ensure_rust_audit_info
-
-if extract_rust_audit_info_from_targets; then
-    log "Rust audit info extracted without rebuild."
-else
-    warn "Rust audit extraction failed or no compatible artifact found. Triggering cargo auditable rebuild..."
-    ensure_cargo_auditable
-    cargo auditable build --release --locked
-    if extract_rust_audit_info_from_targets; then
-        log "Rust audit info extracted after cargo auditable rebuild."
-    else
-        warn "No auditable Rust binary metadata available after rebuild; using cargo metadata fallback."
-        cargo metadata --format-version 1 --locked > "$OUTPUT_DIR/rust-sbom.json"
-    fi
-fi
+# Platform is explicit so a host executable can never stand in for a mobile library.
+PLATFORM="${2:?Usage: generate-sbom.sh OUTPUT_DIR android|ios|windows|macos|linux}"
+python3 "$SCRIPT_DIR/extract-rust-sbom.py" --root "$PROJECT_ROOT" \
+    --platform "$PLATFORM" --output "$OUTPUT_DIR/rust-sbom.json" \
+    --extractor "$PROJECT_ROOT/.tools/rust-sbom/bin/rust-audit-info"
 
 # Also generate Cargo.lock SBOM
-cargo tree --prefix none --edges normal --format "{p}" \
+cargo tree --locked --prefix none --edges normal --format "{p}" \
     | sort -u \
     > "$OUTPUT_DIR/rust-dependencies.txt"
 
 # Generate detailed dependency tree
-cargo tree --format "{p} {l}" \
+cargo tree --locked --format "{p} {l}" \
     > "$OUTPUT_DIR/rust-dependency-tree.txt"
 
 log "Rust SBOM generated"
@@ -238,6 +180,7 @@ fi
 
 syft "$PROJECT_ROOT/app" \
     "${SYFT_NAME_ARGS[@]}" \
+    --exclude "**/build/**" --exclude "**/.dart_tool/**" \
     --output spdx-json="$OUTPUT_DIR/flutter-sbom.spdx.json" \
     --output cyclonedx-json="$OUTPUT_DIR/flutter-sbom.cdx.json"
 
@@ -267,7 +210,7 @@ Version: $SBOM_APP_VERSION
 
 ## Files
 
-- \`rust-sbom.json\` - Rust dependencies (rust-audit-info when available, otherwise cargo metadata)
+- \`rust-sbom.json\` - Embedded Rust dependencies for each release-library architecture, with source paths and SHA-256 hashes
 - \`rust-dependencies.txt\` - Rust dependency list
 - \`rust-dependency-tree.txt\` - Rust dependency tree with licenses
 - \`flutter-sbom.spdx.json\` - Flutter/Dart SBOM (SPDX format)
@@ -299,7 +242,9 @@ $(grep -o '"license": "[^"]*"' "$OUTPUT_DIR/flutter-dependencies.json" | sort | 
 
 ## Verification
 
-All SBOMs are generated from source code at build time.
+Rust dependency records are extracted from the specific library build outputs used by packaging.
+Their hashes identify those inputs before subsequent signing or universal-binary assembly;
+release checksum manifests identify the final distributed files. Flutter inventories describe the app source dependencies.
 Verify authenticity using Sigstore provenance (see provenance.json).
 
 ## Security

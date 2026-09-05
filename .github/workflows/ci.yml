@@ -1344,6 +1344,14 @@ jobs:
         run: |
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
 
+      - name: Cache SBOM tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            .tools/rust-sbom
+            .tools/syft
+          key: sbom-tools-${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_VERSION }}-auditable-0.7.2-audit-info-0.5.4-syft-1.40.1-v1
+
       - name: Verify toolchain pins
         run: |
           chmod +x scripts/verify-toolchain.sh
@@ -1358,15 +1366,15 @@ jobs:
         run: |
           REPRODUCIBLE=1 ./scripts/build-android.sh bundle
 
+      - name: Generate SBOM
+        run: |
+          chmod +x scripts/generate-sbom.sh
+          ./scripts/generate-sbom.sh dist/sbom android
+
       - name: Reclaim workspace disk
         run: |
           chmod +x scripts/cleanup-build-intermediates.sh
           ./scripts/cleanup-build-intermediates.sh
-
-      - name: Generate SBOM
-        run: |
-          chmod +x scripts/generate-sbom.sh
-          ./scripts/generate-sbom.sh dist/sbom
 
       - name: Generate Provenance
         run: |
@@ -1471,6 +1479,14 @@ jobs:
         run: |
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
 
+      - name: Cache SBOM tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            .tools/rust-sbom
+            .tools/syft
+          key: sbom-tools-${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_VERSION }}-auditable-0.7.2-audit-info-0.5.4-syft-1.40.1-v1
+
       - name: Verify toolchain pins
         run: |
           chmod +x scripts/verify-toolchain.sh
@@ -1498,15 +1514,15 @@ jobs:
       # (ios-aarch64). Do not build/package an iOS simulator app until the SDK
       # provides an iphonesimulator slice or an xcframework containing one.
 
+      - name: Generate SBOM
+        run: |
+          chmod +x scripts/generate-sbom.sh
+          ./scripts/generate-sbom.sh dist/sbom ios
+
       - name: Reclaim workspace disk
         run: |
           chmod +x scripts/cleanup-build-intermediates.sh
           ./scripts/cleanup-build-intermediates.sh
-
-      - name: Generate SBOM
-        run: |
-          chmod +x scripts/generate-sbom.sh
-          ./scripts/generate-sbom.sh dist/sbom
 
       - name: Generate Provenance
         run: |
@@ -1591,6 +1607,14 @@ jobs:
           $epoch = git log -1 --format=%ct
           echo "SOURCE_DATE_EPOCH=$epoch" >> $env:GITHUB_ENV
 
+      - name: Cache SBOM tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            .tools/rust-sbom
+            .tools/syft
+          key: sbom-tools-${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_VERSION }}-auditable-0.7.2-audit-info-0.5.4-syft-1.40.1-v1
+
       - name: Verify toolchain pins
         shell: bash
         run: |
@@ -1605,12 +1629,6 @@ jobs:
           chmod +x scripts/build-windows.sh
           REPRODUCIBLE=1 ./scripts/build-windows.sh
 
-      - name: Reclaim workspace disk
-        shell: bash
-        run: |
-          chmod +x scripts/cleanup-build-intermediates.sh
-          ./scripts/cleanup-build-intermediates.sh
-
       - name: Generate SBOM
         shell: bash
         env:
@@ -1618,7 +1636,13 @@ jobs:
         run: |
           export PATH="/c/Strawberry/perl/bin:/c/Strawberry/c/bin:$PATH"
           chmod +x scripts/generate-sbom.sh
-          ./scripts/generate-sbom.sh dist/sbom
+          ./scripts/generate-sbom.sh dist/sbom windows
+
+      - name: Reclaim workspace disk
+        shell: bash
+        run: |
+          chmod +x scripts/cleanup-build-intermediates.sh
+          ./scripts/cleanup-build-intermediates.sh
 
       - name: Generate Provenance
         shell: bash
@@ -1701,6 +1725,14 @@ jobs:
         run: |
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
 
+      - name: Cache SBOM tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            .tools/rust-sbom
+            .tools/syft
+          key: sbom-tools-${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_VERSION }}-auditable-0.7.2-audit-info-0.5.4-syft-1.40.1-v1
+
       - name: Verify toolchain pins
         run: |
           chmod +x scripts/verify-toolchain.sh
@@ -1726,15 +1758,15 @@ jobs:
             scripts/verify-macos-dmg.sh "$dmg"
           done
 
+      - name: Generate SBOM
+        run: |
+          chmod +x scripts/generate-sbom.sh
+          ./scripts/generate-sbom.sh dist/sbom macos
+
       - name: Reclaim workspace disk
         run: |
           chmod +x scripts/cleanup-build-intermediates.sh
           ./scripts/cleanup-build-intermediates.sh
-
-      - name: Generate SBOM
-        run: |
-          chmod +x scripts/generate-sbom.sh
-          ./scripts/generate-sbom.sh dist/sbom
 
       - name: Generate Provenance
         run: |
@@ -1830,6 +1862,14 @@ jobs:
         run: |
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
 
+      - name: Cache SBOM tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            .tools/rust-sbom
+            .tools/syft
+          key: sbom-tools-${{ runner.os }}-${{ runner.arch }}-rust-${{ env.RUST_VERSION }}-auditable-0.7.2-audit-info-0.5.4-syft-1.40.1-v1
+
       - name: Verify toolchain pins
         run: |
           chmod +x scripts/verify-toolchain.sh
@@ -1854,15 +1894,15 @@ jobs:
         run: |
           REPRODUCIBLE=1 ./scripts/build-linux.sh deb
 
+      - name: Generate SBOM
+        run: |
+          chmod +x scripts/generate-sbom.sh
+          ./scripts/generate-sbom.sh dist/sbom linux
+
       - name: Reclaim workspace disk
         run: |
           chmod +x scripts/cleanup-build-intermediates.sh
           ./scripts/cleanup-build-intermediates.sh
-
-      - name: Generate SBOM
-        run: |
-          chmod +x scripts/generate-sbom.sh
-          ./scripts/generate-sbom.sh dist/sbom
 
       - name: Generate Provenance
         run: |
