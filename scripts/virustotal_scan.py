@@ -219,6 +219,14 @@ def write_reports(out_dir: Path, records: list[dict[str, Any]]) -> None:
         link = r.get("vt_file_url", "")
         lines.append(f"| `{name}` | `{sha}` | {status} | {mal_s} | {susp_s} | {link} |")
 
+    for record in records:
+        detections = record.get("vendor_detections", {})
+        if detections:
+            lines.extend(["", "## Detections: " + str(record.get("name", "")), ""])
+            for vendor, result in sorted(detections.items()):
+                label = str(result.get("result", "")).replace("\n", " ")
+                lines.append(f"- {vendor}: {label} ({result.get('category')})")
+
     (out_dir / "virustotal-results.md").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
     )
@@ -304,6 +312,13 @@ def main() -> int:
                     stats = attrs.get("stats")
                     if isinstance(stats, dict):
                         r["analysis_stats"] = stats
+                    results = attrs.get("results")
+                    if isinstance(results, dict):
+                        r["vendor_detections"] = {
+                            vendor: {"category": result.get("category"), "result": result.get("result")}
+                            for vendor, result in results.items()
+                            if isinstance(result, dict) and result.get("category") in ("malicious", "suspicious")
+                        }
                 else:
                     still_pending.append(r)
             except Exception as e:
