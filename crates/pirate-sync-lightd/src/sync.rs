@@ -2075,6 +2075,56 @@ impl SyncEngine {
         sink.record_known_sync_height(verified_tip_height)
     }
 
+    /// Commit discovery before entering live monitoring, not when that
+    /// effectively infinite task eventually exits. Keep the running decryptor
+    /// in step with retired keys and enable internal change for retained keys.
+    async fn finalize_seed_discovery_at_tip(
+        &mut self,
+        next_height: u64,
+        target_height: u64,
+        persistence_worker: Option<&PersistenceWorker>,
+    ) -> Result<()> {
+        if target_height == 0 || next_height <= target_height || self.cancel.is_cancelled() {
+            return Ok(());
+        }
+        let Some(sink) = self.storage.clone() else {
+            return Ok(());
+        };
+        let finish = move |db: &Database| -> Result<Option<HashSet<i64>>> {
+            let repo = Repository::new(db);
+            if repo.legacy_sapling_account_discovery_complete()?
+                || repo.seed_key_scan_replay_required()?
+            {
+                return Ok(None);
+            }
+            repo.finalize_legacy_sapling_account_discovery(sink.account_id)?;
+            if !repo.legacy_sapling_account_discovery_complete()? {
+                return Ok(None);
+            }
+            Ok(Some(
+                repo.get_account_keys(sink.account_id)?
+                    .into_iter()
+                    .filter_map(|key| key.id)
+                    .collect(),
+            ))
+        };
+        let retained = if let Some(worker) = persistence_worker {
+            worker.execute(finish).await?
+        } else {
+            let sink = self.storage.as_ref().expect("storage checked above");
+            let db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            finish(&db)?
+        };
+        if let Some(retained) = retained {
+            self.keys.retain(|key| retained.contains(&key.key_id));
+            for key in &mut self.keys {
+                key.discovery_candidate = false;
+            }
+            self.trial_decrypt_keys = TrialDecryptKeys::from_key_groups(&self.keys);
+        }
+        Ok(())
+    }
+
     /// Prepare background sync bounds by loading the local resume height and
     /// refreshing the remote target height immediately before the sync starts.
     pub async fn prepare_background_sync(&self) -> Result<(u64, u64)> {
@@ -2663,7 +2713,12 @@ impl SyncEngine {
         });
         // #endregion
         let result = self
-            .sync_range_internal(effective_start_height, end, follow_tip)
+            .sync_range_internal(
+                effective_start_height,
+                end,
+                follow_tip,
+                end_height.is_none().then_some(info.block_height),
+            )
             .await;
         // #region agent log
         pirate_core::debug_log::with_locked_file(|file| {
@@ -4072,6 +4127,7 @@ impl SyncEngine {
         start: u64,
         mut end: u64,
         follow_tip: bool,
+        discovery_tip: Option<u64>,
     ) -> Result<()> {
         if self
             .client
@@ -5711,6 +5767,18 @@ impl SyncEngine {
                 persistence_worker.as_deref(),
             )
             .await?;
+
+            // All note writes are acknowledged before the scan cursor advances.
+            // Serialize finalization behind persistence jobs before either a
+            // bounded return or the unbounded follow-tip monitoring loop.
+            if let Some(discovery_tip) = discovery_tip {
+                self.finalize_seed_discovery_at_tip(
+                    current_height,
+                    end.max(discovery_tip),
+                    persistence_worker.as_deref(),
+                )
+                .await?;
+            }
 
             // For bounded ranges (e.g. witness repair replay), persist a final
             // frontier checkpoint before returning so anchor-hydrated selection
@@ -12140,6 +12208,110 @@ mod tests {
         let mut engine = SyncEngine::new("http://127.0.0.1:1".to_string(), 152_855);
         engine.storage = Some(sink);
         engine
+    }
+
+    #[tokio::test]
+    async fn discovery_finishes_at_tip_without_stopping_live_sync() {
+        let (_file, db, mut sink) = shardtree_test_database("discovery-tip", 95);
+        let repo = Repository::new(&db);
+        sink.account_id = repo
+            .insert_account(&pirate_storage_sqlite::Account {
+                id: None,
+                name: "Restore".into(),
+                created_at: 1,
+            })
+            .unwrap();
+        let mut engine = engine_with_storage(sink.clone());
+        for index in 1..=2 {
+            let sk = ExtendedSpendingKey::from_mnemonic_with_account_and_language(
+                "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+                NetworkType::Mainnet, index, Some(pirate_core::mnemonic::MnemonicLanguage::English),
+            ).unwrap();
+            let mut key = AccountKey {
+                id: None,
+                account_id: sink.account_id,
+                key_type: KeyType::ImportSpend,
+                key_scope: KeyScope::Account,
+                label: Some(format!("Seed account {index}")),
+                birthday_height: 1,
+                created_at: 1,
+                spendable: true,
+                sapling_extsk: Some(sk.to_bytes()),
+                sapling_dfvk: None,
+                orchard_extsk: None,
+                orchard_fvk: None,
+                encrypted_mnemonic: None,
+            };
+            let id = repo
+                .upsert_account_key(&repo.encrypt_account_key_fields(&key).unwrap())
+                .unwrap();
+            key.id = Some(id);
+            repo.upsert_seed_derived_account_key(id, sink.account_id, index, true)
+                .unwrap();
+            engine.keys.push(
+                build_key_group_from_account_key(&key, Some((index, true)))
+                    .unwrap()
+                    .unwrap(),
+            );
+            if index == 1 {
+                repo.insert_note(&NoteRecord {
+                    id: None,
+                    account_id: sink.account_id,
+                    key_id: Some(id),
+                    note_type: pirate_storage_sqlite::NoteType::Sapling,
+                    value: 50,
+                    nullifier: vec![0x31; 32],
+                    commitment: vec![0x32; 32],
+                    spent: true,
+                    height: 100,
+                    txid: vec![0x33; 32],
+                    output_index: 0,
+                    address_id: None,
+                    spent_txid: Some(vec![0x34; 32]),
+                    diversifier: None,
+                    note: None,
+                    position: Some(0),
+                    memo: None,
+                })
+                .unwrap();
+            }
+        }
+        engine.trial_decrypt_keys = TrialDecryptKeys::from_key_groups(&engine.keys);
+        engine
+            .finalize_seed_discovery_at_tip(100, 100, None)
+            .await
+            .unwrap();
+        assert!(!repo.legacy_sapling_account_discovery_complete().unwrap());
+        engine.cancel.cancel();
+        engine
+            .finalize_seed_discovery_at_tip(101, 100, None)
+            .await
+            .unwrap();
+        assert!(!repo.legacy_sapling_account_discovery_complete().unwrap());
+        assert_eq!(repo.get_account_keys(sink.account_id).unwrap().len(), 2);
+        engine.cancel = CancelToken::new();
+        let worker =
+            PersistenceWorker::start(sink.clone(), DEFAULT_PERSISTENCE_SHARDTREE_CACHE_BYTES)
+                .unwrap();
+        engine
+            .finalize_seed_discovery_at_tip(101, 100, Some(&worker))
+            .await
+            .unwrap();
+        assert!(repo.legacy_sapling_account_discovery_complete().unwrap());
+        assert!(!engine.cancel.is_cancelled());
+        assert_eq!(engine.keys.len(), 1);
+        assert!(!engine.keys[0].discovery_candidate);
+        assert_eq!(
+            engine.trial_decrypt_keys.sapling_scopes,
+            vec![AddressScope::External, AddressScope::Internal]
+        );
+        assert_eq!(repo.get_account_keys(sink.account_id).unwrap().len(), 1);
+        // An already-finalized wallet is safe to monitor repeatedly.
+        engine
+            .finalize_seed_discovery_at_tip(101, 100, None)
+            .await
+            .unwrap();
+        assert_eq!(engine.keys.len(), 1);
     }
 
     #[test]
