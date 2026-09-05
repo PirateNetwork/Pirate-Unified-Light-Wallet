@@ -58,6 +58,8 @@ void main() {
     final addFive = tester.getRect(find.text('Add 5 accounts'));
     expect(addFive.top, greaterThan(addOne.bottom));
 
+    await tester.ensureVisible(find.text('How seed accounts work'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('How seed accounts work'));
     await tester.pumpAndSettle();
     expect(find.text('How seed accounts work'), findsNWidgets(2));

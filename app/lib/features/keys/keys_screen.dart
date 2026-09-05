@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,6 +39,43 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   Future<List<KeyGroupInfo>>? _loadFuture;
   bool _isDecoy = false;
   bool _isAddingSeedAccounts = false;
+  Timer? _keyRefreshTimer;
+  bool _refreshingKeys = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Discovery completes while sync keeps monitoring. Keep an open key page
+    // current without requiring the user to leave and reopen it.
+    _keyRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (_isDecoy ||
+          _isAddingSeedAccounts ||
+          _refreshingKeys ||
+          _walletId == null) {
+        return;
+      }
+      _refreshingKeys = true;
+      final wallet = _walletId!;
+      try {
+        final keys = await _fetchKeys(wallet);
+        if (mounted && _walletId == wallet) {
+          setState(() {
+            _loadFuture = Future.value(keys);
+          });
+        }
+      } catch (_) {
+        // Preserve the last successful list on a transient refresh failure.
+      } finally {
+        _refreshingKeys = false;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _keyRefreshTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -393,7 +432,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
         );
       } else {
         _showSnack(
-          'Could not add seed accounts: {error}'.trArgs({'error': error}),
+          error.toString().contains('Wait for the current seed account scan')
+              ? 'Your restored accounts are still being scanned. They will appear here when the scan finishes. You can then add more accounts.'
+                    .tr
+              : 'Could not add seed accounts: {error}'.trArgs({'error': error}),
           color: AppColors.error,
         );
       }
@@ -408,6 +450,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   }) {
     final nextIndex = _nextSeedAccountIndex(keys);
     final busy = _isAddingSeedAccounts;
+    final scanning =
+        !isDecoy &&
+        (ref.watch(syncProgressStreamProvider).asData?.value?.isSyncing ??
+            false);
 
     Widget action({
       required String label,
@@ -415,7 +461,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       required IconData icon,
       required int count,
     }) {
-      final enabled = !isDecoy && !busy;
+      final enabled = !isDecoy && !busy && !scanning;
       final button = Semantics(
         button: true,
         enabled: enabled,
@@ -477,7 +523,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
             ),
             SizedBox(height: PSpacing.sm),
             Text(
-              'Account 0 is the standard account. Add another only if you used a different account number in another wallet.'
+              'New addresses normally share the same key group. Older wallets may use a separate seed account for each address. Add accounts here to recover those addresses.'
                   .tr,
               style: PTypography.bodyMedium(color: AppColors.textSecondary),
             ),
@@ -518,6 +564,14 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
               ],
             ),
             SizedBox(height: PSpacing.md),
+            if (scanning) ...[
+              Text(
+                'Scanning restored accounts. You can add more when the scan finishes.'
+                    .tr,
+                style: PTypography.bodySmall(color: AppColors.textSecondary),
+              ),
+              SizedBox(height: PSpacing.md),
+            ],
             LayoutBuilder(
               builder: (context, constraints) {
                 final addOne = action(
@@ -666,9 +720,11 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       body: walletId == null
           ? _buildEmptyWallet()
           : FutureBuilder<List<KeyGroupInfo>>(
+              key: ValueKey('wallet-keys-$walletId'),
               future: _loadFuture,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
@@ -729,12 +785,12 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.stretch,
                                     children: [
-                                      overview,
-                                      SizedBox(height: PSpacing.xl),
                                       if (keys.isEmpty)
                                         _buildNoKeysCard()
                                       else
                                         _buildWalletKeysSection(keys),
+                                      SizedBox(height: PSpacing.xl),
+                                      overview,
                                     ],
                                   );
                                 },

@@ -1,5 +1,11 @@
 {
   "@@locale": "en",
+  "Your restored accounts are still being scanned. They will appear here when the scan finishes. You can then add more accounts.": "Your restored accounts are still being scanned. They will appear here when the scan finishes. You can then add more accounts.",
+  "Scanning restored accounts. You can add more when the scan finishes.": "Scanning restored accounts. You can add more when the scan finishes.",
+  "New addresses normally share the same key group. Older wallets may use a separate seed account for each address. Add accounts here to recover those addresses.": "New addresses normally share the same key group. Older wallets may use a separate seed account for each address. Add accounts here to recover those addresses.",
+  "Search labels, addresses or key groups": "Search labels, addresses or key groups",
+  "Key group": "Key group",
+  "All key groups": "All key groups",
   " • Change pending {amount}": " • Change pending {amount}",
   " • Change {amount}": " • Change {amount}",
   " • Change {spendable} (+{pending} pending)": " • Change {spendable} (+{pending} pending)",

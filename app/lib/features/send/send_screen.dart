@@ -1286,6 +1286,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
   String _displayKeyLabel(KeyGroupInfo key) {
     if (key.keyType == KeyTypeInfo.seed) {
+      final accountIndex = key.seedAccountIndex;
+      if (accountIndex != null && accountIndex > 0) {
+        return 'Seed account {index}'.trArgs({'index': accountIndex});
+      }
       final label = key.label?.trim();
       if (label == null || label.isEmpty || label == 'Seed') {
         return 'Default wallet keys'.tr;
