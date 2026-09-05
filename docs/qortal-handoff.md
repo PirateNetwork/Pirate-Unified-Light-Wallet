@@ -251,10 +251,3 @@ This operation is the native prerequisite for importing external Pirate wallet
 exports into Qortal's encrypted SQLite wallet. File parsing and user-facing
 format selection remain Qortal-side follow-up work. Viewing-key recovery is not
 covered by this request.
-
-## Stashi 1.2.1 compatibility
-
-Backend/native SDK 0.3.4 and React Native 0.3.5 include the legacy account
-discovery finalization fix. Refresh key groups and addresses after recovery
-reaches the live tip; a used account can have zero current balance. No new RPC
-names or schemas are introduced. See [release integration notes](release-1.2.1-verification.md).

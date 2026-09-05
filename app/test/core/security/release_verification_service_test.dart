@@ -26,15 +26,15 @@ uFxcQka1uM0Nh2r8ez4BAP8+/Bu5ZPHFByj6KgcCqtxH7PABAEi+sWoF5iicoToF
 const _signatureBase64 =
     'iJEEABYKADkWIQTGF4xLrtC5G9r/vIdOkor/uS8mIgUCapH9CxsUgAAAAAAEAA5tYW51MiwyLjUrMS4xMSwyLDEACgkQTpKK/7kvJiKJJAEAukxL7ghZFZpAOPEfaF+Gcr+wUpBDxrQRhhucigvjBRABAKvvb30Q8xSRM57VcVGLCTtWemo4UI3GUOcMIuzJHGQM';
 
-Uint8List _bundle({String manifest = _manifest}) {
+Uint8List _bundle({String manifest = _manifest, String tag = _tag}) {
   final manifestBytes = utf8.encode(manifest);
   final signature = base64.decode(_signatureBase64);
   final archive = Archive()
     ..addFile(
-      ArchiveFile('sha256sum-$_tag.txt', manifestBytes.length, manifestBytes),
+      ArchiveFile('sha256sum-$tag.txt', manifestBytes.length, manifestBytes),
     )
     ..addFile(
-      ArchiveFile('sha256sum-$_tag.txt.sig', signature.length, signature),
+      ArchiveFile('sha256sum-$tag.txt.sig', signature.length, signature),
     );
   return Uint8List.fromList(ZipEncoder().encode(archive));
 }
@@ -86,6 +86,66 @@ void main() {
     expect(result.checksumAssetName, 'sha256sum-$_tag.txt');
     expect(result.signatureAssetName, 'signatures-$_tag.zip');
   });
+
+  for (final version in ['1.2.1+10201', '2.0.0', '7.4.3']) {
+    test('downloads and authenticates the bundle for $version', () async {
+      final tag = ReleaseVerificationService.normalizeReleaseTag(version);
+      final requestedUrls = <String>[];
+      final service = ReleaseVerificationService(
+        downloadBytes: (url) async {
+          requestedUrls.add(url);
+          return _bundle(tag: tag);
+        },
+        loadAsset: (_) async => _fixturePublicKey,
+        loadLocalArtifacts: () async => const [
+          LocalReleaseArtifact(
+            path: '/installed/base.apk',
+            name: 'base.apk',
+            sha256: _fixtureHash,
+          ),
+        ],
+        expectedSigningKeyId: _fixtureSigningKeyId,
+      );
+      final result = await service.verify(version);
+      expect(requestedUrls, [
+        '${ReleaseVerificationService.repositoryUrl}/releases/download/$tag/signatures-$tag.zip',
+      ]);
+      expect(result.status, ReleaseVerificationStatus.match);
+      expect(result.matchedChecksumName, _fixtureName);
+      expect(result.releaseTag, tag);
+    });
+  }
+
+  test('reports a modified installed file as a checksum mismatch', () async {
+    final result = await ReleaseVerificationService(
+      downloadBytes: (_) async => _bundle(),
+      loadAsset: (_) async => _fixturePublicKey,
+      loadLocalArtifacts: () async => [
+        LocalReleaseArtifact(
+          path: '/installed/fixture.bin',
+          name: _fixtureName,
+          sha256: '0' * 64,
+        ),
+      ],
+      expectedSigningKeyId: _fixtureSigningKeyId,
+    ).verify(_tag);
+    expect(result.reason, ReleaseVerificationReason.checksumMismatch);
+  });
+
+  test(
+    'reports a clock before signing as unavailable, not tampering',
+    () async {
+      final result = await ReleaseVerificationService(
+        downloadBytes: (_) async => _bundle(),
+        loadAsset: (_) async => _fixturePublicKey,
+        loadLocalArtifacts: () async => const [],
+        expectedSigningKeyId: _fixtureSigningKeyId,
+        clock: () => DateTime.utc(2020),
+      ).verify(_tag);
+      expect(result.reason, ReleaseVerificationReason.deviceClockIncorrect);
+      expect(result.status, ReleaseVerificationStatus.unavailable);
+    },
+  );
 
   test('rejects a checksum manifest changed after signing', () async {
     final result = await _fixtureService(

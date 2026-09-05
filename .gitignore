@@ -409,3 +409,8 @@ run_windows_rust_build_and_copy.cmd
 
 # Obsolete pre-split React Native iOS simulator staging directory.
 /bindings/react-native-pirate-wallet-ios-simulator/
+
+# Local release investigations and UI review captures
+/output/release-review/
+/output/release-investigation/
+/app/test/fixtures/releases/*.zip
