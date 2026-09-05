@@ -1584,8 +1584,7 @@ jobs:
       - name: Install Inno Setup
         shell: pwsh
         run: |
-          choco install innosetup --version=6.7.3 --no-progress -y
-          "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
+          ./scripts/install-inno-setup.ps1
 
       - name: Set SOURCE_DATE_EPOCH
         run: |
@@ -2064,7 +2063,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install Inno Setup
         shell: pwsh
-        run: choco install innosetup --version=6.7.3 --no-progress -y
+        run: ./scripts/install-inno-setup.ps1
       - name: Check signing secrets
         id: signing
         shell: pwsh
