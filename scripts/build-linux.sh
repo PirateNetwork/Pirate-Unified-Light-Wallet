@@ -173,7 +173,7 @@ ensure_flatpak_runtime() {
 stage_rust_linux() {
     local bundle_dir="$1"
     log "Building Rust FFI library..."
-    (cd "$PROJECT_ROOT/crates" && cargo build --release --package pirate-ffi-frb --features frb --no-default-features --locked)
+    (cd "$PROJECT_ROOT/crates" && bash "$SCRIPT_DIR/build-auditable-rust.sh" build --release --package pirate-ffi-frb --features frb --no-default-features --locked)
     local so_path="$PROJECT_ROOT/crates/target/release/libpirate_ffi_frb.so"
     if [ ! -f "$so_path" ]; then
         error "Rust library not found at $so_path"

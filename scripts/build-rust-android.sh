@@ -100,7 +100,7 @@ build_target() {
     local rust_target="$1"
     local abi="$2"
     log "Building Rust FFI for $rust_target ($abi)..."
-    cargo build --release --target "$rust_target" --package pirate-ffi-frb --features frb --no-default-features --locked
+    bash "$SCRIPT_DIR/build-auditable-rust.sh" build --release --target "$rust_target" --package pirate-ffi-frb --features frb --no-default-features --locked
     local so_path="$CRATES_DIR/target/$rust_target/release/libpirate_ffi_frb.so"
     if [[ ! -f "$so_path" ]]; then
         error "libpirate_ffi_frb.so not found at $so_path"

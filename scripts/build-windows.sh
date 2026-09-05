@@ -196,7 +196,7 @@ resolve_release_dir() {
 stage_rust_windows() {
     local release_dir="$1"
     log "Building Rust FFI library..."
-    (cd "$PROJECT_ROOT/crates" && cargo build --release --target x86_64-pc-windows-msvc --package pirate-ffi-frb --features frb --no-default-features --locked)
+    (cd "$PROJECT_ROOT/crates" && bash "$SCRIPT_DIR/build-auditable-rust.sh" build --release --target x86_64-pc-windows-msvc --package pirate-ffi-frb --features frb --no-default-features --locked)
     local dll_path="$PROJECT_ROOT/crates/target/x86_64-pc-windows-msvc/release/pirate_ffi_frb.dll"
     if [ ! -f "$dll_path" ]; then
         dll_path="$(find "$PROJECT_ROOT/crates/target/x86_64-pc-windows-msvc/release" -name "pirate_ffi_frb.dll" -print -quit)"

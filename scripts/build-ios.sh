@@ -178,7 +178,7 @@ build_ios_ffi_framework() {
 
     (
         cd "$CRATES_DIR"
-        cargo rustc \
+        bash "$SCRIPT_DIR/build-auditable-rust.sh" rustc \
             --release \
             --target aarch64-apple-ios \
             --package pirate-ffi-frb \

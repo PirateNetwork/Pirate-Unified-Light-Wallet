@@ -113,8 +113,8 @@ stage_rust_macos_universal() {
 
   local crate_dir="$PROJECT_ROOT/crates"
 
-  (cd "$crate_dir" && cargo build --release --target aarch64-apple-darwin --package pirate-ffi-frb --features frb --no-default-features --locked)
-  (cd "$crate_dir" && cargo build --release --target x86_64-apple-darwin --package pirate-ffi-frb --features frb --no-default-features --locked)
+  (cd "$crate_dir" && bash "$SCRIPT_DIR/build-auditable-rust.sh" build --release --target aarch64-apple-darwin --package pirate-ffi-frb --features frb --no-default-features --locked)
+  (cd "$crate_dir" && bash "$SCRIPT_DIR/build-auditable-rust.sh" build --release --target x86_64-apple-darwin --package pirate-ffi-frb --features frb --no-default-features --locked)
 
   local dylib_arm="$crate_dir/target/aarch64-apple-darwin/release/libpirate_ffi_frb.dylib"
   local dylib_x86="$crate_dir/target/x86_64-apple-darwin/release/libpirate_ffi_frb.dylib"
