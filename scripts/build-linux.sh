@@ -307,10 +307,10 @@ EOF
     cp "$APPDIR/stashi-wallet.desktop" "$APPDIR/usr/share/applications/"
     
     # Copy icon
-    if [ -f "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" ]; then
-        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" \
+    if [ -f "$PROJECT_ROOT/app/assets/icons/stashi-wallet-desktop-icon.png" ]; then
+        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-desktop-icon.png" \
             "$APPDIR/usr/share/icons/hicolor/256x256/apps/stashi-wallet.png"
-        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" "$APPDIR/stashi-wallet.png"
+        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-desktop-icon.png" "$APPDIR/stashi-wallet.png"
     fi
     
     # Create AppRun script
@@ -484,8 +484,8 @@ Terminal=false
 EOF
     
     # Copy icon
-    if [ -f "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" ]; then
-        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-app-icon.png" \
+    if [ -f "$PROJECT_ROOT/app/assets/icons/stashi-wallet-desktop-icon.png" ]; then
+        cp "$PROJECT_ROOT/app/assets/icons/stashi-wallet-desktop-icon.png" \
             "$DEB_DIR/usr/share/icons/hicolor/256x256/apps/stashi-wallet.png"
     fi
     

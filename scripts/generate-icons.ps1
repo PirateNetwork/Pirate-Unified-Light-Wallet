@@ -1,5 +1,7 @@
 param(
-    [string]$SourcePng = "app\\assets\\icons\\stashi-wallet-app-icon.png"
+    [string]$SourcePng = "app\\assets\\icons\\stashi-wallet-app-icon.png",
+    [string]$DesktopSourcePng = "app/assets/icons/stashi-wallet-desktop-icon.png",
+    [switch]$DesktopOnly
 )
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -180,6 +182,7 @@ function Write-Ico {
     $ms.Dispose()
 }
 
+$desktopImage = [System.Drawing.Image]::FromFile((Join-Path $root $DesktopSourcePng))
 $srcImage = [System.Drawing.Image]::FromFile($srcPath)
 try {
     $square = New-SquareImage -Source $srcImage
@@ -204,9 +207,10 @@ try {
         1024 = "app_icon_1024.png"
     }
     foreach ($entry in $macMap.GetEnumerator()) {
-        Save-ResizedPng -Source $square -Size $entry.Key -Path (Join-Path $macDir $entry.Value)
+        Save-ResizedPng -Source $desktopImage -Size $entry.Key -Path (Join-Path $macDir $entry.Value)
     }
 
+    if (-not $DesktopOnly) {
     $iosDir = Join-Path $root "app\\ios\\Runner\\Assets.xcassets\\AppIcon.appiconset"
     # Apple rejects App Store icons with alpha. Other platforms keep the
     # transparent master; iOS receives the same mark on an opaque neutral base.
@@ -247,16 +251,19 @@ try {
         Save-ResizedPng -Source $square -Size $entry.Value -Path (Join-Path $androidDir $entry.Key)
     }
 
+    }
+
     $windowsIco = Join-Path $root "app\\windows\\runner\\resources\\app_icon.ico"
     $icoSizes = @(16, 24, 32, 48, 64, 128, 256)
     $icoImages = @()
     foreach ($size in $icoSizes) {
-        $icoImages += [pscustomobject]@{ Size = $size; Bytes = (Get-PngBytes -Source $square -Size $size) }
+        $icoImages += [pscustomobject]@{ Size = $size; Bytes = (Get-PngBytes -Source $desktopImage -Size $size) }
     }
     Write-Ico -Images $icoImages -Path $windowsIco
 } finally {
     if ($square) { $square.Dispose() }
     $srcImage.Dispose()
+    $desktopImage.Dispose()
 }
 
 Write-Host "Icons generated from $srcPath"
