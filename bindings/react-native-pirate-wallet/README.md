@@ -679,3 +679,10 @@ and adds their JNI libraries to the build.
 On macOS, npm installs the exact-version device and simulator companions.
 During `pod install`, the podspec assembles and links
 `PirateWalletNative.xcframework` from those packages.
+
+## Stashi 1.2.1 compatibility
+
+Backend/native SDK 0.3.4 and React Native 0.3.5 include the legacy account
+discovery finalization fix. Refresh key groups and addresses after recovery
+reaches the live tip; a used account can have zero current balance. No new RPC
+names or schemas are introduced. See [release integration notes](../../docs/release-1.2.1-verification.md).
