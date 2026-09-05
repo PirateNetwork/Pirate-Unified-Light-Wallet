@@ -212,7 +212,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   String _verificationMessageFor(ReleaseVerificationReason reason) {
     switch (reason) {
       case ReleaseVerificationReason.none:
-        return 'This installed app matches the PGP-signed official release manifest.'
+        return 'The checked file matches the PGP-signed official release manifest.'
             .tr;
       case ReleaseVerificationReason.releaseFilesUnavailable:
         return 'Official verification files are not available for this version.'
@@ -224,7 +224,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         return 'GitHub release files cannot be reached through the current network mode. Switch Network Privacy to Tor, SOCKS5, or Direct, then try again.'
             .tr;
       case ReleaseVerificationReason.localArtifactUnavailable:
-        return 'This platform does not give the app access to the installed package. Verify the downloaded file with the checksums and PGP signatures on the release page.'
+        return 'This installation cannot be compared byte-for-byte with a GitHub package. Store processing or split packages can change the installed files. Verify the original download using the release page.'
             .tr;
       case ReleaseVerificationReason.checksumNotPublished:
         return 'The signed release does not contain a checksum for this installed payload.'
@@ -237,6 +237,9 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
             .tr;
       case ReleaseVerificationReason.invalidVerificationFiles:
         return 'Official verification files are invalid or incomplete.'.tr;
+      case ReleaseVerificationReason.deviceClockIncorrect:
+        return 'Your device clock is earlier than the release signature. Correct the date and time, then try again.'
+            .tr;
     }
   }
 
@@ -359,15 +362,14 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     final statusLabel = _statusLabel(_verificationStatus);
     final statusBackground = statusColor.withValues(alpha: 0.15);
     final stronglyUnverified =
-        _verificationStatus == ReleaseVerificationStatus.mismatch ||
-        _verificationStatus == ReleaseVerificationStatus.noMatchingChecksum;
+        _verificationStatus == ReleaseVerificationStatus.mismatch;
     final officialReleaseUrl =
         _releaseUrl ??
         'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases';
 
     return _buildSurfaceCard(
       title: 'Official Release Verification'.tr,
-      subtitle: 'Verifies the PGP signature, then checks this installed app against the signed release manifest.'
+      subtitle: 'Verifies the release signature and compares the available app file with its signed checksum. Optional privacy tools are authenticated separately when downloaded.'
           .tr,
       trailing: Container(
         padding: EdgeInsets.symmetric(

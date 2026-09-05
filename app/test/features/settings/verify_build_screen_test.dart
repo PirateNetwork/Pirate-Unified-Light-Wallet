@@ -18,20 +18,20 @@ class _ThemeModeTestNotifier extends ThemeModeNotifier {
 }
 
 const _buildInfo = <String, String>{
-  'version': '1.1.9',
+  'version': '1.2.1',
   'gitCommit': '0123456789abcdef0123456789abcdef01234567',
-  'buildDate': '2026-08-29T12:00:00Z',
-  'rustVersion': '1.91.0',
+  'buildDate': '2026-09-05T12:00:00Z',
+  'rustVersion': '1.90.0',
   'targetTriple': 'x86_64-pc-windows-msvc',
 };
 
 const _verifiedResult = ReleaseVerificationResult(
   status: ReleaseVerificationStatus.match,
   reason: ReleaseVerificationReason.none,
-  releaseTag: 'v1.1.9',
-  releaseUrl: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases/tag/v1.1.9',
-  signatureAssetName: 'signatures-v1.1.9.zip',
-  checksumAssetName: 'build-payloads-v1.1.9.txt',
+  releaseTag: 'v1.2.1',
+  releaseUrl: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases/tag/v1.2.1',
+  signatureAssetName: 'signatures-v1.2.1.zip',
+  checksumAssetName: 'build-payloads-v1.2.1.txt',
   localArtifactPath: r'C:\Program Files\Stashi Wallet\Stashi Wallet.exe',
   localArtifactName: 'Stashi Wallet.exe',
   localHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -43,9 +43,9 @@ const _verifiedResult = ReleaseVerificationResult(
 const _unavailableResult = ReleaseVerificationResult(
   status: ReleaseVerificationStatus.unavailable,
   reason: ReleaseVerificationReason.downloadFailed,
-  releaseTag: 'v1.1.9',
-  releaseUrl: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases/tag/v1.1.9',
-  signatureAssetName: 'signatures-v1.1.9.zip',
+  releaseTag: 'v1.2.1',
+  releaseUrl: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases/tag/v1.2.1',
+  signatureAssetName: 'signatures-v1.2.1.zip',
   localArtifactPath:
       '/Applications/Stashi Wallet.app/Contents/MacOS/Stashi Wallet',
   localArtifactName: 'Stashi Wallet',
@@ -169,7 +169,7 @@ void main() {
 
     expect(find.text('Local SHA256'), findsOneWidget);
     expect(find.text('Signature Asset'), findsOneWidget);
-    expect(find.text('signatures-v1.1.9.zip'), findsOneWidget);
+    expect(find.text('signatures-v1.2.1.zip'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
