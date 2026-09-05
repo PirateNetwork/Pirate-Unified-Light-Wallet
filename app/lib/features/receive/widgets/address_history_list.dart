@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:timeago/timeago.dart' as timeago;
+
 import '../../../core/ffi/ffi_bridge.dart' show AddressBookColorTag;
 import '../../../design/tokens/colors.dart';
 import '../../../design/tokens/spacing.dart';
@@ -119,7 +120,9 @@ class _AddressHistoryItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 380;
+        // Keep actions below the content on phones, including wider handsets.
+        // A balance plus three trailing actions cannot share a narrow row.
+        final isCompact = constraints.maxWidth < 600;
         final actionButtons = <Widget>[
           if (!address.isArchived)
             IconButton(
@@ -272,6 +275,15 @@ class _AddressHistoryItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (address.keyLabel != null) ...[
+                  Text(
+                    address.keyLabel!,
+                    style: PTypography.labelSmall(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  SizedBox(height: PSpacing.sm),
+                ],
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -353,12 +365,14 @@ class _AddressHistoryItem extends StatelessWidget {
                                     color: AppColors.textTertiary,
                                   ),
                                   SizedBox(width: PSpacing.xs),
-                                  Text(
-                                    'Balance {balance}'.trArgs({
-                                      'balance': _formatArrr(address.balance),
-                                    }),
-                                    style: PTypography.bodySmall().copyWith(
-                                      color: AppColors.textSecondary,
+                                  Flexible(
+                                    child: Text(
+                                      'Balance {balance}'.trArgs({
+                                        'balance': _formatArrr(address.balance),
+                                      }),
+                                      style: PTypography.bodySmall().copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
                                     ),
                                   ),
                                 ],

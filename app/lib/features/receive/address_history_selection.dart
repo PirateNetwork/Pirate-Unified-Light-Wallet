@@ -9,15 +9,23 @@ List<AddressInfo> selectAddressHistory({
   required AddressHistorySection section,
   required AddressHistorySort sort,
   String query = '',
+  int? keyId,
 }) {
   final normalizedQuery = query.trim().toLowerCase();
   final showArchived = section == AddressHistorySection.archived;
   final selected = addresses
       .where((address) {
         if (address.isArchived != showArchived) return false;
+        if (keyId != null && address.keyId != keyId) return false;
         if (normalizedQuery.isEmpty) return true;
         return address.address.toLowerCase().contains(normalizedQuery) ||
             (address.label?.toLowerCase().contains(normalizedQuery) ?? false) ||
+            (address.keyLabel?.toLowerCase().contains(normalizedQuery) ??
+                false) ||
+            (address.seedAccountIndex != null &&
+                'seed account ${address.seedAccountIndex}'.contains(
+                  normalizedQuery,
+                )) ||
             address.diversifierIndex.toString().contains(normalizedQuery);
       })
       .toList(growable: false);

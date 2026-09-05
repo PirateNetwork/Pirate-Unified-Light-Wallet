@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../core/ffi/ffi_bridge.dart' show AddressBookColorTag;
 import '../../core/providers/wallet_providers.dart';
 import '../../design/tokens/spacing.dart';
@@ -42,7 +43,10 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   AddressHistorySort _addressSort = AddressHistorySort.newest;
   AddressHistorySection _historySection = AddressHistorySection.visible;
   String _addressQuery = '';
+  int? _selectedKeyId;
+  int? _lastKeyId;
   Timer? _searchDebounce;
+  Timer? _historyRefreshTimer;
   List<AddressInfo>? _lastAddressSource;
   AddressHistorySort? _lastSort;
   AddressHistorySection? _lastSection;
@@ -67,6 +71,13 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     _amountController.addListener(_handleRequestInputChanged);
     _memoController.addListener(_handleRequestInputChanged);
     _searchController.addListener(_handleSearchChanged);
+    // Account discovery can finalize after the last height notification. An
+    // open page must still pick up newly exposed groups when the tip is idle.
+    _historyRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(
+        ref.read(receiveViewModelProvider.notifier).refreshAddressHistory(),
+      );
+    });
   }
 
   @override
@@ -75,6 +86,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     _memoController.dispose();
     _searchController.dispose();
     _searchDebounce?.cancel();
+    _historyRefreshTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -136,7 +148,11 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
           if (localHeight == null) return;
           if (_lastObservedSyncHeight == localHeight) return;
           _lastObservedSyncHeight = localHeight;
-          if (!viewModel.hasPendingAddressBalances) return;
+          final completed = next.asData?.value;
+          if (!viewModel.hasPendingAddressBalances &&
+              !(completed != null && completed.percent >= 100)) {
+            return;
+          }
           unawaited(viewModel.refreshAddressHistory());
         });
 
@@ -154,12 +170,21 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
               amount: amountText,
               memo: memoText,
             );
+      if (_selectedKeyId != null &&
+          !state.keyGroups.any((key) => key.id == _selectedKeyId)) {
+        _selectedKeyId = null;
+      }
       final addressHistory = _sortedAddresses(state.addressHistory);
-      final visibleAddressCount = state.addressHistory
+      final groupAddresses = state.addressHistory
+          .where(
+            (address) =>
+                _selectedKeyId == null || address.keyId == _selectedKeyId,
+          )
+          .toList();
+      final visibleAddressCount = groupAddresses
           .where((address) => !address.isArchived)
           .length;
-      final archivedAddressCount =
-          state.addressHistory.length - visibleAddressCount;
+      final archivedAddressCount = groupAddresses.length - visibleAddressCount;
 
       return PScaffold(
         appBar: PAppBar(
@@ -532,9 +557,43 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                             },
                           ),
                           SizedBox(height: PSpacing.sm),
+                          if (state.keyGroups.length > 1) ...[
+                            DropdownButtonFormField<int>(
+                              key: ValueKey(
+                                'receive-key-group-$_selectedKeyId',
+                              ),
+                              initialValue: _selectedKeyId ?? -1,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                labelText: 'Key group'.tr,
+                                prefixIcon: const Icon(
+                                  Icons.account_tree_outlined,
+                                ),
+                              ),
+                              items: [
+                                DropdownMenuItem(
+                                  value: -1,
+                                  child: Text('All key groups'.tr),
+                                ),
+                                for (final key in state.keyGroups)
+                                  DropdownMenuItem(
+                                    value: key.id,
+                                    child: Text(
+                                      receiveKeyGroupLabel(key),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (value) => setState(() {
+                                _selectedKeyId = value == -1 ? null : value;
+                              }),
+                            ),
+                            SizedBox(height: PSpacing.md),
+                          ],
                           PInput(
                             controller: _searchController,
-                            hint: 'Search labels or addresses'.tr,
+                            hint: 'Search labels, addresses or key groups'.tr,
                             prefixIcon: const Icon(Icons.search),
                             textInputAction: TextInputAction.search,
                             suffixIcon: _addressQuery.isNotEmpty
@@ -566,7 +625,9 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                     ),
                     sliver: AddressHistorySliver(
                       addresses: addressHistory,
-                      isFiltered: _addressQuery.trim().isNotEmpty,
+                      isFiltered:
+                          _addressQuery.trim().isNotEmpty ||
+                          _selectedKeyId != null,
                       showArchived:
                           _historySection == AddressHistorySection.archived,
                       onCopy: (address) =>
@@ -906,6 +967,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     if (identical(addresses, _lastAddressSource) &&
         _lastSort == _addressSort &&
         _lastSection == _historySection &&
+        _lastKeyId == _selectedKeyId &&
         _lastQuery == query) {
       return _sortedCache;
     }
@@ -914,11 +976,13 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       section: _historySection,
       sort: _addressSort,
       query: query,
+      keyId: _selectedKeyId,
     );
     _lastAddressSource = addresses;
     _lastSort = _addressSort;
     _lastSection = _historySection;
     _lastQuery = query;
+    _lastKeyId = _selectedKeyId;
     _sortedCache = sorted;
     return sorted;
   }

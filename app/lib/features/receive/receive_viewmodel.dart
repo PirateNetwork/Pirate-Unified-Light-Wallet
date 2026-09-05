@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
+
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart' show KeyGroupInfo, KeyTypeInfo;
 import '../../core/providers/wallet_providers.dart';
@@ -18,6 +19,7 @@ class ReceiveState {
   final String? error;
   final int diversifierIndex;
   final bool addressWasShared;
+  final List<KeyGroupInfo> keyGroups;
 
   const ReceiveState({
     this.currentAddress,
@@ -26,6 +28,7 @@ class ReceiveState {
     this.error,
     this.diversifierIndex = 0,
     this.addressWasShared = false,
+    this.keyGroups = const [],
   });
 
   ReceiveState copyWith({
@@ -35,6 +38,7 @@ class ReceiveState {
     String? error,
     int? diversifierIndex,
     bool? addressWasShared,
+    List<KeyGroupInfo>? keyGroups,
   }) {
     return ReceiveState(
       currentAddress: currentAddress ?? this.currentAddress,
@@ -43,6 +47,7 @@ class ReceiveState {
       error: error,
       diversifierIndex: diversifierIndex ?? this.diversifierIndex,
       addressWasShared: addressWasShared ?? this.addressWasShared,
+      keyGroups: keyGroups ?? this.keyGroups,
     );
   }
 }
@@ -50,6 +55,9 @@ class ReceiveState {
 /// Address info model with usage tracking
 class AddressInfo {
   final int? addressId;
+  final int? keyId;
+  final String? keyLabel;
+  final int? seedAccountIndex;
   final String address;
   final String? label;
   final DateTime createdAt;
@@ -66,6 +74,9 @@ class AddressInfo {
 
   AddressInfo({
     this.addressId,
+    this.keyId,
+    this.keyLabel,
+    this.seedAccountIndex,
     required this.address,
     this.label,
     required this.createdAt,
@@ -85,6 +96,9 @@ class AddressInfo {
 
   AddressInfo copyWith({
     int? addressId,
+    int? keyId,
+    String? keyLabel,
+    int? seedAccountIndex,
     String? address,
     String? label,
     DateTime? createdAt,
@@ -101,6 +115,9 @@ class AddressInfo {
   }) {
     return AddressInfo(
       addressId: addressId ?? this.addressId,
+      keyId: keyId ?? this.keyId,
+      keyLabel: keyLabel ?? this.keyLabel,
+      seedAccountIndex: seedAccountIndex ?? this.seedAccountIndex,
       address: address ?? this.address,
       label: label ?? this.label,
       createdAt: createdAt ?? this.createdAt,
@@ -574,14 +591,24 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         return;
       }
 
+      var keys = state.keyGroups;
+      try {
+        keys = await FfiBridge.listKeyGroups(walletId);
+      } catch (error) {
+        // A failed name lookup must not suppress balances or addresses.
+        debugPrint('Failed to refresh receive key groups: $error');
+      }
+      final keysById = {for (final key in keys) key.id: key};
       if (!forceCurrentAddress) {
         try {
-          final importedKeys = await _loadImportedSpendingKeys(walletId);
-          if (importedKeys.isNotEmpty) {
-            await _ensureImportedKeyAddresses(walletId, importedKeys);
+          final receiveKeys = keys
+              .where(needsReceiveAddressPreparation)
+              .toList();
+          if (receiveKeys.isNotEmpty) {
+            await _ensureKeyGroupAddresses(walletId, receiveKeys);
           }
         } catch (e) {
-          debugPrint('Failed to load imported keys: $e');
+          debugPrint('Failed to prepare key group addresses: $e');
         }
       }
 
@@ -598,6 +625,8 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
           ? currentAddressOverride
           : await FfiBridge.currentReceiveAddress(walletId);
 
+      if (!ref.mounted || walletId != _walletId) return;
+
       // Convert FFI AddressBalanceInfo to local AddressInfo with balance tracking
       final history = addresses.map((ffiAddr) {
         final createdAt = ffiAddr.createdAt > 0
@@ -608,6 +637,11 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
             : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true).toLocal();
         return AddressInfo(
           addressId: ffiAddr.addressId,
+          keyId: ffiAddr.keyId,
+          keyLabel: keysById[ffiAddr.keyId] == null
+              ? null
+              : receiveKeyGroupLabel(keysById[ffiAddr.keyId]!),
+          seedAccountIndex: keysById[ffiAddr.keyId]?.seedAccountIndex,
           address: ffiAddr.address,
           label: ffiAddr.label,
           createdAt: createdAt,
@@ -628,6 +662,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       state = state.copyWith(
         addressHistory: history,
         currentAddress: currentAddress,
+        keyGroups: keys,
       );
       _lastState = state;
     } catch (e) {
@@ -681,16 +716,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     return wallet;
   }
 
-  Future<List<KeyGroupInfo>> _loadImportedSpendingKeys(
-    WalletId walletId,
-  ) async {
-    final keys = await FfiBridge.listKeyGroups(walletId);
-    return keys
-        .where((key) => key.keyType == KeyTypeInfo.importedSpending)
-        .toList();
-  }
-
-  Future<void> _ensureImportedKeyAddresses(
+  Future<void> _ensureKeyGroupAddresses(
     WalletId walletId,
     List<KeyGroupInfo> keys,
   ) async {
@@ -710,10 +736,34 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
           useIronwood: useIronwood,
         );
       } catch (e) {
-        debugPrint('Failed to prepare imported address: $e');
+        debugPrint('Failed to prepare key group address: $e');
       }
     }
   }
+}
+
+/// Seed accounts restored from older wallets need the same address preparation
+/// as imported spending keys. Never rotate an existing group's address here.
+bool needsReceiveAddressPreparation(KeyGroupInfo key) =>
+    key.spendable && (key.hasSapling || key.hasIronwood);
+
+String receiveKeyGroupLabel(KeyGroupInfo key) {
+  final index = key.seedAccountIndex;
+  final label = key.label?.trim();
+  if (index != null) {
+    final account = 'Seed account {index}'.trArgs({'index': index});
+    if (label == null ||
+        label.isEmpty ||
+        label == 'Seed' ||
+        label == 'Seed account $index') {
+      return account;
+    }
+    return '$label · $account';
+  }
+  if (label != null && label.isNotEmpty) return label;
+  return key.keyType == KeyTypeInfo.importedViewing
+      ? 'Viewing key'.tr
+      : 'Imported spending key'.tr;
 }
 
 /// Provider for receive screen

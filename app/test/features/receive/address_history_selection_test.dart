@@ -24,6 +24,43 @@ AddressInfo _address(
 }
 
 void main() {
+  test('group filter separates identical diversifier indices and labels', () {
+    final first = _address(
+      1,
+      label: 'Savings',
+    ).copyWith(keyId: 10, keyLabel: 'Seed account 0', seedAccountIndex: 0);
+    final second = _address(2, label: 'Savings').copyWith(
+      keyId: 20,
+      keyLabel: 'Seed account 2',
+      seedAccountIndex: 2,
+      diversifierIndex: first.diversifierIndex,
+    );
+    final archived = second.copyWith(addressId: 3, isArchived: true);
+    final addresses = [first, second, archived];
+    List<AddressInfo> select({
+      int? keyId,
+      String query = '',
+      AddressHistorySection section = AddressHistorySection.visible,
+    }) => selectAddressHistory(
+      addresses: addresses,
+      section: section,
+      sort: AddressHistorySort.newest,
+      keyId: keyId,
+      query: query,
+    );
+    expect(select(keyId: 20).map((a) => a.addressId), [2]);
+    expect(select(query: 'seed account 2').map((a) => a.addressId), [2]);
+    expect(select(keyId: 10, query: 'seed account 2'), isEmpty);
+    expect(
+      select(
+        keyId: 20,
+        section: AddressHistorySection.archived,
+      ).map((a) => a.addressId),
+      [3],
+    );
+    expect(select(), hasLength(2));
+    expect(second.copyWith(isPinned: true).keyId, 20);
+  });
   test('keeps current and pinned addresses ahead of the selected sort', () {
     final result = selectAddressHistory(
       addresses: [
