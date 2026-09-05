@@ -38,6 +38,14 @@ import LocalAuthentication
     }
 
     private func configureMethodChannels(binaryMessenger: FlutterBinaryMessenger) {
+        let verification = FlutterMethodChannel(name: "com.pirate.wallet/release_verification", binaryMessenger: binaryMessenger)
+        verification.setMethodCallHandler { call, result in
+            guard call.method == "artifactPaths" else { result(FlutterMethodNotImplemented); return }
+            // App Store/TestFlight distribution changes and may encrypt the
+            // executable. Do not mislabel it as a corrupted GitHub artifact.
+            let storeDistributed = Bundle.main.appStoreReceiptURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+            result(storeDistributed ? [] : Bundle.main.executablePath.map { [$0] } ?? [])
+        }
         let background = FlutterMethodChannel(
             name: "com.pirate.wallet/background_sync",
             binaryMessenger: binaryMessenger

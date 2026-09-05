@@ -32,6 +32,15 @@ class MainActivity: FlutterFragmentActivity() {
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.pirate.wallet/release_verification")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "artifactPaths") {
+                    // A sideloaded release APK keeps its bytes but is renamed base.apk.
+                    // Split/store packages are not byte-identical to a GitHub APK.
+                    result.success(if (applicationInfo.splitSourceDirs.isNullOrEmpty())
+                        listOf(applicationInfo.sourceDir) else emptyList<String>())
+                } else result.notImplemented()
+            }
         
         // Create notification channels
         NotificationChannels.createChannels(this)

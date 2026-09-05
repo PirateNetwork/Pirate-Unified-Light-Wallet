@@ -30,6 +30,7 @@ enum ReleaseVerificationReason {
   checksumMismatch,
   signatureInvalid,
   invalidVerificationFiles,
+  deviceClockIncorrect,
 }
 
 final class ReleaseVerificationResult {
@@ -84,12 +85,14 @@ final class ReleaseVerificationService {
     LocalArtifactLoader? loadLocalArtifacts,
     ReleaseRetryDelay? retryDelay,
     String? expectedSigningKeyId,
+    DateTime Function()? clock,
   }) : _downloadBytes = downloadBytes ?? _defaultDownloadBytes,
        _loadAsset = loadAsset ?? rootBundle.loadString,
        _loadLocalArtifacts = loadLocalArtifacts ?? _defaultLocalArtifacts,
        _retryDelay = retryDelay ?? _defaultRetryDelay,
        _expectedSigningKeyId =
-           expectedSigningKeyId ?? _unifiedWalletSigningKeyId;
+           expectedSigningKeyId ?? _unifiedWalletSigningKeyId,
+       _clock = clock ?? DateTime.now;
 
   static const repositoryUrl =
       'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet';
@@ -108,6 +111,7 @@ final class ReleaseVerificationService {
   final LocalArtifactLoader _loadLocalArtifacts;
   final ReleaseRetryDelay _retryDelay;
   final String _expectedSigningKeyId;
+  final DateTime Function() _clock;
 
   Future<ReleaseVerificationResult> verify(
     String appVersion, {
@@ -235,7 +239,7 @@ final class ReleaseVerificationService {
         );
       }
 
-      final matchedName = _lookupName(trustedChecksums, artifact.name)!;
+      final matchedName = _matchingName(trustedChecksums, artifact)!;
       final expectedHash = trustedChecksums[matchedName]!;
       final matches =
           _normalizeHash(expectedHash) == _normalizeHash(artifact.sha256);
@@ -255,6 +259,14 @@ final class ReleaseVerificationService {
         localHash: artifact.sha256,
         expectedHash: expectedHash,
         matchedChecksumName: matchedName,
+      );
+    } on _VerificationClockError {
+      return ReleaseVerificationResult(
+        status: ReleaseVerificationStatus.unavailable,
+        reason: ReleaseVerificationReason.deviceClockIncorrect,
+        releaseTag: tag,
+        releaseUrl: releaseUrl,
+        signatureAssetName: signatureAssetName,
       );
     } catch (_) {
       return ReleaseVerificationResult(
@@ -299,18 +311,22 @@ final class ReleaseVerificationService {
   }
 
   static Future<List<LocalReleaseArtifact>> _defaultLocalArtifacts() async {
-    if (Platform.isAndroid || Platform.isIOS) {
-      return const [];
-    }
-
     final paths = <String>[];
+    if (Platform.isAndroid || Platform.isIOS) {
+      final nativePaths = await const MethodChannel(
+        'com.pirate.wallet/release_verification',
+      ).invokeListMethod<String>('artifactPaths');
+      paths.addAll(nativePaths ?? const []);
+    }
     if (Platform.isLinux) {
       final appImage = Platform.environment['APPIMAGE'];
       if (appImage != null && appImage.trim().isNotEmpty) {
         paths.add(appImage);
       }
     }
-    paths.add(Platform.resolvedExecutable);
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      paths.add(Platform.resolvedExecutable);
+    }
 
     final artifacts = <LocalReleaseArtifact>[];
     final seen = <String>{};
@@ -396,11 +412,32 @@ final class ReleaseVerificationService {
   ) {
     try {
       final key = OpenPGP.readPublicKey(armoredPublicKey);
-      final detached = OpenPGP.readSignature(_armorSignature(signature));
+      // Pin the full release-key fingerprint, not only its short issuer ID.
+      if (_expectedSigningKeyId == _unifiedWalletSigningKeyId &&
+          _hex(key.fingerprint) != 'e4fb2399aeccf9b9447ded472ce65343401553a6') {
+        return false;
+      }
+      final detached = OpenPGP.readSignature(
+        utf8
+                .decode(signature, allowMalformed: true)
+                .trimLeft()
+                .startsWith('-----BEGIN PGP SIGNATURE-----')
+            ? utf8.decode(signature)
+            : _armorSignature(signature),
+      );
+      for (final packet in detached.packets) {
+        if (_hex(packet.issuerKeyID) == _expectedSigningKeyId &&
+            packet.creationTime.isAfter(_clock())) {
+          throw const _VerificationClockError();
+        }
+      }
       if (_hex(key.keyID) == _expectedSigningKeyId) {
         for (final packet in detached.packets) {
           if (_hex(packet.issuerKeyID) == _expectedSigningKeyId &&
-              packet.verify(key.keyPacket, content)) {
+              // A release is an immutable signed document, not a live session.
+              // Authenticate at signing time so a device clock or a later
+              // signature-expiry date cannot masquerade as corrupted bytes.
+              packet.verify(key.keyPacket, content, packet.creationTime)) {
             return true;
           }
         }
@@ -412,11 +449,13 @@ final class ReleaseVerificationService {
         }
         for (final packet in detached.packets) {
           if (_hex(packet.issuerKeyID) == _expectedSigningKeyId &&
-              packet.verify(subkey.keyPacket, content)) {
+              packet.verify(subkey.keyPacket, content, packet.creationTime)) {
             return true;
           }
         }
       }
+    } on _VerificationClockError {
+      rethrow;
     } catch (_) {
       return false;
     }
@@ -482,11 +521,29 @@ final class ReleaseVerificationService {
     Map<String, String> checksums,
   ) {
     for (final artifact in artifacts) {
+      if (checksums.values.contains(_normalizeHash(artifact.sha256))) {
+        return artifact;
+      }
+    }
+    for (final artifact in artifacts) {
       if (_lookupName(checksums, artifact.name) != null) {
         return artifact;
       }
     }
     return null;
+  }
+
+  static String? _matchingName(
+    Map<String, String> checksums,
+    LocalReleaseArtifact artifact,
+  ) {
+    // Android names an installed APK base.apk, and desktop users may rename
+    // an AppImage. The signed digest, rather than an installation filename,
+    // establishes identity. Prefer an exact digest before diagnosing mismatch.
+    for (final entry in checksums.entries) {
+      if (entry.value == _normalizeHash(artifact.sha256)) return entry.key;
+    }
+    return _lookupName(checksums, artifact.name);
   }
 
   static String? _lookupName(Map<String, String> checksums, String localName) {
@@ -506,4 +563,8 @@ final class ReleaseVerificationService {
   static String _hex(Uint8List bytes) {
     return bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
   }
+}
+
+class _VerificationClockError implements Exception {
+  const _VerificationClockError();
 }
