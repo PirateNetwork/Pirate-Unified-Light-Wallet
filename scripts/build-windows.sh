@@ -292,67 +292,12 @@ create_windows_installer() {
         app_version="0.0.0"
     fi
 
-    local iss_file
-    iss_file="$(mktemp --suffix=.iss)"
-    cat > "$iss_file" <<'ISS'
-[Setup]
-AppId={{8A65B5A7-79A4-4EBF-A89E-9B8F745FA96F}
-AppName=Stashi Wallet
-AppVersion={#AppVersion}
-DefaultDirName={localappdata}\StashiWallet
-DefaultGroupName=Stashi Wallet
-OutputDir={#OutputDir}
-OutputBaseFilename={#OutputBaseFilename}
-Compression=lzma2
-SolidCompression=yes
-WizardStyle=modern
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
-DisableProgramGroupPage=yes
-PrivilegesRequired=lowest
-UninstallDisplayIcon={app}\{#AppExeName}
+    powershell.exe -NoProfile -File "$SCRIPT_DIR/package-windows-installer.ps1" \
+        -SourceDir "$(cygpath -w "$source_dir")" \
+        -OutputDir "$(cygpath -w "$output_dir")" \
+        -AppVersion "$app_version" -OutputBaseFilename "$output_name" \
+        -IsccPath "$(cygpath -w "$(command -v "$iscc_cmd" || echo "$iscc_cmd")")" || return $?
 
-[Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
-
-[Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
-
-[InstallDelete]
-Type: files; Name: "{app}\app.exe"
-
-[Icons]
-Name: "{autoprograms}\Stashi Wallet"; Filename: "{app}\{#AppExeName}"
-Name: "{autodesktop}\Stashi Wallet"; Filename: "{app}\{#AppExeName}"
-
-[Run]
-Filename: "{app}\{#AppExeName}"; Description: "Launch Stashi Wallet"; Flags: nowait postinstall skipifsilent
-ISS
-
-    local source_dir_win="$source_dir"
-    local output_dir_win="$output_dir"
-    local iss_file_win="$iss_file"
-    if command -v cygpath &> /dev/null; then
-        source_dir_win="$(cygpath -w "$source_dir")"
-        output_dir_win="$(cygpath -w "$output_dir")"
-        iss_file_win="$(cygpath -w "$iss_file")"
-    fi
-
-    local -a iscc_args=(
-        "/DSourceDir=$source_dir_win"
-        "/DOutputDir=$output_dir_win"
-        "/DOutputBaseFilename=$output_name"
-        "/DAppVersion=$app_version"
-        "/DAppExeName=$app_exe_name"
-        "$iss_file_win"
-    )
-
-    # On GitHub Windows runners this script executes under bash (MSYS2),
-    # which can rewrite slash-prefixed arguments intended for native Windows
-    # tools like ISCC. Disable implicit conversion for this invocation.
-    MSYS2_ARG_CONV_EXCL="*" "$iscc_cmd" "${iscc_args[@]}"
-
-    rm -f "$iss_file"
     return 0
 }
 
@@ -398,7 +343,7 @@ if [ ! -f "$runtime_executable" ]; then
 fi
 runtime_hash="$(sha256sum "$runtime_executable" | awk '{print $1}')"
 printf '%s  %s\n' "$runtime_hash" 'Stashi Wallet.exe' \
-    > "$OUTPUT_DIR/installed-payload-windows.txt"
+    > "$OUTPUT_DIR/installed-payload-windows-unsigned.txt"
 
 log "Build complete!"
 if [ -f "$INSTALLER_OUTPUT_NAME" ]; then

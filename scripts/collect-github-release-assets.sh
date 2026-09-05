@@ -276,6 +276,7 @@ fi
 find "$ARTIFACTS_DIR" -type f \( \
   -name 'Stashi-Wallet-android-*.apk' \
   -o -name 'Stashi-Wallet-windows-installer.exe' \
+  -o -name 'Stashi-Wallet-windows-component-*.exe' \
   -o -name 'Stashi-Wallet-macos.dmg' \
   -o -name 'Stashi-Wallet-ios.ipa' \
 \) ! -name '*-unsigned*' -print0 |

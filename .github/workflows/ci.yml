@@ -1520,6 +1520,7 @@ jobs:
           path: |
             dist/ios/*.ipa
             dist/ios/*.ipa.sha256
+            dist/ios/installed-payload-ios-unsigned.txt
 
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1583,7 +1584,7 @@ jobs:
       - name: Install Inno Setup
         shell: pwsh
         run: |
-          choco install innosetup --no-progress -y
+          choco install innosetup --version=6.7.3 --no-progress -y
           "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
 
       - name: Set SOURCE_DATE_EPOCH
@@ -1639,7 +1640,7 @@ jobs:
             dist/windows/*.exe
             dist/windows/*.zip
             dist/windows/*.sha256
-            dist/windows/installed-payload-windows.txt
+            dist/windows/installed-payload-windows-unsigned.txt
 
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -2060,6 +2061,10 @@ jobs:
     needs:
       - package-windows
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --version=6.7.3 --no-progress -y
       - name: Check signing secrets
         id: signing
         shell: pwsh
@@ -2140,22 +2145,9 @@ jobs:
             exit 1
           }
 
-          $cert = $env:WINDOWS_SIGN_CERT
-          $pass = "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}"
-
-          $installerUnsigned = "dist/windows/Stashi-Wallet-windows-installer-unsigned.exe"
-          $installerSigned = "dist/windows/Stashi-Wallet-windows-installer.exe"
-          if (-not (Test-Path $installerUnsigned)) {
-            Write-Error "Unsigned installer not found"
-            exit 1
-          }
-          Copy-Item $installerUnsigned $installerSigned -Force
-          & $signtoolPath sign /fd SHA256 /f $cert /p $pass $installerSigned
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Windows installer signing failed"
-            exit $LASTEXITCODE
-          }
-          (Get-FileHash -Algorithm SHA256 $installerSigned).Hash | Set-Content -Encoding ascii "$installerSigned.sha256"
+          $env:WINDOWS_SIGN_PASSWORD = "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}"
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          ./scripts/sign-windows-release.ps1 -ArtifactDir dist/windows -CertificatePath $env:WINDOWS_SIGN_CERT -SignToolPath $signtoolPath -AppVersion $version
 
       - name: Upload signed Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
@@ -2165,6 +2157,7 @@ jobs:
           path: |
             dist/windows/Stashi-Wallet-windows-installer.exe
             dist/windows/Stashi-Wallet-windows-installer.exe.sha256
+            dist/windows/installed-payload-windows.txt
           if-no-files-found: error
 
   sign-macos:
@@ -2497,6 +2490,10 @@ jobs:
           chmod +x scripts/build-ios.sh
           REPRODUCIBLE=0 ./scripts/build-ios.sh true
 
+      - name: Record exported iOS executable
+        if: steps.signing.outputs.enabled == 'true'
+        run: python3 scripts/record-ios-payload.py dist/ios/Stashi-Wallet-ios.ipa dist/ios/installed-payload-ios.txt
+
       - name: Upload signed IPA
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -2505,6 +2502,7 @@ jobs:
           path: |
             dist/ios/Stashi-Wallet-ios.ipa
             dist/ios/Stashi-Wallet-ios.ipa.sha256
+            dist/ios/installed-payload-ios.txt
           if-no-files-found: error
 
       - name: Upload IPA to TestFlight

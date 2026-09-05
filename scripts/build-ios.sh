@@ -493,6 +493,7 @@ cp "$IPA_FILE" "$OUTPUT_DIR/$OUTPUT_NAME"
 log "Generating checksum..."
 cd "$OUTPUT_DIR"
 shasum -a 256 "$OUTPUT_NAME" > "$OUTPUT_NAME.sha256"
+python3 "$SCRIPT_DIR/record-ios-payload.py" "$OUTPUT_NAME" "$OUTPUT_DIR/installed-payload-ios-unsigned.txt"
 
 log "Build complete!"
 log "Output: $OUTPUT_DIR/$OUTPUT_NAME"
