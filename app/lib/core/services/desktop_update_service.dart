@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
+import '../security/release_verification_service.dart';
+
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -67,13 +68,6 @@ class DesktopUpdateLaunchResult {
   final bool shouldCloseApp;
 }
 
-class _ChecksumResult {
-  const _ChecksumResult({required this.entries, required this.sourceName});
-
-  final Map<String, String> entries;
-  final String? sourceName;
-}
-
 enum _LinuxInstallMode { appImage, flatpak, systemPackage, unknown }
 
 /// Checks GitHub releases for desktop updates and can launch updater scripts.
@@ -115,7 +109,7 @@ class DesktopUpdateService {
       return null;
     }
 
-    if (_compareVersions(release.tagName, currentVersion) <= 0) {
+    if (compareVersions(release.tagName, currentVersion) <= 0) {
       return null;
     }
 
@@ -135,6 +129,17 @@ class DesktopUpdateService {
   Future<DesktopUpdateLaunchResult> launchUpdate(
     DesktopUpdateCandidate candidate,
   ) async {
+    if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
+        .hasMatch(candidate.asset.name)) {
+      throw const FormatException('Invalid release asset filename');
+    }
+    final expectedUrl =
+        'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/releases/download/${candidate.release.tagName}/${candidate.asset.name}';
+    if (candidate.asset.downloadUrl != expectedUrl) {
+      throw const FormatException(
+        'Update asset is not an official release URL',
+      );
+    }
     final tempDir = await Directory.systemTemp.createTemp(
       'pirate_wallet_update_',
     );
@@ -187,11 +192,31 @@ class DesktopUpdateService {
 
   Future<DesktopReleaseInfo?> _fetchLatestEligibleRelease() async {
     final releases = await _fetchReleases();
-    final now = DateTime.now().toUtc();
-    for (final release in releases) {
+    return newestEligibleRelease(
+      releases,
+      DateTime.now().toUtc(),
+      supportsAssets: (assets) =>
+          _assetSelection.selectBestAsset(assets) != null,
+    );
+  }
+
+  @visibleForTesting
+  static DesktopReleaseInfo? newestEligibleRelease(
+    List<DesktopReleaseInfo> releases,
+    DateTime now, {
+    required bool Function(List<DesktopReleaseAsset>) supportsAssets,
+  }) {
+    final ordered = releases.toList()
+      ..sort((a, b) => compareVersions(b.tagName, a.tagName));
+    for (final release in ordered) {
       if (release.isDraft || release.isPrerelease) {
         continue;
       }
+      if (!RegExp(r'^v?\d+\.\d+\.\d+(?:\+[0-9A-Za-z.-]+)?$')
+          .hasMatch(release.tagName)) {
+        continue;
+      }
+      if (!supportsAssets(release.assets)) continue;
       final publishedAt = release.publishedAt?.toUtc();
       if (publishedAt == null) {
         continue;
@@ -252,57 +277,24 @@ class DesktopUpdateService {
     DesktopUpdateCandidate candidate,
     File destination,
   ) async {
-    final checksums = await _fetchChecksums(candidate.release.assets);
-    if (checksums.entries.isEmpty) {
-      throw Exception('No published checksums were found for this release.'.tr);
-    }
-
-    final expected = _lookupChecksum(checksums.entries, candidate.asset.name);
-    if (expected == null) {
-      throw Exception(
-        'No published checksum was found for ${candidate.asset.name}.',
-      );
-    }
-
     final actual = await _hashFile(destination);
-    if (_normalizeHash(actual) != _normalizeHash(expected)) {
+    final verification = await ReleaseVerificationService(
+      loadLocalArtifacts: () async => [
+        LocalReleaseArtifact(
+          path: destination.path,
+          name: candidate.asset.name,
+          sha256: actual,
+        ),
+      ],
+    ).verify(candidate.release.tagName);
+    if (verification.status != ReleaseVerificationStatus.match) {
       throw Exception(
-        'Checksum verification failed for ${candidate.asset.name}.',
+        'Update authentication failed: ${verification.reason.name}.',
       );
     }
-
-    if (candidate.assetKind == DesktopUpdateAssetKind.windowsInstaller &&
-        !_assetSelection.isUnsignedAsset(candidate.asset.name)) {
-      await _verifyWindowsAuthenticode(destination.path);
-    }
-  }
-
-  Future<void> _verifyWindowsAuthenticode(String path) async {
-    if (!Platform.isWindows) {
-      return;
-    }
-
-    final escapedPath = path.replaceAll("'", "''");
-    final command =
-        r'''$sig = Get-AuthenticodeSignature -LiteralPath '__PATH__'; '''
-                r'''Write-Output $sig.Status; '''
-                r'''if ($sig.Status -ne "Valid") { exit 1 }'''
-            .replaceAll('__PATH__', escapedPath);
-    final result = await Process.run('powershell.exe', <String>[
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-Command',
-      command,
-    ]);
-
-    final status = result.stdout.toString().trim();
-    if (result.exitCode != 0) {
-      final details = status.isNotEmpty
-          ? status
-          : result.stderr.toString().trim();
-      throw Exception('Windows signature verification failed: $details');
-    }
+    // Windows releases intentionally use self-signed Authenticode. Public OS
+    // trust is not our release authority: the pinned PGP key above authenticates
+    // the exact downloaded bytes before any installer or updater is launched.
   }
 
   Future<void> _downloadToFile(String url, File destination) async {
@@ -310,147 +302,13 @@ class DesktopUpdateService {
       url: url,
       destinationPath: destination.path,
       userAgent: 'StashiWallet-DesktopUpdater',
-    ).timeout(_networkTimeout);
-  }
-
-  Future<Uint8List> _downloadBytes(String url) async {
-    return FfiBridge.fetchExternalBytes(
-      url: url,
-      userAgent: 'StashiWallet-DesktopUpdater',
-    ).timeout(_networkTimeout);
-  }
-
-  Future<String> _downloadText(String url) async {
-    final bytes = await _downloadBytes(url);
-    return utf8.decode(bytes, allowMalformed: true);
+    ).timeout(const Duration(minutes: 15));
   }
 
   Future<String> _hashFile(File file) async {
     final digest = await sha256.bind(file.openRead()).first;
     return digest.toString();
   }
-
-  Future<_ChecksumResult> _fetchChecksums(
-    List<DesktopReleaseAsset> assets,
-  ) async {
-    final entries = <String, String>{};
-    String? sourceName;
-
-    final checksumAssets = assets.where(
-      (asset) => _isDirectChecksumAsset(asset.name),
-    );
-    for (final asset in checksumAssets) {
-      final text = await _downloadText(asset.downloadUrl);
-      final parsed = _parseChecksums(text, asset.name);
-      if (parsed.isNotEmpty) {
-        entries.addAll(parsed);
-        sourceName ??= asset.name;
-      }
-    }
-
-    final checksumBundles = assets.where(
-      (asset) => _isChecksumBundleAsset(asset.name),
-    );
-    for (final asset in checksumBundles) {
-      final bundleBytes = await _downloadBytes(asset.downloadUrl);
-      final parsed = _parseChecksumsFromZip(bundleBytes);
-      if (parsed.isNotEmpty) {
-        entries.addAll(parsed);
-        sourceName ??= asset.name;
-      }
-    }
-
-    return _ChecksumResult(entries: entries, sourceName: sourceName);
-  }
-
-  bool _isDirectChecksumAsset(String name) {
-    final lower = name.toLowerCase();
-    return lower.endsWith('.sha256') ||
-        lower.endsWith('.sha256sum') ||
-        lower.contains('checksums');
-  }
-
-  bool _isChecksumBundleAsset(String name) {
-    final lower = name.toLowerCase();
-    return lower.endsWith('.zip') &&
-        (lower.contains('metadata') ||
-            lower.contains('checksum') ||
-            lower.contains('sha256'));
-  }
-
-  Map<String, String> _parseChecksumsFromZip(Uint8List bytes) {
-    final map = <String, String>{};
-    Archive archive;
-    try {
-      archive = ZipDecoder().decodeBytes(bytes);
-    } catch (_) {
-      return map;
-    }
-
-    for (final file in archive.files) {
-      if (!file.isFile || !_isDirectChecksumAsset(file.name)) {
-        continue;
-      }
-
-      try {
-        final text = utf8.decode(
-          file.content as List<int>,
-          allowMalformed: true,
-        );
-        map.addAll(_parseChecksums(text, file.name));
-      } catch (_) {
-        // Ignore malformed entries and keep parsing the rest.
-      }
-    }
-    return map;
-  }
-
-  Map<String, String> _parseChecksums(String text, String assetName) {
-    final map = <String, String>{};
-    final lines = LineSplitter.split(text);
-    for (final line in lines) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty || trimmed.startsWith('#')) {
-        continue;
-      }
-
-      final parts = trimmed.split(RegExp(r'\s+'));
-      if (parts.length == 1) {
-        final fallbackName = assetName.replaceAll(
-          RegExp(r'\.sha256(sum)?$', caseSensitive: false),
-          '',
-        );
-        map[_canonicalAssetName(fallbackName)] = parts.first;
-        continue;
-      }
-
-      final hash = parts.first.trim();
-      final filename = parts.sublist(1).join(' ').replaceFirst('*', '').trim();
-      if (hash.isNotEmpty && filename.isNotEmpty) {
-        map[_canonicalAssetName(filename)] = hash;
-      }
-    }
-    return map;
-  }
-
-  String? _lookupChecksum(Map<String, String> checksums, String assetName) {
-    final canonicalName = _canonicalAssetName(assetName);
-    for (final entry in checksums.entries) {
-      if (_canonicalAssetName(entry.key) == canonicalName) {
-        return entry.value;
-      }
-    }
-    return null;
-  }
-
-  String _canonicalAssetName(String value) {
-    final normalizedPath = value
-        .replaceAll(String.fromCharCode(92), '/')
-        .trim();
-    return normalizedPath.split('/').last.toLowerCase();
-  }
-
-  String _normalizeHash(String value) => value.trim().toLowerCase();
 
   String _shQuote(String value) {
     return "'${value.replaceAll("'", "'\"'\"'")}'";
@@ -728,7 +586,8 @@ show_manual
     return normalized.substring(0, index + '.app'.length);
   }
 
-  int _compareVersions(String left, String right) {
+  @visibleForTesting
+  static int compareVersions(String left, String right) {
     final a = _SimpleSemver.parse(left);
     final b = _SimpleSemver.parse(right);
     return a.compareTo(b);
@@ -740,11 +599,13 @@ class _SimpleSemver implements Comparable<_SimpleSemver> {
     required this.major,
     required this.minor,
     required this.patch,
+    this.prerelease = const [],
   });
 
   final int major;
   final int minor;
   final int patch;
+  final List<String> prerelease;
 
   factory _SimpleSemver.parse(String raw) {
     final normalized = raw
@@ -768,6 +629,9 @@ class _SimpleSemver implements Comparable<_SimpleSemver> {
       major: parsePart(0),
       minor: parsePart(1),
       patch: parsePart(2),
+      prerelease: raw.split('+').first.contains('-')
+          ? raw.split('+').first.split('-').skip(1).join('-').split('.')
+          : const [],
     );
   }
 
@@ -781,6 +645,24 @@ class _SimpleSemver implements Comparable<_SimpleSemver> {
     if (minorCmp != 0) {
       return minorCmp;
     }
-    return patch.compareTo(other.patch);
+    final patchCmp = patch.compareTo(other.patch);
+    if (patchCmp != 0) return patchCmp;
+    if (prerelease.isEmpty) return other.prerelease.isEmpty ? 0 : 1;
+    if (other.prerelease.isEmpty) return -1;
+    for (var i = 0; i < prerelease.length && i < other.prerelease.length; i++) {
+      final left = prerelease[i];
+      final right = other.prerelease[i];
+      final a = int.tryParse(left);
+      final b = int.tryParse(right);
+      final cmp = a != null && b != null
+          ? a.compareTo(b)
+          : a != null
+          ? -1
+          : b != null
+          ? 1
+          : left.compareTo(right);
+      if (cmp != 0) return cmp;
+    }
+    return prerelease.length.compareTo(other.prerelease.length);
   }
 }

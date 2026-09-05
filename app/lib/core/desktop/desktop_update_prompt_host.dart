@@ -13,11 +13,19 @@ import '../../ui/molecules/p_snack.dart';
 import '../i18n/arb_text_localizer.dart';
 import '../security/app_secure_storage.dart';
 import '../services/desktop_update_service.dart';
+import 'desktop_update_dialog.dart';
 
 class DesktopUpdatePromptHost extends ConsumerStatefulWidget {
-  const DesktopUpdatePromptHost({required this.child, super.key});
+  const DesktopUpdatePromptHost({
+    required this.child,
+    required this.navigatorKey,
+    this.checkForUpdate,
+    super.key,
+  });
 
   final Widget child;
+  final GlobalKey<NavigatorState> navigatorKey;
+  final Future<DesktopUpdateCandidate?> Function()? checkForUpdate;
 
   @override
   ConsumerState<DesktopUpdatePromptHost> createState() =>
@@ -68,8 +76,9 @@ class _DesktopUpdatePromptHostState
 
     _checkInProgress = true;
     try {
-      final candidate = await DesktopUpdateService.instance
-          .checkForCurrentVersionUpdate();
+      final candidate =
+          await (widget.checkForUpdate ??
+              DesktopUpdateService.instance.checkForCurrentVersionUpdate)();
       if (!mounted || candidate == null) {
         return;
       }
@@ -87,77 +96,47 @@ class _DesktopUpdatePromptHostState
     }
   }
 
-  Future<void> _showUpdateDialog(DesktopUpdateCandidate candidate) async {
-    _dialogVisible = true;
-    final context = this.context;
-    final displayVersion = candidate.release.tagName.isEmpty
-        ? candidate.release.name
-        : candidate.release.tagName;
-    final publishedAt = candidate.release.publishedAt?.toLocal();
-    final publishedText = publishedAt == null
-        ? 'Unknown publish time'.tr
-        : '${publishedAt.year.toString().padLeft(4, '0')}-'
-              '${publishedAt.month.toString().padLeft(2, '0')}-'
-              '${publishedAt.day.toString().padLeft(2, '0')} '
-              '${publishedAt.hour.toString().padLeft(2, '0')}:'
-              '${publishedAt.minute.toString().padLeft(2, '0')}';
+  BuildContext? get _navigatorContext =>
+      widget.navigatorKey.currentState?.overlay?.context;
 
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('Update Available'.tr),
-          content: Text(
-            'A new version ({version}) is available.\nPublished: {published}\n\nChoose Update to download and install now.'
-                .trArgs({
-                  'version': displayVersion,
-                  'published': publishedText,
-                }),
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () async {
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-                await _downloadAndInstall(candidate);
-              },
-              child: Text('Update'.tr),
-            ),
-            TextButton(
-              onPressed: () async {
-                final url = Uri.tryParse(candidate.release.releaseUrl);
-                if (url != null) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                }
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              child: Text('Changelog'.tr),
-            ),
-            TextButton(
-              onPressed: () async {
-                await _storage.write(
-                  key: _dismissedTagStorageKey,
-                  value: candidate.release.tagName,
-                );
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              child: Text('Cancel'.tr),
-            ),
-          ],
-        );
-      },
-    );
-    _dialogVisible = false;
+  Future<void> _showUpdateDialog(DesktopUpdateCandidate candidate) async {
+    final context = _navigatorContext;
+    if (context == null || !context.mounted) return;
+    _dialogVisible = true;
+    try {
+      final action = await showDialog<DesktopUpdateAction>(
+        context: context,
+        builder: (_) => DesktopUpdateDialog(
+          currentVersion: candidate.currentVersion,
+          newVersion: candidate.release.tagName,
+        ),
+      );
+      if (!mounted) return;
+      switch (action) {
+        case DesktopUpdateAction.update:
+          await _downloadAndInstall(candidate);
+        case DesktopUpdateAction.skip:
+          await _storage.write(
+            key: _dismissedTagStorageKey,
+            value: candidate.release.tagName,
+          );
+        case DesktopUpdateAction.changelog:
+          await launchUrl(
+            Uri.parse(candidate.release.releaseUrl),
+            mode: LaunchMode.externalApplication,
+          );
+        case DesktopUpdateAction.later:
+        case null:
+          break;
+      }
+    } finally {
+      _dialogVisible = false;
+    }
   }
 
   Future<void> _downloadAndInstall(DesktopUpdateCandidate candidate) async {
-    if (!mounted) {
+    final context = _navigatorContext;
+    if (!mounted || context == null || !context.mounted) {
       return;
     }
     unawaited(
@@ -186,10 +165,10 @@ class _DesktopUpdatePromptHostState
       final result = await DesktopUpdateService.instance.launchUpdate(
         candidate,
       );
-      if (mounted) {
+      if (mounted && context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
       }
-      if (!mounted) {
+      if (!mounted || !context.mounted) {
         return;
       }
       final message = result.shouldCloseApp
@@ -207,10 +186,10 @@ class _DesktopUpdatePromptHostState
       await Future<void>.delayed(const Duration(milliseconds: 450));
       await _closeAppForUpdate();
     } catch (e) {
-      if (mounted) {
+      if (mounted && context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
       }
-      if (mounted) {
+      if (mounted && context.mounted) {
         PSnack.show(
           context: context,
           message: 'Automatic update failed: {error}. Use Changelog to download manually.'

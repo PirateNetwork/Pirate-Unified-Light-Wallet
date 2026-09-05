@@ -399,6 +399,7 @@ class _StashiWalletAppState extends ConsumerState<StashiWalletApp>
             return POverlayToastHost(
               key: rootOverlayToastHostKey,
               child: DesktopUpdatePromptHost(
+                navigatorKey: router.routerDelegate.navigatorKey,
                 child: Theme(
                   data: Theme.of(context),
                   child: child ?? const SizedBox.shrink(),
